@@ -1,0 +1,164 @@
+"""
+regrid.py
+=========
+Core regridding utilities shared by every script that puts a dataset on a
+common grid (`regrid_obs.py`, `regrid_cmip_esgf.py`, `ilamb_binned_et.py`,
+`cmip_binned_et.py`).
+
+Target grids
+------------
+There are two common grids. Both are global and regular, with lon in
+[-180, 180], lat ascending, and cell edges at multiples of the spacing from
+-90 and -180:
+
+    "0.5deg": 360 x 720, centers lat -89.75 ... 89.75, lon -179.75 ... 179.75
+    "1deg":   180 x 360, centers lat -89.5 ... 89.5,   lon -179.5 ... 179.5
+
+Always get a grid from `target_grid` (by spacing or tag) instead of building
+one by hand, so that every regridded product has identical lat/lon values and
+passes `binned_et.check_same_grid`. The grids carry their cell edges (`lat_b`,
+`lon_b`) for conservative regridding.
+
+Regridders
+----------
+All three build an xESMF regridder onto `target_grid(res)`.
+
+conservative_regridder : first-order conservative from a regular 1-D lat/lon
+    grid with explicit cell edges (`source_grid`), cached per source grid.
+    Used for the 0.1 deg obs products.
+bilinear_regridder : bilinear, periodic in lon. Used for ILAMB 1 deg products
+    and CMIP6 annual means.
+make_regridder : any xESMF method from an arbitrary source grid (1-D or 2-D
+    lat/lon, edges inferred by xESMF if absent).
+
+`conservative_regridder` and `bilinear_regridder` set target cells outside the
+source domain to NaN (`unmapped_to_nan=True`).
+"""
+from __future__ import annotations
+
+import warnings
+
+import numpy as np
+import xarray as xr
+import xesmf as xe
+
+
+RESOLUTIONS = {"0.5deg": 0.5, "1deg": 1.0}  # grid tag (output directory name) -> spacing [deg]
+
+LAT_ATTRS = {"units": "degrees_north", "standard_name": "latitude"}
+LON_ATTRS = {"units": "degrees_east", "standard_name": "longitude"}
+
+_CONSERVATIVE: dict[tuple, xe.Regridder] = {}
+
+
+# ------------------------------------------------------------------
+# Grids
+# ------------------------------------------------------------------
+
+def _spacing(res: float | str) -> float:
+    """Grid spacing [deg] of a supported resolution, given as spacing (0.5) or tag ("0.5deg")."""
+    spacing = RESOLUTIONS.get(res, res) if isinstance(res, str) else res
+    if spacing not in RESOLUTIONS.values():
+        raise ValueError(f"unsupported resolution {res!r}; use one of {RESOLUTIONS}")
+    return float(spacing)
+
+
+def grid_tag(res: float | str) -> str:
+    """Tag of a supported resolution, e.g. 1.0 -> "1deg"."""
+    spacing = _spacing(res)
+    return next(tag for tag, r in RESOLUTIONS.items() if r == spacing)
+
+
+def target_grid(res: float | str) -> xr.Dataset:
+    """Common global grid at spacing `res` (0.5 / 1.0, or "0.5deg" / "1deg"), with cell edges."""
+    res = _spacing(res)
+    nlat, nlon = round(180 / res), round(360 / res)
+    return xr.Dataset(coords={
+        "lat": ("lat", np.arange(-90 + res / 2, 90, res), LAT_ATTRS),
+        "lon": ("lon", np.arange(-180 + res / 2, 180, res), LON_ATTRS),
+        "lat_b": ("lat_b", np.linspace(-90, 90, nlat + 1)),
+        "lon_b": ("lon_b", np.linspace(-180, 180, nlon + 1)),
+    })
+
+
+def cell_bounds(centers: np.ndarray, name: str) -> np.ndarray:
+    """Cell edges of an ascending, regularly spaced 1-D coordinate."""
+    diffs = np.diff(centers)
+    step = float(np.median(diffs))
+    if not np.allclose(diffs, step, rtol=0, atol=1e-6 * max(1.0, abs(step))):
+        raise ValueError(f"{name} is not regularly spaced (spacings {np.unique(diffs)})")
+    return np.append(centers - step / 2, centers[-1] + step / 2)
+
+
+def source_grid(da: xr.DataArray) -> xr.Dataset:
+    """Grid of `da` (1-D ascending, regularly spaced lat/lon) with explicit cell edges for xESMF."""
+    lat, lon = da["lat"].values, da["lon"].values
+    return xr.Dataset(coords={
+        "lat": ("lat", lat),
+        "lon": ("lon", lon),
+        "lat_b": ("lat_b", np.clip(cell_bounds(lat, "lat"), -90, 90)),
+        "lon_b": ("lon_b", cell_bounds(lon, "lon")),
+    })
+
+
+# ------------------------------------------------------------------
+# Regridders
+# ------------------------------------------------------------------
+
+def make_regridder(src: xr.Dataset | xr.DataArray, res: float | str, method: str, **kwargs) -> xe.Regridder:
+    """xESMF regridder with `method` from the lat/lon grid of `src` onto `target_grid(res)`."""
+    return xe.Regridder(src, target_grid(res), method, **kwargs)
+
+
+def conservative_regridder(da: xr.DataArray, res: float | str) -> xe.Regridder:
+    """Conservative regridder from the regular grid of `da` onto `target_grid(res)`, cached per grid."""
+    key = (_spacing(res), da["lat"].values.tobytes(), da["lon"].values.tobytes())
+    if key not in _CONSERVATIVE:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _CONSERVATIVE[key] = make_regridder(source_grid(da), res, "conservative", unmapped_to_nan=True)
+    return _CONSERVATIVE[key]
+
+
+def bilinear_regridder(da: xr.DataArray | xr.Dataset, res: float | str) -> xe.Regridder:
+    """Bilinear regridder (periodic in lon) from the lat/lon grid of `da` onto `target_grid(res)`."""
+    src = xr.Dataset(coords={"lat": da["lat"], "lon": da["lon"]})
+    return make_regridder(src, res, "bilinear", periodic=True, unmapped_to_nan=True)
+
+
+# ------------------------------------------------------------------
+# Metadata
+# ------------------------------------------------------------------
+
+def coord_name(ds: xr.DataArray | xr.Dataset, candidates: list[str], standard_names: list[str]) -> str | None:
+    """First of `candidates` among the coords of `ds`, else the first coord with one of `standard_names`."""
+    for name in candidates:
+        if name in ds.coords:
+            return name
+    for name, var in ds.coords.items():
+        if str(var.attrs.get("standard_name", "")) in standard_names:
+            return name
+    return None
+
+
+def approx_resolution(ds: xr.DataArray | xr.Dataset) -> tuple[float | None, float | None]:
+    """Median (lat, lon) spacing [deg] of the unique coordinate values; None if it cannot be found."""
+    lat_name = coord_name(ds, ["lat", "latitude", "nav_lat"], ["latitude"])
+    lon_name = coord_name(ds, ["lon", "longitude", "nav_lon"], ["longitude"])
+
+    def spacing(name: str | None) -> float | None:
+        if name is None or name not in ds.coords:
+            return None
+        arr = np.asarray(ds[name].values)
+        if arr.ndim == 0:
+            return None
+        vals = np.unique(arr[np.isfinite(arr)])
+        if vals.size < 2:
+            return None
+        diffs = np.diff(np.sort(vals))
+        diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
+        if diffs.size == 0:
+            return None
+        return float(np.nanmedian(diffs))
+
+    return spacing(lat_name), spacing(lon_name)

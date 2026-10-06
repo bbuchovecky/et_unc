@@ -60,9 +60,9 @@ from matplotlib.patches import Rectangle
 import numpy as np
 import regionmask as regmask
 import xarray as xr
-import xesmf as xe
 
 import binned_et as be
+import regrid as rg
 
 
 # ------------------------------------------------------------------
@@ -87,10 +87,8 @@ SIGNIF_N_MIN = 10    # bins with <= this many samples are never significant
 FILL_THRESH = 1e30  # GPCCv2018 stores undecoded ~9.97e36 fill values
 
 # Common 0.5 deg grid; 1 deg products (WECANN, CERESed4.2) are interpolated onto it
-TARGET_GRID = xr.Dataset(coords={
-    "lat": ("lat", np.arange(-89.75, 90, 0.5), {"units": "degrees_north"}),
-    "lon": ("lon", np.arange(-179.75, 180, 0.5), {"units": "degrees_east"}),
-})
+TARGET_RES = 0.5
+TARGET_GRID = rg.target_grid(TARGET_RES)
 
 # {variable: {product: (file relative to ILAMB_DATA_ROOT, variable name in file)}}
 # ET products come from both evspsbl and hfls. Not used: FLUXNET2015 and
@@ -192,9 +190,7 @@ def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
 
 def regrid_to_target(da: xr.DataArray) -> xr.DataArray:
     """Bilinear interpolation onto TARGET_GRID; target points outside the source grid are NaN."""
-    src = xr.Dataset(coords={"lat": da.lat, "lon": da.lon})
-    regridder = xe.Regridder(src, TARGET_GRID, "bilinear", periodic=True, unmapped_to_nan=True)
-    return regridder(da, keep_attrs=True)
+    return rg.bilinear_regridder(da, TARGET_RES)(da, keep_attrs=True)
 
 
 def load_product(variable: str, product: str) -> xr.DataArray:

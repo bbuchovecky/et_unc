@@ -12,8 +12,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
-import xesmf as xe
 
+import regrid as rg
 from load_cmip_esgf import CMIPESGFLoader
 
 
@@ -26,39 +26,7 @@ SOURCE_IDS = None
 MEMBER_IDS = None
 TIME_SLICE = slice("1950-01", "2014-12")
 
-TARGET_GRID = xe.util.grid_global(1.0, 1.0, cf=True)
-
-
-def _coord_name(ds: xr.DataArray, candidates: list[str], standard_names: list[str]) -> str | None:
-    for name in candidates:
-        if name in ds.coords:
-            return name
-    for name, var in ds.coords.items():
-        if str(var.attrs.get("standard_name", "")) in standard_names:
-            return name
-    return None
-
-
-def _approx_resolution(ds: xr.DataArray) -> tuple[float | None, float | None]:
-    lat_name = _coord_name(ds, ["lat", "latitude", "nav_lat"], ["latitude"])
-    lon_name = _coord_name(ds, ["lon", "longitude", "nav_lon"], ["longitude"])
-
-    def spacing(name: str | None) -> float | None:
-        if name is None or name not in ds.coords:
-            return None
-        arr = np.asarray(ds[name].values)
-        if arr.ndim == 0:
-            return None
-        vals = np.unique(arr[np.isfinite(arr)])
-        if vals.size < 2:
-            return None
-        diffs = np.diff(np.sort(vals))
-        diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
-        if diffs.size == 0:
-            return None
-        return float(np.nanmedian(diffs))
-
-    return spacing(lat_name), spacing(lon_name)
+TARGET_RES = 1.0  # spacing [deg] of the common grid, see regrid.target_grid
 
 
 def _format_lat_lon(da: xr.DataArray) -> xr.DataArray:
@@ -76,45 +44,30 @@ def _format_lat_lon(da: xr.DataArray) -> xr.DataArray:
     return da
 
 
-def regrid_to_target(da: xr.DataArray, target_grid: xr.DataArray, verbose: bool = False) -> xr.DataArray:
+def regrid_to_target(da: xr.DataArray, res: float | str = TARGET_RES, verbose: bool = False) -> xr.DataArray:
     """
-    Attempt conservative (area-weighted) regridding using available tools.
+    Conservative (area-weighted) xESMF regridding onto `regrid.target_grid(res)`.
 
-    Use xESMF conservative regridding. Raises RuntimeError if xesmf is not
-    installed or the regridding fails.
+    The source grid keeps its original lat/lon dims (1-D or 2-D); xESMF infers
+    its cell edges. Raises RuntimeError if the regridding fails.
     """
     da = _format_lat_lon(da)
 
-    # Build minimal source/target grid structures for xESMF. xESMF accepts
-    # xarray.Dataset or dict-like inputs with 1D lon/lat coordinates.
     try:
-        # xESMF expects xarray Dataset/DataArray inputs with lon/lat variables
-        # Build minimal xarray.Datasets retaining the original dims (1D or 2D).
-        lon_dims_src = da["lon"].dims
-        lat_dims_src = da["lat"].dims
         src = xr.Dataset(
             {
-                "lon": (lon_dims_src, da["lon"].values),
-                "lat": (lat_dims_src, da["lat"].values),
+                "lon": (da["lon"].dims, da["lon"].values),
+                "lat": (da["lat"].dims, da["lat"].values),
             }
         )
         if verbose:
             print(f"Source: lon={len(src.lon)}, lat={len(src.lat)}")
 
-        lon_dims_tgt = target_grid["lon"].dims
-        lat_dims_tgt = target_grid["lat"].dims
-        tgt = xr.Dataset(
-            {
-                "lon": (lon_dims_tgt, target_grid["lon"].values),
-                "lat": (lat_dims_tgt, target_grid["lat"].values),
-            }
-        )
-        if verbose:
-            print(f"Target: lon={len(tgt.lon)}, lat={len(tgt.lat)}")
-
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            regridder = xe.Regridder(src, tgt, "conservative", reuse_weights=False)
+            regridder = rg.make_regridder(src, res, "conservative")
+            if verbose:
+                print(f"Target: lon={regridder.shape_out[1]}, lat={regridder.shape_out[0]}")
             return regridder(da, keep_attrs=True)
 
     except Exception as exc:  # pragma: no cover - environment specific
@@ -132,7 +85,8 @@ def to_yyyymm(time) -> str:
 
 def main() -> None:
     run_t0 = time.perf_counter()
-    print(f"Target grid: nlon={TARGET_GRID['lon'].shape}, nlat={TARGET_GRID['lat'].shape}")
+    grid = rg.target_grid(TARGET_RES)
+    print(f"Target grid {rg.grid_tag(TARGET_RES)}: nlat={grid.sizes['lat']}, nlon={grid.sizes['lon']}")
 
     loader = CMIPESGFLoader(CATALOG_PATH)
     catalog = loader.catalog
@@ -162,7 +116,7 @@ def main() -> None:
             # Regrid
             print(f"  {var}: IN {da.dims} {da.shape} Regridding...", end="", flush=True)
             regrid_t0 = time.perf_counter()
-            da_regridded = regrid_to_target(da, TARGET_GRID)
+            da_regridded = regrid_to_target(da, TARGET_RES)
             regrid_elapsed = time.perf_counter() - regrid_t0
             print(
                 f"done in {regrid_elapsed:.2f}s. OUT "
@@ -174,10 +128,10 @@ def main() -> None:
             # Add attributes
             da_regridded.attrs["src_dims"] = da.dims
             da_regridded.attrs["src_shape"] = da.shape
-            da_regridded.attrs["src_lat_name"] = _coord_name(da, ["lat", "alatitude", "nav_lat"], ["latitude"])
-            da_regridded.attrs["src_lon_name"] = _coord_name(da, ["lon", "longitude", "nav_lon"], ["longitude"])
-            da_regridded.attrs["src_dlat_deg"], da_regridded.attrs["src_dlon_deg"] = _approx_resolution(da)
-            da_regridded.attrs["tgt_dlat_deg"], da_regridded.attrs["tgt_dlon_deg"] = _approx_resolution(da_regridded)
+            da_regridded.attrs["src_lat_name"] = rg.coord_name(da, ["lat", "latitude", "nav_lat"], ["latitude"])
+            da_regridded.attrs["src_lon_name"] = rg.coord_name(da, ["lon", "longitude", "nav_lon"], ["longitude"])
+            da_regridded.attrs["src_dlat_deg"], da_regridded.attrs["src_dlon_deg"] = rg.approx_resolution(da)
+            da_regridded.attrs["tgt_dlat_deg"], da_regridded.attrs["tgt_dlon_deg"] = rg.approx_resolution(da_regridded)
             da_regridded.attrs["regrid_script"] = os.path.basename(__file__)
             da_regridded.attrs["regrid_date"] = dt.now().strftime("%Y-%m-%d %H:%M:%S%Z")
 
@@ -193,7 +147,7 @@ def main() -> None:
             # Handle output path
             start_str = to_yyyymm(da_regridded.time.isel(time=0))
             stop_str = to_yyyymm(da_regridded.time.isel(time=-1))
-            fname = f"{var}_{table_id}_{sid}_{EXPERIMENT_ID}_gr1deg_{start_str}-{stop_str}.nc"
+            fname = f"{var}_{table_id}_{sid}_{EXPERIMENT_ID}_gr{rg.grid_tag(TARGET_RES)}_{start_str}-{stop_str}.nc"
             outpath = REGRID_ROOT / sid / EXPERIMENT_ID / table_id / var
             outpath.mkdir(parents=True, exist_ok=True)
 

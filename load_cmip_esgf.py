@@ -467,14 +467,6 @@ class CMIPESGFLoader:
         return resolved
 
 
-    def _dataset_path_for_row(self, row: pd.Series, subset_size: int) -> str:
-        path = str(row["path"])
-        if subset_size > 1:
-            stem = "_".join(path.split("_")[:-1])
-            return f"{stem}*.nc" if stem else path
-        return path
-
-
     def load_data(
         self,
         variables: str | Sequence[str],
@@ -581,11 +573,11 @@ class CMIPESGFLoader:
                     subset = self.catalog.loc[query]
                     subset = subset.sort_values(by="path")
 
-                    # Some logic to remove duplicates - not the best way to handle this
+                    # Keep one file per time_range when a file is cataloged twice
                     # (e.g., .../Amon/tas/gn/v20210816/... and .../Amon/tas/gn/files/d20210816/...)
                     nfull = len(subset)
-                    if len(subset[subset.duplicated(subset=['time_range'], keep=False)]) > 0:
-                        subset = subset[subset.duplicated(subset=['time_range'], keep="first")]
+                    subset = subset.drop_duplicates(subset=["time_range"], keep="first")
+                    if len(subset) < nfull:
                         print(f"{nfull/len(subset)}x", end="-")
 
                     if len(subset) == 0:
@@ -593,18 +585,13 @@ class CMIPESGFLoader:
                             print(f"❌{mid}", end=" ")
                         continue
 
-                    # Record the literal catalog file path(s) contributing to this
-                    # member, post-deduplication -- this is the true provenance
-                    # regardless of whether _dataset_path_for_row below resolves
-                    # to a single file or a reconstructed glob for open_mfdataset.
+                    # Open exactly the cataloged files: one dataset's files may be split
+                    # across directories (e.g., the glade CMIP mirror and the ESGF cache).
                     member_file_paths[mid] = subset["path"].tolist()
-
-                    row = subset.iloc[0]
-                    da_path = self._dataset_path_for_row(row, len(subset))
 
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore")
-                        da = xr.open_mfdataset(da_path, parallel=parallel)[var]
+                        da = xr.open_mfdataset(member_file_paths[mid], parallel=parallel)[var]
 
                     # Check that coordinates exist and look ok
                     if self._check_coords(da):

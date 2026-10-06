@@ -1,0 +1,257 @@
+/glade/u/home/bbuchovecky/.bashrc: line 45: bind: warning: line editing not enabled
+/glade/u/home/bbuchovecky/.bashrc: line 45: bind: warning: line editing not enabled
+Job 6158227.casper-pbs started on crhtc73 at Tue Oct  6 10:31:53 AM MDT 2026
+OMP_NUM_THREADS=4
+Target grid 0.5deg: nlat=360, nlon=720
+Target grid 1deg: nlat=180, nlon=360
+Output root: /glade/campaign/univ/uwas0155/obs/regridded
+
+==== gleam v4.3a monthly E (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a monthly Eb (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a monthly Ec (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a monthly Ei (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a monthly Ep (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a monthly Es (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a monthly Et (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a monthly Ew (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a yearly E (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a yearly Eb (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a yearly Ec (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a yearly Ei (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a yearly Ep (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a yearly Es (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a yearly Et (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3a yearly Ew (1980-2025, 46 files) ====
+    skipped 46 files with existing output
+==== gleam v4.3b monthly E (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b monthly Eb (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b monthly Ec (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b monthly Ei (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b monthly Ep (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b monthly Es (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b monthly Et (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b monthly Ew (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b yearly E (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b yearly Eb (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b yearly Ec (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b yearly Ei (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b yearly Ep (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b yearly Es (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b yearly Et (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== gleam v4.3b yearly Ew (2003-2025, 23 files) ====
+    skipped 23 files with existing output
+==== pml V2.2c monthly E (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c monthly ET (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c monthly Ec (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c monthly Ei (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c monthly Es (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c monthly Ew (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c monthly GPP (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c monthly PET (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c yearly E (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c yearly ET (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c yearly Ec (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c yearly Ei (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c yearly Es (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c yearly Ew (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c yearly GPP (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2c yearly PET (1982-2025, 44 files) ====
+    skipped 44 files with existing output
+==== pml V2.2b monthly E (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b monthly ET (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b monthly Ec (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b monthly Ei (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b monthly Es (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b monthly Ew (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b monthly GPP (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b monthly PET (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b yearly E (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b yearly ET (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b yearly Ec (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b yearly Ei (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b yearly Es (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b yearly Ew (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b yearly GPP (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2b yearly PET (1982-2020, 39 files) ====
+    skipped 39 files with existing output
+==== pml V2.2a-MODIS monthly E (2000-2024, 25 files) ====
+    skipped 25 files with existing output
+==== pml V2.2a-MODIS monthly ET (2000-2024, 25 files) ====
+    skipped 25 files with existing output
+==== pml V2.2a-MODIS monthly Ec (2000-2024, 25 files) ====
+    skipped 25 files with existing output
+==== pml V2.2a-MODIS monthly Ei (2000-2024, 25 files) ====
+    skipped 25 files with existing output
+==== pml V2.2a-MODIS monthly Es (2000-2024, 25 files) ====
+    skipped 25 files with existing output
+==== pml V2.2a-MODIS monthly Ew (2000-2024, 25 files) ====
+    skipped 25 files with existing output
+==== pml V2.2a-MODIS monthly GPP (2000-2024, 25 files) ====
+    skipped 25 files with existing output
+==== pml V2.2a-MODIS monthly PET (2000-2024, 25 files) ====
+    skipped 25 files with existing output
+==== pml V2.2a-MODIS yearly E (2001-2024, 24 files) ====
+    skipped 24 files with existing output
+==== pml V2.2a-MODIS yearly ET (2001-2024, 24 files) ====
+    skipped 24 files with existing output
+==== pml V2.2a-MODIS yearly Ec (2001-2024, 24 files) ====
+    skipped 24 files with existing output
+==== pml V2.2a-MODIS yearly Ei (2001-2024, 24 files) ====
+    skipped 24 files with existing output
+==== pml V2.2a-MODIS yearly Es (2001-2024, 24 files) ====
+    skipped 24 files with existing output
+==== pml V2.2a-MODIS yearly Ew (2001-2024, 24 files) ====
+    skipped 24 files with existing output
+==== pml V2.2a-MODIS yearly GPP (2001-2024, 24 files) ====
+    skipped 24 files with existing output
+==== pml V2.2a-MODIS yearly PET (2001-2024, 24 files) ====
+    skipped 24 files with existing output
+
+==== Timing summary ====
+dataset version      freq     var    files  skip  load [s]  regrid [s]  save [s]
+gleam   v4.3a        monthly  E          0    46       0.0         0.0       0.0
+gleam   v4.3a        monthly  Eb         0    46       0.0         0.0       0.0
+gleam   v4.3a        monthly  Ec         0    46       0.0         0.0       0.0
+gleam   v4.3a        monthly  Ei         0    46       0.0         0.0       0.0
+gleam   v4.3a        monthly  Ep         0    46       0.0         0.0       0.0
+gleam   v4.3a        monthly  Es         0    46       0.0         0.0       0.0
+gleam   v4.3a        monthly  Et         0    46       0.0         0.0       0.0
+gleam   v4.3a        monthly  Ew         0    46       0.0         0.0       0.0
+gleam   v4.3a        yearly   E          0    46       0.0         0.0       0.0
+gleam   v4.3a        yearly   Eb         0    46       0.0         0.0       0.0
+gleam   v4.3a        yearly   Ec         0    46       0.0         0.0       0.0
+gleam   v4.3a        yearly   Ei         0    46       0.0         0.0       0.0
+gleam   v4.3a        yearly   Ep         0    46       0.0         0.0       0.0
+gleam   v4.3a        yearly   Es         0    46       0.0         0.0       0.0
+gleam   v4.3a        yearly   Et         0    46       0.0         0.0       0.0
+gleam   v4.3a        yearly   Ew         0    46       0.0         0.0       0.0
+gleam   v4.3b        monthly  E          0    23       0.0         0.0       0.0
+gleam   v4.3b        monthly  Eb         0    23       0.0         0.0       0.0
+gleam   v4.3b        monthly  Ec         0    23       0.0         0.0       0.0
+gleam   v4.3b        monthly  Ei         0    23       0.0         0.0       0.0
+gleam   v4.3b        monthly  Ep         0    23       0.0         0.0       0.0
+gleam   v4.3b        monthly  Es         0    23       0.0         0.0       0.0
+gleam   v4.3b        monthly  Et         0    23       0.0         0.0       0.0
+gleam   v4.3b        monthly  Ew         0    23       0.0         0.0       0.0
+gleam   v4.3b        yearly   E          0    23       0.0         0.0       0.0
+gleam   v4.3b        yearly   Eb         0    23       0.0         0.0       0.0
+gleam   v4.3b        yearly   Ec         0    23       0.0         0.0       0.0
+gleam   v4.3b        yearly   Ei         0    23       0.0         0.0       0.0
+gleam   v4.3b        yearly   Ep         0    23       0.0         0.0       0.0
+gleam   v4.3b        yearly   Es         0    23       0.0         0.0       0.0
+gleam   v4.3b        yearly   Et         0    23       0.0         0.0       0.0
+gleam   v4.3b        yearly   Ew         0    23       0.0         0.0       0.0
+pml     V2.2c        monthly  E          0    44       0.0         0.0       0.0
+pml     V2.2c        monthly  ET         0    44       0.0         0.0       0.0
+pml     V2.2c        monthly  Ec         0    44       0.0         0.0       0.0
+pml     V2.2c        monthly  Ei         0    44       0.0         0.0       0.0
+pml     V2.2c        monthly  Es         0    44       0.0         0.0       0.0
+pml     V2.2c        monthly  Ew         0    44       0.0         0.0       0.0
+pml     V2.2c        monthly  GPP        0    44       0.0         0.0       0.0
+pml     V2.2c        monthly  PET        0    44       0.0         0.0       0.0
+pml     V2.2c        yearly   E          0    44       0.0         0.0       0.0
+pml     V2.2c        yearly   ET         0    44       0.0         0.0       0.0
+pml     V2.2c        yearly   Ec         0    44       0.0         0.0       0.0
+pml     V2.2c        yearly   Ei         0    44       0.0         0.0       0.0
+pml     V2.2c        yearly   Es         0    44       0.0         0.0       0.0
+pml     V2.2c        yearly   Ew         0    44       0.0         0.0       0.0
+pml     V2.2c        yearly   GPP        0    44       0.0         0.0       0.0
+pml     V2.2c        yearly   PET        0    44       0.0         0.0       0.0
+pml     V2.2b        monthly  E          0    39       0.0         0.0       0.0
+pml     V2.2b        monthly  ET         0    39       0.0         0.0       0.0
+pml     V2.2b        monthly  Ec         0    39       0.0         0.0       0.0
+pml     V2.2b        monthly  Ei         0    39       0.0         0.0       0.0
+pml     V2.2b        monthly  Es         0    39       0.0         0.0       0.0
+pml     V2.2b        monthly  Ew         0    39       0.0         0.0       0.0
+pml     V2.2b        monthly  GPP        0    39       0.0         0.0       0.0
+pml     V2.2b        monthly  PET        0    39       0.0         0.0       0.0
+pml     V2.2b        yearly   E          0    39       0.0         0.0       0.0
+pml     V2.2b        yearly   ET         0    39       0.0         0.0       0.0
+pml     V2.2b        yearly   Ec         0    39       0.0         0.0       0.0
+pml     V2.2b        yearly   Ei         0    39       0.0         0.0       0.0
+pml     V2.2b        yearly   Es         0    39       0.0         0.0       0.0
+pml     V2.2b        yearly   Ew         0    39       0.0         0.0       0.0
+pml     V2.2b        yearly   GPP        0    39       0.0         0.0       0.0
+pml     V2.2b        yearly   PET        0    39       0.0         0.0       0.0
+pml     V2.2a-MODIS  monthly  E          0    25       0.0         0.0       0.0
+pml     V2.2a-MODIS  monthly  ET         0    25       0.0         0.0       0.0
+pml     V2.2a-MODIS  monthly  Ec         0    25       0.0         0.0       0.0
+pml     V2.2a-MODIS  monthly  Ei         0    25       0.0         0.0       0.0
+pml     V2.2a-MODIS  monthly  Es         0    25       0.0         0.0       0.0
+pml     V2.2a-MODIS  monthly  Ew         0    25       0.0         0.0       0.0
+pml     V2.2a-MODIS  monthly  GPP        0    25       0.0         0.0       0.0
+pml     V2.2a-MODIS  monthly  PET        0    25       0.0         0.0       0.0
+pml     V2.2a-MODIS  yearly   E          0    24       0.0         0.0       0.0
+pml     V2.2a-MODIS  yearly   ET         0    24       0.0         0.0       0.0
+pml     V2.2a-MODIS  yearly   Ec         0    24       0.0         0.0       0.0
+pml     V2.2a-MODIS  yearly   Ei         0    24       0.0         0.0       0.0
+pml     V2.2a-MODIS  yearly   Es         0    24       0.0         0.0       0.0
+pml     V2.2a-MODIS  yearly   Ew         0    24       0.0         0.0       0.0
+pml     V2.2a-MODIS  yearly   GPP        0    24       0.0         0.0       0.0
+pml     V2.2a-MODIS  yearly   PET        0    24       0.0         0.0       0.0
+
+Total load time:        0.00s
+Total regridding time:  0.00s
+Total save time:        0.00s
+Total run time:         7.61s
+Job 6158227.casper-pbs finished at Tue Oct  6 10:32:33 AM MDT 2026

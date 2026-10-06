@@ -49,9 +49,9 @@ import numpy as np
 import pandas as pd
 import regionmask as regmask
 import xarray as xr
-import xesmf as xe
 
 import binned_et as be
+import regrid as rg
 from load_cmip_esgf import CMIPESGFLoader
 
 
@@ -93,11 +93,9 @@ MEMBER_IDS: dict[str, str | list[str]] = {
 }
 
 # Common 1 deg grid that every model is interpolated onto
-GRID_TAG = "1deg"
-TARGET_GRID = xr.Dataset(coords={
-    "lat": ("lat", np.arange(-89.5, 90, 1.0), {"units": "degrees_north"}),
-    "lon": ("lon", np.arange(-179.5, 180, 1.0), {"units": "degrees_east"}),
-})
+TARGET_RES = 1.0
+GRID_TAG = rg.grid_tag(TARGET_RES)
+TARGET_GRID = rg.target_grid(TARGET_RES)
 
 MAP_KWARGS = {
     "evspsbl": {"cmap": "YlGnBu"},
@@ -237,8 +235,7 @@ def load_model(
         "rn": be.net_radiation_cmip(fields["rsds"], fields["rsus"], fields["rlds"], fields["rlus"]),
     }
 
-    src = xr.Dataset(coords={"lat": lf.lat, "lon": lf.lon})
-    regridder = xe.Regridder(src, TARGET_GRID, "bilinear", periodic=True, unmapped_to_nan=True)
+    regridder = rg.bilinear_regridder(lf, TARGET_RES)
 
     ann = {}
     for k, da in monthly.items():

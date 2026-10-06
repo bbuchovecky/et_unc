@@ -1,3 +1,3 @@
 __pycache__/
 dask-worker*
-download_*.sh
+# download_*.sh

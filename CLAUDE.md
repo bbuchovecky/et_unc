@@ -41,6 +41,10 @@ The driver scripts take no CLI arguments. They are configured by module-level co
 
 **`load_cmip_esgf.CMIPESGFLoader`** reads a catalog CSV produced by the external `cmip-intake-esgf-fetch` tool. It handles model, member and variable availability and loading. `be.load_cmip` wraps it, then puts every variable on the `areacella` grid and applies the `sftlf` land mask (Greenland and Iceland excluded). `regrid_cmip_esgf.py` uses the same loader to write regridded files.
 
+**`regrid.py`** (imported as `rg`) holds the shared regridding utilities. `rg.target_grid(res)` is the only source of the two common grids, 0.5° and 1° (`rg.RESOLUTIONS`). Both are global, lon in [-180, 180], lat ascending, with `lat_b`/`lon_b` edges. Never build a target grid by hand. The module also provides the xESMF regridders onto those grids: `conservative_regridder` (cached, for regular 1-D sources), `bilinear_regridder` (periodic) and `make_regridder` (any method or source grid), plus `approx_resolution`. `regrid_obs.py`, `regrid_cmip_esgf.py` and both binning drivers use it, and `test_regrid.py` checks that their grids are identical.
+
+**`load_obs.py`** loads per-year gridded obs products (GLEAM v4.3, PML-V2.2 in `/glade/campaign/univ/uwas0155/obs/`) into one lazy DataArray with `load_obs(dataset, var, time_slice, version=, freq=)` (or `load_gleam`/`load_pml`). Each product is an `ObsDataset` entry (path template, versions, frequencies, coord names), so a new product is added with `register_dataset`. Monthly and yearly files hold totals (mm/month, mm/year); `accumulation_to_flux` converts them to kg m-2 s-1. Tested in `test_load_obs.py`.
+
 **Notebooks** are exploratory and analysis work. `binned_stats.ipynb` is the original version in which the binning functions were defined inline; `binned_et.py` was extracted from it. `open_bin_stats` / `_ensure_bin_coords` still read the notebook-era files. `agu-abstract.ipynb` and `compare-ilamb.ipynb` read the saved `qbin` outputs. `cmip_trends.py` and `obs_trends.py` are empty placeholders.
 
 ## Conventions that matter

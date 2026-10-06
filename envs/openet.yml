@@ -1,0 +1,44 @@
+# environment.yml
+# Purpose: explore OpenET (and other Earth Engine) datasets server-side via the
+#          `ee` Python API, pull subsets lazily into xarray, and analyze them
+#          alongside CESM2/CLM5 output.
+# Create:  mamba env create -f environment.yml
+# Lock:    mamba env export --name openet --no-builds > environment.lock.yml
+#          (or conda-lock for cross-platform lock files; see notes in chat)
+
+name: openet
+channels:
+  - conda-forge
+  - nodefaults            # prevents fallback to the defaults channel (avoids mixed-channel conflicts)
+dependencies:
+  - python=3.11
+
+  # --- Earth Engine access ---
+  - earthengine-api       # `import ee`: server-side computation graphs
+  - xee                   # xarray backend for ee.ImageCollection (lazy, chunked)
+  - geemap                # interactive maps + export helpers in Jupyter
+
+  # --- N-dimensional arrays / I/O ---
+  - xarray
+  - dask
+  - netcdf4
+  - zarr
+
+  # --- Geospatial ---
+  - rioxarray             # CRS-aware xarray: reproject, clip
+  - geopandas
+  - shapely
+  - pyproj
+
+  # --- Numerics / analysis ---
+  - numpy
+  - pandas
+  - scipy
+
+  # --- Plotting ---
+  - matplotlib
+  - cartopy
+
+  # --- Notebooks ---
+  - jupyterlab
+  - ipykernel

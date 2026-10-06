@@ -1,0 +1,417 @@
+/glade/u/home/bbuchovecky/.bashrc: line 45: bind: warning: line editing not enabled
+/glade/u/home/bbuchovecky/.bashrc: line 45: bind: warning: line editing not enabled
+Job 6159072.casper-pbs started on crhtc85 at Tue Oct  6 12:06:51 PM MDT 2026
+OMP_NUM_THREADS=4
+Target grid 0.5deg: nlat=360, nlon=720
+Target grid 1deg: nlat=180, nlon=360
+Output root: /glade/campaign/univ/uwas0155/obs/regridded
+
+==== gleam v4.3b monthly E (2003-2025, 23 files) ====
+    2003: load+regrid... load 8.4s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 238.2s save 0.5s
+    2004: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2005: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2006: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2007: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2008: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2009: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2010: load+regrid... load 8.4s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2011: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2012: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2013: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2014: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2015: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2016: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2017: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2018: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2019: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2020: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2021: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2022: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2023: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2024: load+regrid... load 8.5s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2025: load+regrid... load 8.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.4s
+==== gleam v4.3b monthly Eb (2003-2025, 23 files) ====
+    2003: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2004: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2005: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2006: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2007: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2008: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2009: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2010: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2011: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2012: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2013: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2014: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2015: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2016: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2017: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2018: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2019: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2020: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2021: load+regrid... load 7.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2022: load+regrid... load 7.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2023: load+regrid... load 9.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2024: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2025: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+==== gleam v4.3b monthly Ec (2003-2025, 23 files) ====
+    2003: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.2s save 0.1s
+    2004: load+regrid... load 7.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2005: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.1s
+    2006: load+regrid... load 6.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2007: load+regrid... load 6.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.1s
+    2008: load+regrid... load 6.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2009: load+regrid... load 6.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2010: load+regrid... load 6.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2011: load+regrid... load 7.4s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2012: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 21.9s save 0.1s
+    2013: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2014: load+regrid... load 6.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.1s
+    2015: load+regrid... load 8.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2016: load+regrid... load 9.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.1s
+    2017: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.1s
+    2018: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.1s
+    2019: load+regrid... load 7.5s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.2s save 0.2s
+    2020: load+regrid... load 6.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2021: load+regrid... load 7.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2022: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.1s
+    2023: load+regrid... load 7.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2024: load+regrid... load 7.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.1s
+    2025: load+regrid... load 7.6s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.1s
+==== gleam v4.3b monthly Ei (2003-2025, 23 files) ====
+    2003: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2004: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2005: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2006: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2007: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2008: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2009: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2010: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2011: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2012: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.4s
+    2013: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2014: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2015: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2016: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2017: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2018: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2019: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2020: load+regrid... load 7.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2021: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2022: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2023: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2024: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2025: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+==== gleam v4.3b monthly Ep (2003-2025, 23 files) ====
+    2003: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2004: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2005: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2006: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2007: load+regrid... load 8.6s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2008: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2009: load+regrid... load 8.4s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2010: load+regrid... load 8.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2011: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2012: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2013: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.3s save 0.2s
+    2014: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2015: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2016: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2017: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2018: load+regrid... load 8.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2019: load+regrid... load 8.4s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2020: load+regrid... load 7.4s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.3s
+    2021: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2022: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2023: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2024: load+regrid... load 8.5s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.2s save 0.2s
+    2025: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.3s
+==== gleam v4.3b monthly Es (2003-2025, 23 files) ====
+    2003: load+regrid... load 7.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2004: load+regrid... load 7.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2005: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2006: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 19.3s save 0.2s
+    2007: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2008: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2009: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2010: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.1s
+    2011: load+regrid... load 7.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2012: load+regrid... load 7.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.1s
+    2013: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2014: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2015: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2016: load+regrid... load 7.5s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2017: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2018: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.7s save 0.2s
+    2019: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2020: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2021: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.5s
+    2022: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.1s
+    2023: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.2s save 0.2s
+    2024: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2025: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.6s
+==== gleam v4.3b monthly Et (2003-2025, 23 files) ====
+    2003: load+regrid... load 7.6s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2004: load+regrid... load 7.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2005: load+regrid... load 7.5s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.1s
+    2006: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2007: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2008: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2009: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2010: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2011: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2012: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2013: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.3s
+    2014: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2015: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.3s save 0.2s
+    2016: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2017: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2018: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2019: load+regrid... load 7.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2020: load+regrid... load 8.3s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2021: load+regrid... load 8.7s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 19.0s save 0.2s
+    2022: load+regrid... load 8.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2023: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2024: load+regrid... load 7.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2025: load+regrid... load 7.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+==== gleam v4.3b monthly Ew (2003-2025, 23 files) ====
+    2003: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2004: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.5s
+    2005: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2006: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2007: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.9s save 0.2s
+    2008: load+regrid... load 7.6s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2009: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2010: load+regrid... load 7.6s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2011: load+regrid... load 7.6s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2012: load+regrid... load 7.5s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2013: load+regrid... load 7.6s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2014: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2015: load+regrid... load 8.0s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2016: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+    2017: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2018: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2019: load+regrid... load 8.4s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2020: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2021: load+regrid... load 7.9s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.5s
+    2022: load+regrid... load 8.1s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.1s save 0.2s
+    2023: load+regrid... load 7.6s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.8s save 0.2s
+    2024: load+regrid... load 7.2s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 18.0s save 0.2s
+    2025: load+regrid... load 7.8s | 0.5deg (12, 360, 720) | 1deg (12, 180, 360) | regrid 17.9s save 0.2s
+==== gleam v4.3b yearly E (2003-2025, 23 files) ====
+    2003: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2004: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2005: load+regrid... load 0.8s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2006: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2007: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2008: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2009: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2010: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2011: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.3s
+    2012: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2013: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2014: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2015: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2016: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2017: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2018: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2019: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2020: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2021: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2022: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2023: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2024: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2025: load+regrid... load 0.8s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+==== gleam v4.3b yearly Eb (2003-2025, 23 files) ====
+    2003: load+regrid... load 0.8s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2004: load+regrid... load 0.8s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2005: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2006: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2007: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2008: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2009: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2010: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2011: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2012: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2013: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2014: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2015: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2016: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2017: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2018: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2019: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2020: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2021: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2022: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.6s save 0.0s
+    2023: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2024: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2025: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+==== gleam v4.3b yearly Ec (2003-2025, 23 files) ====
+    2003: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2004: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2005: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2006: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2007: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2008: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2009: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2010: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2011: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2012: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2013: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2014: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2015: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2016: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.7s save 0.6s
+    2017: load+regrid... load 1.9s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 3.0s save 0.1s
+    2018: load+regrid... load 0.8s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2019: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2020: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2021: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2022: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2023: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2024: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2025: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+==== gleam v4.3b yearly Ei (2003-2025, 23 files) ====
+    2003: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2004: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2005: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2006: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2007: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2008: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2009: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2010: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2011: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2012: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2013: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2014: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2015: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2016: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2017: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.5s
+    2018: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2019: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2020: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2021: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2022: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2023: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2024: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2025: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+==== gleam v4.3b yearly Ep (2003-2025, 23 files) ====
+    2003: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2004: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2005: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2006: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2007: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2008: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2009: load+regrid... load 0.6s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2010: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2011: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2012: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2013: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2014: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2015: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2016: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2017: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2018: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2019: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2020: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2021: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2022: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2023: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2024: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2025: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+==== gleam v4.3b yearly Es (2003-2025, 23 files) ====
+    2003: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2004: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2005: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2006: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2007: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2008: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2009: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2010: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2011: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2012: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2013: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2014: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2015: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2016: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2017: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2018: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2019: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2020: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2021: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2022: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2023: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2024: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2025: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+==== gleam v4.3b yearly Et (2003-2025, 23 files) ====
+    2003: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2004: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2005: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2006: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2007: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2008: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.5s
+    2009: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2010: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2011: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2012: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2013: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2014: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2015: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2016: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2017: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2018: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2019: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2020: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2021: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2022: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2023: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2024: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2025: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+==== gleam v4.3b yearly Ew (2003-2025, 23 files) ====
+    2003: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2004: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2005: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2006: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2007: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2008: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.6s save 0.1s
+    2009: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2010: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2011: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2012: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2013: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2014: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2015: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2016: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2017: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2018: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2019: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2020: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2021: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2022: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2023: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2024: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+    2025: load+regrid... load 0.7s | 0.5deg (1, 360, 720) | 1deg (1, 180, 360) | regrid 1.5s save 0.1s
+
+==== Timing summary ====
+dataset version      freq     var    files  skip  load [s]  regrid [s]  save [s]
+gleam   v4.3b        monthly  E         23     0     188.0       631.7       4.9
+gleam   v4.3b        monthly  Eb        23     0     182.5       411.5       3.9
+gleam   v4.3b        monthly  Ec        23     0     174.9       417.2       3.2
+gleam   v4.3b        monthly  Ei        23     0     182.8       411.6       4.7
+gleam   v4.3b        monthly  Ep        23     0     190.3       412.9       4.7
+gleam   v4.3b        monthly  Es        23     0     180.4       414.0       4.4
+gleam   v4.3b        monthly  Et        23     0     180.8       415.6       4.1
+gleam   v4.3b        monthly  Ew        23     0     180.1       413.6       5.0
+gleam   v4.3b        yearly   E         23     0      14.6        34.4       1.7
+gleam   v4.3b        yearly   Eb        23     0      16.7        34.5       1.4
+gleam   v4.3b        yearly   Ec        23     0      17.5        36.1       1.9
+gleam   v4.3b        yearly   Ei        23     0      13.9        34.3       1.7
+gleam   v4.3b        yearly   Ep        23     0      15.7        34.2       1.6
+gleam   v4.3b        yearly   Es        23     0      16.6        34.2       1.6
+gleam   v4.3b        yearly   Et        23     0      16.7        34.2       2.0
+gleam   v4.3b        yearly   Ew        23     0      16.6        34.2       1.7
+
+Total load time:        1588.12s
+Total regridding time:  3804.17s
+Total save time:        48.37s
+Total run time:         5556.23s
+Job 6159072.casper-pbs finished at Tue Oct  6 01:40:03 PM MDT 2026
