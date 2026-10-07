@@ -21,18 +21,20 @@ passes `binned_et.check_same_grid`. The grids carry their cell edges (`lat_b`,
 
 Regridders
 ----------
-All three build an xESMF regridder onto `target_grid(res)`.
+All of them build an xESMF regridder onto `target_grid(res)`.
 
 conservative_regridder : first-order conservative from a regular 1-D lat/lon
     grid with explicit cell edges (`source_grid`), cached per source grid.
     Used for the 0.1 deg obs products.
-bilinear_regridder : bilinear, periodic in lon. Used for ILAMB 1 deg products
-    and CMIP6 annual means.
+bounded_conservative_regridder : first-order conservative from any 1-D
+    lat/lon grid (e.g. Gaussian), with cell edges from CF bounds or midpoints
+    (`bounded_source_grid`). Used for CMIP6 annual means.
+bilinear_regridder : bilinear, periodic in lon. Used for ILAMB 1 deg products.
 make_regridder : any xESMF method from an arbitrary source grid (1-D or 2-D
     lat/lon, edges inferred by xESMF if absent).
 
-`conservative_regridder` and `bilinear_regridder` set target cells outside the
-source domain to NaN (`unmapped_to_nan=True`).
+All but `make_regridder` set target cells outside the source domain to NaN
+(`unmapped_to_nan=True`).
 """
 from __future__ import annotations
 
@@ -101,6 +103,44 @@ def source_grid(da: xr.DataArray) -> xr.Dataset:
     })
 
 
+def cell_edges(centers: np.ndarray, bnds: np.ndarray | None = None, name: str = "") -> np.ndarray:
+    """
+    Cell edges (n + 1) of a monotonic 1-D coordinate with any spacing: from CF
+    bounds `bnds` (n, 2) if given, else midpoints between centers with the
+    outer edges half a cell beyond the outer centers.
+    """
+    if bnds is not None:
+        edges = np.append(bnds[:, 0], bnds[-1, 1])
+    else:
+        mid = (centers[1:] + centers[:-1]) / 2
+        edges = np.concatenate([[2 * centers[0] - mid[0]], mid, [2 * centers[-1] - mid[-1]]])
+    diffs = np.diff(edges)
+    lo, hi = np.minimum(edges[:-1], edges[1:]), np.maximum(edges[:-1], edges[1:])
+    if not (np.all(diffs > 0) or np.all(diffs < 0)) or not np.all((centers >= lo) & (centers <= hi)):
+        raise ValueError(f"{name} cell edges are not monotonic or do not enclose the centers")
+    return edges
+
+
+def bounded_source_grid(ds: xr.Dataset | xr.DataArray) -> xr.Dataset:
+    """
+    Grid of `ds` (1-D lat/lon, any spacing) with cell edges for xESMF, taken
+    from the CF bounds variables (`lat_bnds`/`lon_bnds`, or the coord's
+    "bounds" attr) when `ds` has them and from midpoints otherwise.
+    Latitude edges are clipped to [-90, 90].
+    """
+    def edges(name: str) -> np.ndarray:
+        bnds_name = ds[name].attrs.get("bounds", f"{name}_bnds")
+        bnds = ds[bnds_name].values if isinstance(ds, xr.Dataset) and bnds_name in ds else None
+        return cell_edges(ds[name].values, bnds, name)
+
+    return xr.Dataset(coords={
+        "lat": ("lat", ds["lat"].values),
+        "lon": ("lon", ds["lon"].values),
+        "lat_b": ("lat_b", np.clip(edges("lat"), -90, 90)),
+        "lon_b": ("lon_b", edges("lon")),
+    })
+
+
 # ------------------------------------------------------------------
 # Regridders
 # ------------------------------------------------------------------
@@ -118,6 +158,13 @@ def conservative_regridder(da: xr.DataArray, res: float | str) -> xe.Regridder:
             warnings.simplefilter("ignore")
             _CONSERVATIVE[key] = make_regridder(source_grid(da), res, "conservative", unmapped_to_nan=True)
     return _CONSERVATIVE[key]
+
+
+def bounded_conservative_regridder(ds: xr.Dataset | xr.DataArray, res: float | str) -> xe.Regridder:
+    """Conservative regridder from the 1-D grid of `ds` (edges from `bounded_source_grid`) onto `target_grid(res)`."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return make_regridder(bounded_source_grid(ds), res, "conservative", unmapped_to_nan=True)
 
 
 def bilinear_regridder(da: xr.DataArray | xr.Dataset, res: float | str) -> xe.Regridder:

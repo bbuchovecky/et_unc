@@ -82,6 +82,38 @@ def test_source_grid_irregular_raises():
         rg.source_grid(da)
 
 
+def test_cell_edges_from_bounds_and_midpoints():
+    centers = np.array([-60.0, -20.0, 10.0, 70.0])
+    bnds = np.array([[-90.0, -40.0], [-40.0, 0.0], [0.0, 30.0], [30.0, 90.0]])
+    np.testing.assert_array_equal(rg.cell_edges(centers, bnds), [-90, -40, 0, 30, 90])
+    np.testing.assert_array_equal(rg.cell_edges(centers), [-80, -40, -5, 40, 100])
+    with pytest.raises(ValueError, match="do not enclose"):
+        rg.cell_edges(centers, bnds[::-1])
+
+
+def test_bounded_source_grid():
+    """Irregular lat: edges from `lat_bnds` when present, else midpoints; lat clipped to [-90, 90]."""
+    lat, lon = np.array([-60.0, -20.0, 10.0, 70.0]), np.arange(0.0, 360, 90)
+    ds = field(lat, lon).to_dataset(name="sftlf")
+    np.testing.assert_array_equal(rg.bounded_source_grid(ds).lat_b, [-80, -40, -5, 40, 90])
+    np.testing.assert_array_equal(rg.bounded_source_grid(ds).lon_b, [-45, 45, 135, 225, 315])
+    ds["lat_bnds"] = (("lat", "bnds"), [[-90, -40], [-40, 0], [0, 30], [30, 90]])
+    np.testing.assert_array_equal(rg.bounded_source_grid(ds).lat_b, [-90, -40, 0, 30, 90])
+
+
+def test_bounded_conservative_regridder_conserves():
+    """Global Gaussian-like source: a constant stays constant, and the masked-area mean is conserved."""
+    lat = np.sort(np.concatenate([[-88.0, 88.0], np.linspace(-80, 80, 30) + 0.3 * np.sin(np.arange(30))]))
+    da = field(lat, np.arange(0.0, 360, 2.5), value=4.0)
+    regridder = rg.bounded_conservative_regridder(da, 1.0)
+    np.testing.assert_allclose(regridder(da), 4.0)
+    # NaN over half the domain: target cells away from the edge are the mean of the valid part
+    half = da.where(da.lon < 180)
+    out = regridder(half, skipna=True, na_thres=0.5)
+    np.testing.assert_allclose(out.sel(lon=slice(10, 170)), 4.0)
+    assert out.sel(lon=slice(-170, -10)).isnull().all()
+
+
 # ------------------------------------------------------------------
 # Regridders
 # ------------------------------------------------------------------

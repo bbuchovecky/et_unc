@@ -33,7 +33,8 @@ PARALLEL=${PARALLEL:-1}                      # files transferred at once on each
 SEGMENTS=${SEGMENTS:-$(( CONN_PER_HOST - 1 ))}  # connections per file; PARALLEL x SEGMENTS < CONN_PER_HOST
 LFTP=${LFTP:-/glade/work/bbuchovecky/miniforge3/envs/lftp/bin/lftp}
 
-RESOLUTIONS=${RESOLUTIONS:-"Monthly Yearly"}  # Daily is opt-in (175 GB)
+# RESOLUTIONS=${RESOLUTIONS:-"Monthly Yearly"}  # Daily is opt-in (175 GB)
+RESOLUTIONS=${RESOLUTIONS:-"Monthly"}  # Daily is opt-in (175 GB)
 YEARS=${YEARS:-$(seq -s ' ' 1982 2022)}       # Daily only
 # VARIABLES=${VARIABLES:-"ET Ei En Es Tr SM"}
 VARIABLES=${VARIABLES:-"ET Ei En Es Tr"}

@@ -56,7 +56,7 @@ GRIDDED_ET_PRODUCTS = {
     "PMLv2.2c":       ("pml", "V2.2c", "ET", "monthly"),
     "GLEAMv4.3a":     ("gleam", "v4.3a", "E", "monthly"),
     "GLEAMv4.3b":     ("gleam", "v4.3b", "E", "monthly"),
-    "SiTHv2":         ("sith", "v2", "ET", "yearly"),  # "monthly" once regridded
+    "SiTHv2":         ("sith", "v2", "ET", "yearly"),  # "monthly" once re-downloaded
 }
 GRIDDED_RES = "0.5"  # load_obs `res` of the regridded files; must match ib.TARGET_RES
 # Gridcell-years of gridded products with annual mean ET below this [W/m2] are

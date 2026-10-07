@@ -54,11 +54,12 @@ REGRID_ROOT = lo.REGRID_ROOT  # = /glade/campaign/univ/uwas0155/obs/regridded
 
 # {dataset: {"versions": ..., "freqs": ..., "vars": ...}}; None = all available
 SELECTION: dict[str, dict[str, tuple[str, ...] | None]] = {
-    "gleam": {"versions": ("v4.3b",), "freqs": ("monthly", "yearly"), "vars": None},
+    # "gleam": {"versions": ("v4.3b",), "freqs": ("monthly", "yearly"), "vars": None},
     # "gleam": {"versions": None, "freqs": ("monthly", "yearly"), "vars": None},
-    # V2.2a-VIIRS skipped: monthly E 2019 is a 0-byte file on the TPDC server
+    ## V2.2a-VIIRS skipped: monthly E 2019 is a 0-byte file on the TPDC server
     # "pml":   {"versions": ("V2.2c", "V2.2b", "V2.2a-MODIS"), "freqs": ("monthly", "yearly"), "vars": None},
     # "sith":  {"versions": None, "freqs": ("monthly", "yearly"), "vars": None},
+    "sith":  {"versions": None, "freqs": ("yearly",), "vars": None},
 }
 YEARS: list[int] | None = None  # optional subset of years; multi-year files touching it are regridded whole
 
