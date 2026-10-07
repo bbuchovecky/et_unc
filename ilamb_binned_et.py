@@ -453,7 +453,15 @@ def main():
         v: {p: load_product(v, p) for p in (RUN_PRODUCTS.get(v) or products)}
         for v, products in PRODUCTS.items()
     }
+    run(ann, mask)
 
+
+def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
+    """
+    Steps 2-4 for annual means `ann` ({variable: {product: (year, lat, lon)}},
+    variables in FACTORS order, on TARGET_GRID within LAT_BNDS) and land `mask`.
+    Also used by `obs_binned_et.py`.
+    """
     # ------------------------------------------------------------------
     # Maps of climatological means
     # ------------------------------------------------------------------
