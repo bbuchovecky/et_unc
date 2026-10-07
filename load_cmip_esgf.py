@@ -185,6 +185,12 @@ class CMIPESGFLoader:
         return grouped
 
 
+    def source_ids(self, experiment_id: str | None = None) -> list[str]:
+        """Return all source IDs in the catalog for the selected experiment."""
+        subset = self.catalog.loc[self._experiment_mask(experiment_id)]
+        return sorted(subset["source_id"].astype(str).unique().tolist())
+
+
     def source_with_area(self, experiment_id: str | None = None) -> list[str]:
         """Return source IDs that provide areacella for the selected experiment."""
         subset = self.catalog.loc[
@@ -236,8 +242,7 @@ class CMIPESGFLoader:
     ) -> tuple[dict[str, set[str]], dict[str, list[str]], list[str]]:
         """
         Return available member IDs, variables, and complete source IDs.
-        By default, restricts the search to source IDs with available land-
-        grid output.
+        By default, searches every source ID in the catalog for the experiment.
 
         Parameters
         ----------
@@ -248,7 +253,7 @@ class CMIPESGFLoader:
         source_id, optional:
             Source ID or list of source IDs to restrict the search.
         source_candidates, optional:
-            Explicit source list to test instead of deriving land-grid source IDs.
+            Explicit source list to test instead of every source ID in the catalog.
         verbose, optional:
             If True, print the availability summary.
         """
@@ -259,7 +264,7 @@ class CMIPESGFLoader:
         elif source_candidates is not None:
             candidate_sources = list(source_candidates)
         else:
-            candidate_sources = self.source_with_landgrid(experiment_id=experiment_id)
+            candidate_sources = self.source_ids(experiment_id=experiment_id)
 
         avail_member_id: dict[str, set[str]] = {}
         avail_variables: dict[str, list[str]] = {}
@@ -482,8 +487,7 @@ class CMIPESGFLoader:
     ) -> dict[str, dict[str, xr.DataArray]]:
         """
         Load the requested variables into a nested ``data_dict`` structure.
-        By default, restricts the search to source IDs with available land-
-        grid output.
+        By default, searches every source ID in the catalog for the experiment.
 
         Parameters
         ----------
@@ -499,7 +503,7 @@ class CMIPESGFLoader:
         time_slice, optional:
             Time slice passed to ``DataArray.sel``.
         source_candidates, optional:
-            Explicit source list to load instead of deriving land-grid sources.
+            Explicit source list to load instead of every source ID in the catalog.
         parallel, optional:
             xr.open_mfdataset(parallel=parallel)
         verbose, optional:
@@ -517,8 +521,7 @@ class CMIPESGFLoader:
         elif source_candidates is not None:
             candidate_sources = list(source_candidates)
         else:
-            candidate_sources = self.source_with_landgrid(experiment_id=experiment_id)
-            # candidate_sources = self.source_with_landgrid(experiment_id=None)
+            candidate_sources = self.source_ids(experiment_id=experiment_id)
 
         if omit_source_id is not None:
             omit_sid = self._as_list(omit_source_id) or []
