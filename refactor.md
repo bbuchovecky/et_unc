@@ -33,7 +33,7 @@ These are *not* duplicates and keep separate names: `format_grid` (ILAMB driver 
 in `ilamb_binned_et` is bilinear and in `regrid_cmip_esgf` is conservative with the EC-Earth lat/lon fix.
 
 Intended outcome: one obvious module per concept, no script imports another script, nothing needs ILAMB/MPI, and
-the outputs are numerically identical (verified against a baseline). The code runs in its own mamba env, `etunc`,
+behavior is unchanged (pinned by the tests). The code runs in its own mamba env, `etunc`,
 instead of the shared `data-sci-py312`. Pixi is out of scope; it's a later, separate step, and pixi can import
 `envs/etunc.yml`.
 
@@ -44,7 +44,7 @@ to campaign storage is a one-line change.
 ## Dedicated environment `etunc`
 `envs/etunc.yml`: channels `conda-forge` and `nodefaults`, created at `/glade/work/bbuchovecky/miniforge3/envs/etunc`.
 - **conda-forge packages:** `python=3.12`, `numpy`, `pandas`, `scipy` (`test_significance`), `xarray`, `dask`, `distributed`, `dask-jobqueue` (needed by `dask_cluster`), `netcdf4`, `xesmf` (brings `esmpy`/`esmf`), `regionmask`, `cartopy`, `matplotlib`, `pytest`, `ipykernel`, `pip`.
-- **Pinned versions:** `numpy`, `pandas`, `scipy`, `xarray`, `dask`, `xesmf`, `esmpy`, `regionmask` and `cartopy` are pinned to the versions now in `data-sci-py312` (read with `conda list` at implementation time; e.g. xarray 2026.1.0, numpy 2.3.5, xesmf 0.9.2, esmpy 8.9.1, regionmask 0.13.0). Then the baseline comparison tests only the refactor, not version changes. The pins can be loosened once it passes.
+- **Pinned versions:** `numpy`, `pandas`, `scipy`, `xarray`, `dask`, `xesmf`, `esmpy`, `regionmask` and `cartopy` are pinned to the versions now in `data-sci-py312` (read with `conda list` at implementation time; e.g. xarray 2026.1.0, numpy 2.3.5, xesmf 0.9.2, esmpy 8.9.1, regionmask 0.13.0). Then any difference after the refactor comes from the code, not from version changes. The pins can be loosened once it passes.
   As built, `envs/etunc.yml` also pins packages that change results without being imported directly: xarray's optional accelerators `bottleneck`, `numbagg` (+`numba`) and `flox`; `cftime`, `netcdf4`, `libnetcdf`, `hdf5`; `shapely`, `geopandas`, `pyproj`, `proj`; `libopenblas`; and `matplotlib`, `freetype` (PNG rendering). `esmf`, `hdf5` and `libnetcdf` are pinned to `nompi_*` builds, in the yml and in the lock.
 - **pip:** none besides `etunc` itself (the repo no longer depends on xclimate), installed after the env is created with `mamba run -n etunc pip install --no-deps -e .`.
 - **Lock file:** `mamba env export -n etunc --no-builds > envs/etunc.lock.yml`, committed alongside the yml.
@@ -128,8 +128,8 @@ et_unc/
 stay in their scripts, since each is used once.
 
 `config.py` contents:
-- **Inputs:** `CAMPAIGN_ROOT` (`/glade/campaign/univ/uwas0155`), `OBS_ROOT`, `ILAMB_ROOT`, the regridded-file roots `OBS_REGRID_ROOT` and `CMIP_REGRID_ROOT` (written by `regrid_obs`/`regrid_cmip` and read by `load_obs(res=)`; env-var overridable, and verification sets the override only when it runs the two regrid scripts, so they write to scratch while the binning scripts still read the campaign files), and the CMIP catalogs: `CMIP_CATALOG_ROOT`, `CMIP_CATALOG`, `CMIP_FX_CATALOG`, `ESGF_CACHE_CATALOG` (the last is used by `regrid_cmip`). Each catalog path can be overridden by an env var, with a comment on the scratch purge risk.
-- **Outputs:** `WORK_ROOT = Path(os.environ.get("ETUNC_WORK_ROOT", "/glade/work/bbuchovecky/et_unc"))`, plus `PROC_ROOT`, `FIG_ROOT`, `BIN_EDGES_ROOT`. The environment variable lets verification write to scratch.
+- **Inputs:** `CAMPAIGN_ROOT` (`/glade/campaign/univ/uwas0155`), `OBS_ROOT`, `ILAMB_ROOT`, the regridded-file roots `OBS_REGRID_ROOT` and `CMIP_REGRID_ROOT` (written by `regrid_obs`/`regrid_cmip` and read by `load_obs(res=)`; env-var overridable), and the CMIP catalogs: `CMIP_CATALOG_ROOT`, `CMIP_CATALOG`, `CMIP_FX_CATALOG`, `ESGF_CACHE_CATALOG` (the last is used by `regrid_cmip`). Each catalog path can be overridden by an env var, with a comment on the scratch purge risk.
+- **Outputs:** `WORK_ROOT = Path(os.environ.get("ETUNC_WORK_ROOT", "/glade/work/bbuchovecky/et_unc"))`, plus `PROC_ROOT`, `FIG_ROOT`, `BIN_EDGES_ROOT`. The environment variable allows a test run that writes elsewhere.
 - **Constants:** `LAT_BNDS`, `LF_THRESH`, `LATENT_HEAT_VAPORIZATION`, `LIQ_WATER_DENSITY`, `DPI`, `PROJECTION`.
 
 Conventions for every module:
@@ -139,8 +139,8 @@ Conventions for every module:
 - No behavior changes. Any unavoidable change is called out in its commit message.
 
 ## Git workflow
-- On `main`: commit this plan and CLAUDE.md, run `pytest` and record the result, then tag `pre-refactor` and push the tag. The baseline is built from that tag.
-- Work on branch `refactor/package`, pushed to origin as a backup. Freeze feature work on `main` until the merge. If `main` must change, merge it into the branch and rebuild the baseline.
+- On `main`: commit this plan and CLAUDE.md, run `pytest` and record the result, then tag `pre-refactor` and push the tag. If the refactored code looks wrong, restart from that tag.
+- Work on branch `refactor/package`, pushed to origin as a backup. Freeze feature work on `main` until the merge. If `main` must change, merge it into the branch.
 - **Every commit is green:** `pytest` passes and every script still imports. A commit that moves or merges code updates the tests of that code in the same commit (there is no separate "fix the tests" step). The full suite takes ~7 min, so while working run only the tests of the module being moved, and run the full suite before each commit.
 - One commit per move or dedup, not one per step. Steps 3–5 contain many of them.
 - Merge with `git merge --no-ff refactor/package` (not squash), so the per-commit history and its behavior-change notes survive for `git bisect` and `git log --follow`.
@@ -165,24 +165,14 @@ Conventions for every module:
    - Run the *old* test suite in `etunc` to confirm the env reproduces `data-sci-py312` results before any code moves.
    - Commit `envs/etunc.yml` and `envs/etunc.lock.yml`.
    - Update the `#PBS` scripts and CLAUDE.md commands to `PY=/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python`.
-1b. **Baseline (no commit).** Build it in `etunc` from the *old* code, so the regression tests the refactor and nothing else. Everything goes in `BASELINE=/glade/derecho/scratch/bbuchovecky/et_unc_refactor/baseline`:
-   - `git archive pre-refactor | tar -x -C $BASELINE/code`, then patch the output roots in that copy (`PROC_ROOT`/`FIG_ROOT`/`BIN_EDGES_ROOT` in `ilamb_binned_et.py` and `cmip_binned_et.py`, which `mask`, `obs_et_availability` and `obs_binned_et` derive from; `REGRID_ROOT` in `regrid_obs.py` and `regrid_cmip_esgf.py`). Write nothing to `/glade/work/.../et_unc` or to campaign, and check that afterwards (`find -newer`).
-   - **Freeze the inputs:** copy `cmip_evap.csv` and `cmip6_fx_glade.csv` into `$BASELINE/catalogs/` and point both the baseline and the new code at that copy (through the `config.py` env vars). The live catalogs keep changing, and ~2/3 of their paths are on purgeable scratch.
-   - Run each driver and keep its stdout as `<script>.log` next to its outputs:
-     - `mask.py`, `obs_et_availability.py`, `ilamb_binned_et.py` and `obs_binned_et.py` as configured.
-     - `cmip_binned_et.py` restricted via `SOURCE_IDS` to 2 models whose files are all off scratch (e.g. `MIROC6`, `GFDL-CM4`).
-     - `regrid_cmip_esgf.py` on one EC-Earth model and variable (this exercises the EC-Earth lat/lon fix, which moves to `load/cmip.py`).
-     - `regrid_obs.py` on one PML and one GLEAM file.
-   - Also choose a **fast subset** (1 ILAMB combination, 1 CMIP model, 1 regrid file) and record how long it takes. It runs after every commit in steps 3–5.
-   - In `data-sci-py312` (the only env with ILAMB): `ilamblib.CellAreas` reference arrays on coarse grids (with and without bounds; one 0–360 and one −180–180 lon grid), saved as a tiny `.npz` that becomes `tests/data/cell_area_ref.npz`.
-   - Optional env-parity check: run the same drivers in `data-sci-py312` and compare those outputs with the `etunc` baseline.
 2. **Move the modules that are already self-contained**, using `git mv` to keep history: `regrid.py`→`etunc/grid.py`, `load_obs.py`→`etunc/load/obs.py`, `load_cmip_esgf.py`→`etunc/load/cmip.py`, `load_cesm.py`→`etunc/load/cesm.py`, `load_era5.py`→`etunc/load/era5.py`, `dask_cluster.py`→`etunc/dask_cluster.py`. In the same commit, fix their imports in every script, test and module that uses them.
-3. **Split `binned_et.py`** into `config`, `units`, `temporal`, `binning`, `plotting`, `load/cesm` (appended to the moved `load_cesm.py`) and `legacy`, with the public renames (`finish`, `map_ax`, `finite_flat`). Add `grid.cell_area` and route `legacy.compute_cell_area` through it, with tests (the sum equals 4πR² on a global grid, and it matches `tests/data/cell_area_ref.npz` exactly). Delete `binned_et.py`. Re-point the `be.` imports in the scripts and `test_binned_et.py` in the same commit(s).
-4. **Deduplicate the driver helpers into the package** (table above), one commit per row. Each commit adds synthetic tests for the helper it moves into the package, re-points the imports in `test_load_ilamb.py`/`test_load_cmip.py` without changing their expected values, and runs the fast subset.
+3. **Split `binned_et.py`** into `config`, `units`, `temporal`, `binning`, `plotting`, `load/cesm` (appended to the moved `load_cesm.py`) and `legacy`, with the public renames (`finish`, `map_ax`, `finite_flat`). Add `grid.cell_area` and route `legacy.compute_cell_area` through it, with tests (the sum equals 4πR² on a global grid; bounds and midpoint edges give ILAMB's formula on a coarse grid). Delete `binned_et.py`. Re-point the `be.` imports in the scripts and `test_binned_et.py` in the same commit(s).
+4. **Deduplicate the driver helpers into the package** (table above), one commit per row. Each commit adds synthetic tests for the helper it moves into the package, re-points the imports in `test_load_ilamb.py`/`test_load_cmip.py` without changing their expected values.
    - Rows: grid/time helpers, `load/ilamb.py`, CMIP member selection, the `load_native`/`regrid_annual`/`load_model` split, `valid_area`/`common_area`, the masks from `mask.py`, `regrid_with_na_thres`, `output_path`/`regrid_file`, the general `target_grid`, `facets`, `plot_mask_agreement`.
    - New tests in those commits: `format_grid`, `complete_years`, `annual_mean` with both settings, `yearly_to_annual`, `on_grid`, `product_mask`/`common_mask`, `to_yyyymm`, `period_str`; `target_grid(0.25)` and `target_grid(2.0)` shapes and edges, while `grid_tag` still rejects them; `regrid_annual` on a synthetic native grid (`na_thres` masking, target-grid coordinates) and `regrid_annual(*load_native(...))` equal to `load_model`; `valid_area`/`common_area` with and without `member_dim`.
    - Module constants that become arguments (`MEMBER_IDS`, `DEFAULT_MEMBERS`, `VARIABLES`, `NA_THRES`, …) are passed explicitly by the tests instead of monkeypatched.
-   - `plot_bin_means` (merging `plot_combo_bin_means` and `plot_model_bin_means`) and `save_map` are not true duplicates: different path patterns, titles, masking and tick logic. Give each its own commit, and right after it compare the affected PNGs with the baseline side by side by eye.
+   - `plot_bin_means` (merging `plot_combo_bin_means` and `plot_model_bin_means`) and `save_map` are not true duplicates: different path patterns, titles, masking and tick logic. Give each its own commit, and check the affected figures by eye after it.
+   - The EC-Earth i/j branch of `regrid_cmip_esgf._format_lat_lon` is not reached by the EC-Earth files on disk (all 1-D lat/lon), so it gets a synthetic unit test when it moves to `load/cmip.py`.
    - For `check_coords`/`equal_coords`, keep one version only where it changes neither caller; otherwise keep both, with names that say how they differ.
 5. **Move and slim the scripts.** `git mv` them into `scripts/` with the new names and replace their helper copies with package imports. Merge `obs_binned_et.py` into `bin_obs.py`, then delete it. `obs_et_availability.py` drops `regridded_dataset` and uses `load_obs(res=...)`. Replace `test_scripts_use_target_grids` (scripts are no longer importable, and the grids now have one source) in the same commit.
 6. **Move the tests** into `tests/` (`git mv`, pure move) and set `testpaths`. `test_regrid_obs.py` gets `output_path`/`regrid_file` from `etunc.load.obs` (this already happened in the step 4 commit that moved them).
@@ -199,22 +189,13 @@ Conventions for every module:
 8. **Docs.** Rewrite `README.md` with the layout table and a quickstart. Update `CLAUDE.md`: layout, commands (`scripts/…`, `pytest tests/`), remove the out-of-date "differ deliberately" note, replace "`rg.target_grid` is the only source of the two common grids" (it now builds any spacing, and the standard grids are `RESOLUTIONS`), drop ILAMB from the env description, note the scratch-catalog risk, and remove the refactor exceptions from the hard rules. Update the scripts' docstrings with their new names.
 
 ## Verification
-The baseline (step 1b) and all new-code checks run in the `etunc` env, so the comparison isolates the refactor from the env change.
-- Env parity: the old test suite passes in `etunc` before any refactoring (step 1). Optionally, the `data-sci-py312` driver outputs match the `etunc` baseline.
-- Every commit: `pytest` passes, and from step 3 on the fast subset matches the baseline.
+All checks run in the `etunc` env. There is no output-regression baseline: the tests pin behavior, and if the
+refactored code looks wrong, restart from the `pre-refactor` tag.
+- Env parity: the old test suite passes in `etunc` before any refactoring (step 1).
+- Every commit: `pytest` passes.
 - `pytest tests/` passes: every existing test plus the new ones. `test_load_ilamb.py` and `test_load_cmip.py` pass with the same expected values they had against the old scripts.
 - Every library module imports in a fresh interpreter, ILAMB isn't needed anywhere, and MPI never starts: `python -c "import etunc.grid, etunc.units, etunc.temporal, etunc.binning, etunc.plotting, etunc.load.obs, etunc.load.ilamb, etunc.load.cmip, etunc.legacy"`.
-- **Regression** (before merging): run the new scripts with `ETUNC_WORK_ROOT=<scratch>`, the frozen catalogs and the same settings as the baseline. Use one comparison script for this and for the fast subset.
-  - Every NetCDF output matches the baseline under `xr.testing.assert_identical`, attributes included. The only exceptions are dropped from both sides before comparing: `regrid_date` (a wall-clock timestamp) and `regrid_script` (`os.path.basename(__file__)`, which changes from `regrid_cmip_esgf.py` to `regrid_cmip.py`).
-  - If a file fails, the script reports the max abs/rel difference per variable. Any difference is explained in the commit that caused it; never loosen the tolerance silently. Reordered floating-point operations (e.g. the `load_native`/`regrid_annual` split) can give 1-ulp differences.
-  - Diff each script's stdout log against the baseline log. It prints gridcell counts and years, so it catches changes the NetCDFs might not. A known cosmetic difference is the `common_area` name width (50 vs 16).
-  - Runs:
-    - `make_mask.py` and `obs_et_availability.py`.
-    - `bin_obs.py` twice: with `GRIDDED_ET_PRODUCTS = {}` and the old `RUN_PRODUCTS` (against the `ilamb_binned_et.py` baseline), and with the old `obs_binned_et` settings (against its baseline).
-    - `bin_cmip.py` on the same 2 models. This also checks that `load_model` = `regrid_annual ∘ load_native`.
-    - `regrid_cmip.py` on the same EC-Earth model and variable, and `regrid_obs.py` on the same files, both with their output-root override set to scratch.
-- `grid.cell_area` matches the `ilamblib.CellAreas` reference arrays exactly (`np.testing.assert_array_equal`).
-- Check the figures by eye against the baseline PNGs: every figure type at least once, and all PNGs affected by the `plot_bin_means`/`save_map` merges. Re-run `cmip-regrid-res` top to bottom and compare its figures with the committed outputs.
+- Before merging, run the new scripts once and look over their outputs and figures, in particular the figures affected by the `plot_bin_means`/`save_map` merges. Re-run `cmip-regrid-res` top to bottom and compare its figures with the committed outputs.
 - `grep -rE "import (binned_et|ilamb_binned_et|cmip_binned_et|obs_binned_et|load_obs|load_cmip_esgf|regrid_obs|regrid)\b|from (load_cmip_esgf|regrid|ILAMB) |ilamblib"` over `etunc scripts tests notebooks` finds nothing.
 - Each moved notebook's import cell runs without errors.
 - `qsub` dry check: the `.pbs` files point at `scripts/…` paths, which exist.

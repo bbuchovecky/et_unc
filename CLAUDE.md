@@ -69,7 +69,6 @@ The driver scripts take no CLI arguments. They are configured by module-level co
 ## Hard Rules
 - Do NOT create stub functions
 - Do NOT modify any files outside of /glade/u/home/bbuchovecky/projects/et_unc/. The only exceptions are for the refactor in `refactor.md`:
-  - the regression baseline and verification outputs in `/glade/derecho/scratch/bbuchovecky/et_unc_refactor/`
   - creating and installing into the `etunc` env at `/glade/work/bbuchovecky/miniforge3/envs/etunc`
   - installing the `etunc` Jupyter kernel (`~/.local/share/jupyter/kernels/etunc`)
 - Always run tests before reporting a task is complete
