@@ -90,10 +90,15 @@ def brute_force_stats(target, y, x, y_edges, x_edges):
 # ------------------------------------------------------------------
 
 def test_format_time_period():
+    """A time slice is formatted as YYYYMM-YYYYMM."""
     assert be.format_time_period(slice("1950-01", "2014-12")) == "195001-201412"
 
 
 def test_safe_squeeze_and_get_one_mid(rng):
+    """
+    safe_squeeze drops a length-1 dim and ignores a missing one; get_one_mid returns the member_id, or
+    "onemember" without a member dim.
+    """
     da = monthly(rng, members=1)
     assert "member" not in be.safe_squeeze(da, "member").dims
     assert be.safe_squeeze(da, "nonexistent").dims == da.dims
@@ -102,6 +107,10 @@ def test_safe_squeeze_and_get_one_mid(rng):
 
 
 def test_equal_coords_and_check_same_grid(inputs):
+    """
+    equal_coords accepts lat/lon differences within atol and rejects larger shifts or missing coords;
+    check_same_grid raises on shifted values or a different shape.
+    """
     lai = inputs["lai"]
     assert be.equal_coords(lai, lai + 1, ("lat", "lon"))
     assert be.equal_coords(lai, lai.assign_coords(lat=lai.lat + 1e-4), ("lat", "lon"))
@@ -115,6 +124,10 @@ def test_equal_coords_and_check_same_grid(inputs):
 
 
 def test_convert_units():
+    """
+    convert_units scales pr/et by L and CESM PRECT (m/s) by L times water density, flips the sign of ERA5 mer,
+    and leaves other variables unchanged.
+    """
     da = xr.DataArray([1.0, 2.0])
     np.testing.assert_allclose(be.convert_units("pr", da), da * be.LATENT_HEAT_VAPORIZATION)
     np.testing.assert_allclose(
@@ -138,6 +151,10 @@ def test_convert_units():
     ],
 )
 def test_latent_heat_to_wm2(units, factor):
+    """
+    Each supported ET or latent heat unit string (any case or spacing) is scaled to W/m2, keeping the other
+    attrs and leaving the input unchanged.
+    """
     da = xr.DataArray([1.0, 2.0], attrs={"units": units, "long_name": "x"})
     out = be.latent_heat_to_wm2(da)
     np.testing.assert_allclose(out, da * factor)
@@ -146,11 +163,13 @@ def test_latent_heat_to_wm2(units, factor):
 
 
 def test_latent_heat_to_wm2_unknown_units():
+    """An unsupported unit raises a ValueError that names it."""
     with pytest.raises(ValueError, match="mm d-1"):
         be.latent_heat_to_wm2(xr.DataArray([1.0], attrs={"units": "mm d-1"}))
 
 
 def test_mask_greenland():
+    """Land above the threshold is True except in Greenland; land below the threshold is False."""
     lat = np.array([-10.0, 72.0])
     lon = np.array([-60.0, -40.0])  # Amazon, Greenland
     lf = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"), coords={"lat": lat, "lon": lon})
@@ -161,6 +180,7 @@ def test_mask_greenland():
 
 
 def test_filter_all_variables_available(rng):
+    """Only sources with every requested variable, all on matching grids, are kept."""
     a = monthly(rng)
     data = {
         "good": {"x": a, "y": a},
@@ -176,6 +196,7 @@ def test_filter_all_variables_available(rng):
 # ------------------------------------------------------------------
 
 def test_compute_annual_mean_is_days_weighted():
+    """The annual mean weights each month by its number of days (2000 is a leap year)."""
     da = xr.DataArray(TIME.days_in_month.astype(float), dims="time", coords={"time": TIME})
     ann = be.compute_annual_mean(da)
     d = TIME.days_in_month[:12].to_numpy(dtype=float)  # 2000 (leap year)
@@ -184,6 +205,7 @@ def test_compute_annual_mean_is_days_weighted():
 
 
 def test_compute_annual_mean_constant(rng):
+    """The annual mean of a constant field is that constant."""
     da = xr.full_like(monthly(rng), 3.0)
     np.testing.assert_allclose(be.compute_annual_mean(da), 3.0)
 
@@ -199,10 +221,12 @@ def test_compute_annual_mean_constant(rng):
     ],
 )
 def test_aggregate_dims(rng, how, dims):
+    """Each aggregation mode returns the expected dims."""
     assert be.aggregate(monthly(rng), how).dims == dims
 
 
 def test_aggregate_values():
+    """year_max, clim_max and clim give the right values for a known seasonal cycle plus trend."""
     # Seasonal cycle 0..11 every year, plus 12 * year index
     vals = np.tile(np.arange(12.0), 3) + np.repeat([0.0, 12.0, 24.0], 12)
     da = xr.DataArray(vals, dims="time", coords={"time": TIME})
@@ -212,6 +236,10 @@ def test_aggregate_values():
 
 
 def test_aggregate_preaggregated(rng):
+    """
+    For fields already aggregated, "clim" averages over year or passes through; modes that need time, and
+    unknown modes, raise.
+    """
     clim = be.aggregate(monthly(rng), "clim")
     xr.testing.assert_identical(be.aggregate(clim, "clim"), clim)
     ann = be.aggregate(monthly(rng), "year")
@@ -223,6 +251,7 @@ def test_aggregate_preaggregated(rng):
 
 
 def test_net_radiation_sign_conventions():
+    """CMIP, CESM and ERA5 net radiation each follow their source's flux sign convention."""
     one = xr.DataArray(1.0)
     assert float(be.net_radiation_cmip(one * 300, one * 50, one * 350, one * 400)) == 200
     assert float(be.net_radiation_cesm(one * 250, one * 50)) == 200  # FLNS is net LW up
@@ -230,6 +259,7 @@ def test_net_radiation_sign_conventions():
 
 
 def test_compute_aridity_index():
+    """AI = Rn / P, named "ai"; clip=True sets negative values to 0."""
     p = xr.DataArray([100.0, 100.0])
     rn = xr.DataArray([150.0, -20.0])
     np.testing.assert_allclose(be.compute_aridity_index(p, rn), [1.5, -0.2])
@@ -238,6 +268,10 @@ def test_compute_aridity_index():
 
 
 def test_prepare_inputs(rng, mask):
+    """
+    ET becomes annual means within time_slice and LAI and AI climatologies, all masked; lai_agg="year" keeps
+    annual LAI.
+    """
     et, lai, pr, rn = (monthly(rng, s) for s in (20, 1, 40, 30))
     out = be.prepare_inputs(et, lai, pr, rn, mask=mask, time_slice=slice("2000-01", "2001-12"))
     assert out["et"].dims == ("year", "lat", "lon")
@@ -261,6 +295,7 @@ def test_prepare_inputs(rng, mask):
 # ------------------------------------------------------------------
 
 def test_build_edges_quantile_ignores_nan(rng):
+    """Quantile edges ignore NaN and inf values."""
     vals = rng.random(1000)
     with_nan = np.append(vals, [np.nan, np.inf])
     edges = be.build_edges(with_nan, 4)
@@ -268,11 +303,13 @@ def test_build_edges_quantile_ignores_nan(rng):
 
 
 def test_build_edges_linear():
+    """Linear edges span the given range, or the data range when none is given."""
     np.testing.assert_allclose(be.build_edges(np.array([0.3, 0.7]), 4, "linear", (0, 2)), [0, 0.5, 1, 1.5, 2])
     np.testing.assert_allclose(be.build_edges(np.array([1.0, 3.0]), 2, "linear"), [1, 2, 3])
 
 
 def test_build_edges_duplicates():
+    """Duplicate quantile edges from many zeros are kept by default and merged with collapse_duplicates=True."""
     vals = np.concatenate([np.zeros(600), np.linspace(1, 2, 400)])
     kept = be.build_edges(vals, 4)
     assert len(kept) == 5 and kept[0] == kept[1] == kept[2] == 0
@@ -281,6 +318,7 @@ def test_build_edges_duplicates():
 
 
 def test_build_edges_errors():
+    """All-NaN data, edges that collapse to a single value, and unknown strategies raise."""
     with pytest.raises(ValueError, match="no finite"):
         be.build_edges(np.array([np.nan, np.nan]), 3)
     with pytest.raises(ValueError, match="collapsed"):
@@ -290,6 +328,7 @@ def test_build_edges_errors():
 
 
 def test_pooled_bin_edges_pools_all_fields(rng):
+    """Edges are built from the values of all fields together (NaN dropped), with name, dims and attrs set."""
     a = xr.DataArray(rng.random((3, 4)), dims=("lat", "lon"))
     b = xr.DataArray(rng.random((2, 5, 6)) + 1, dims=("member", "lat", "lon"))
     b[0, 0, 0] = np.nan
@@ -304,6 +343,7 @@ def test_pooled_bin_edges_pools_all_fields(rng):
 
 
 def test_pooled_bin_edges_warns_on_zeros():
+    """A warning is raised when many values are exactly 0."""
     da = xr.DataArray(np.concatenate([np.zeros(50), np.arange(1.0, 51)]))
     with pytest.warns(UserWarning, match="are 0"):
         be.pooled_bin_edges(da, 3, name="lai", verbose=False)
@@ -314,6 +354,7 @@ def test_pooled_bin_edges_warns_on_zeros():
 # ------------------------------------------------------------------
 
 def test_bin_stats_flat_matches_brute_force(rng):
+    """Binned statistics match a loop over bins on random data with NaNs."""
     n = 5000
     t = rng.normal(50, 10, n)
     y = rng.gamma(2, 1, n)
@@ -328,6 +369,7 @@ def test_bin_stats_flat_matches_brute_force(rng):
 
 
 def test_bin_stats_flat_spike_goes_to_last_duplicate_bin():
+    """Values equal to a repeated edge fall in the last of the duplicate bins."""
     y_edges = np.array([0.0, 0.0, 0.0, 1.0, 2.0])
     x_edges = np.array([0.0, 1.0])
     y = np.array([0.0, 0.0, 0.0, 0.5, 1.5])
@@ -336,12 +378,17 @@ def test_bin_stats_flat_spike_goes_to_last_duplicate_bin():
 
 
 def test_bin_stats_flat_clips_out_of_range_values():
+    """Values outside the edges are counted in the first or last bin."""
     edges = np.array([0.0, 1.0, 2.0])
     result = be._bin_stats_flat(np.ones(2), np.array([-5.0, 99.0]), np.array([0.5, 0.5]), edges, edges)
     np.testing.assert_array_equal(result[be.STATS.index("count"), :, 0], [1, 1])
 
 
 def test_bin_stats_flat_count_pos_and_empty_bins():
+    """
+    count_pos counts positive values, mean and sample variance are right, and empty bins have NaN mean and count
+    0.
+    """
     edges = np.array([0.0, 1.0, 2.0])
     t = np.array([-1.0, 2.0, 3.0])
     y = np.array([0.5, 0.5, 0.5])
@@ -358,6 +405,10 @@ def test_bin_stats_flat_count_pos_and_empty_bins():
 # ------------------------------------------------------------------
 
 def test_bin_stats_broadcasts_climatology_over_years(inputs, edges):
+    """
+    Each annual ET sample is binned by its gridcell's climatological LAI and AI, matching a brute-force
+    reference.
+    """
     y_edges, x_edges = edges
     bs = be.bin_stats(inputs["et"], inputs["lai"], inputs["ai"], y_edges, x_edges)
     assert bs.dims == ("stats", "y_bin", "x_bin")
@@ -374,6 +425,10 @@ def test_bin_stats_broadcasts_climatology_over_years(inputs, edges):
 
 
 def test_bin_stats_coords_and_attrs(inputs, edges):
+    """
+    The output has bin index, lower/upper/center and quantile label coords, plus the name, units, edge and
+    caller attrs.
+    """
     y_edges, x_edges = edges
     bs = be.bin_stats(
         inputs["et"], inputs["lai"], inputs["ai"], y_edges, x_edges, name="evspsbl", attrs={"source_id": "M"}
@@ -391,12 +446,14 @@ def test_bin_stats_coords_and_attrs(inputs, edges):
 
 
 def test_bin_stats_plain_array_edges_have_no_labels(inputs):
+    """Edges given as plain arrays give no quantile labels and an "unknown" strategy."""
     bs = be.bin_stats(inputs["et"], inputs["lai"], inputs["ai"], np.linspace(0, 5, 4), np.linspace(0, 5, 3))
     assert "y_bin_label" not in bs.coords
     assert bs.attrs["y_strategy"] == "unknown"
 
 
 def test_bin_stats_mask(inputs, edges, mask):
+    """Passing mask= gives the same result as masking the inputs beforehand."""
     y_edges, x_edges = edges
     unmasked = {k: v.fillna(1.0) for k, v in inputs.items()}
     bs = be.bin_stats(unmasked["et"], unmasked["lai"], unmasked["ai"], y_edges, x_edges, mask=mask)
@@ -405,6 +462,7 @@ def test_bin_stats_mask(inputs, edges, mask):
 
 
 def test_bin_stats_per_member(rng, mask, edges):
+    """member_dim bins each member separately (same as binning it alone); without it, all members are pooled."""
     y_edges, x_edges = edges
     inp = be.prepare_inputs(
         monthly(rng, 20, members=3), monthly(rng, 1, members=3),
@@ -425,6 +483,7 @@ def test_bin_stats_per_member(rng, mask, edges):
 
 
 def test_bin_stats_rejects_mismatched_grids(inputs, edges):
+    """Inputs whose lat/lon values differ raise instead of being aligned."""
     y_edges, x_edges = edges
     shifted = inputs["lai"].assign_coords(lat=inputs["lai"].lat + 0.01)
     with pytest.raises(ValueError, match="identical coordinates"):
@@ -432,6 +491,7 @@ def test_bin_stats_rejects_mismatched_grids(inputs, edges):
 
 
 def test_bin_stats_by_source(inputs, edges):
+    """Per-source results are concatenated along `dim`, each matching bin_stats on that source alone."""
     y_edges, x_edges = edges
     other = {k: v * 2 for k, v in inputs.items()}
     bs = be.bin_stats_by_source({"A": inputs, "B": other}, y_edges, x_edges, dim="sid", verbose=False)
@@ -442,6 +502,7 @@ def test_bin_stats_by_source(inputs, edges):
 
 
 def test_open_bin_stats_roundtrip(tmp_path, inputs, edges):
+    """A saved bin_stats file opens back unchanged."""
     bs = be.bin_stats(inputs["et"], inputs["lai"], inputs["ai"], *edges, name="et")
     bs.to_netcdf(tmp_path / "bs.nc")
     opened = be.open_bin_stats(tmp_path / "bs.nc")
@@ -449,6 +510,7 @@ def test_open_bin_stats_roundtrip(tmp_path, inputs, edges):
 
 
 def test_open_bin_stats_legacy_file(tmp_path):
+    """Notebook-era files with edges only in attrs get their bin coords rebuilt."""
     # Older notebook output: no y_bin/x_bin coords, edges only in attrs
     legacy = xr.DataArray(
         np.ones((4, 3, 2)),
@@ -465,6 +527,7 @@ def test_open_bin_stats_legacy_file(tmp_path):
 
 
 def test_open_bin_stats_multiple_vars_needs_var(tmp_path):
+    """A file with several variables needs var= to choose one."""
     xr.Dataset({"a": ("x", [1.0]), "b": ("x", [2.0])}).to_netcdf(tmp_path / "two.nc")
     with pytest.raises(ValueError, match="pass `var`"):
         be.open_bin_stats(tmp_path / "two.nc")
@@ -493,6 +556,7 @@ def make_bs(means, counts, var_samp=None, y_edges=None, x_edges=None, dim="sid")
 
 
 def test_drop_zero_width_bins():
+    """Bins whose lower and upper edges are equal are dropped from both axes."""
     bs = make_bs(np.ones((2, 4, 3)), 10, y_edges=[0, 0, 0, 1, 2], x_edges=[0, 1, 1, 2])
     dropped = be.drop_zero_width_bins(bs)
     np.testing.assert_array_equal(dropped.y_bin, [2, 3])
@@ -501,6 +565,7 @@ def test_drop_zero_width_bins():
 
 
 def test_frac_count():
+    """Each bin's count as a fraction of the total count, summing to 1."""
     bs = make_bs(np.ones((2, 2, 2)), [[1, 3], [2, 4]])
     fc = be.frac_count(bs)
     np.testing.assert_allclose(fc.sum(["y_bin", "x_bin"]), 1.0)
@@ -508,12 +573,14 @@ def test_frac_count():
 
 
 def test_frac_valid():
+    """The fraction of entries along `dim` (e.g. models) with a valid mean in each bin."""
     means = np.ones((4, 1, 2))
     means[:3, 0, 1] = np.nan
     np.testing.assert_allclose(be.frac_valid(make_bs(means, 10), "sid").values, [[1.0, 0.25]])
 
 
 def test_significance():
+    """A bin mean is significant only when it is far from 0 and has more than n_min samples."""
     # bin 0: mean far from 0 with many samples; bin 1: mean 0; bin 2: too few samples
     means = np.array([[[50.0, 0.0, 50.0]]])
     counts = np.array([[[100, 100, 5]]])
@@ -522,6 +589,7 @@ def test_significance():
 
 
 def test_ensemble_spread():
+    """The std or var of bin means along `dim`, with the min_frac and signif filters."""
     means = np.array([[[1.0, 5.0]], [[3.0, np.nan]], [[5.0, np.nan]]])
     bs = make_bs(means, 10)
     np.testing.assert_allclose(be.ensemble_spread(bs, "sid").values[0, 0], np.std([1, 3, 5]))
@@ -543,6 +611,7 @@ def close_figures():
 
 
 def test_finish_saves_and_closes(tmp_path):
+    """_finish saves and closes a figure when given a path, and leaves it open without one."""
     fig = plt.figure()
     out = tmp_path / "sub" / "fig.png"
     assert be._finish(fig, out) is fig
@@ -554,6 +623,7 @@ def test_finish_saves_and_closes(tmp_path):
 
 
 def test_plot_bin_field_hatch_and_ticks(tmp_path):
+    """plot_bin_field hatches the flagged bins, labels the ticks with the edges, and saves to fout."""
     bs = make_bs(np.arange(6.0).reshape(1, 2, 3), 10, y_edges=[0, 0.5, 1.5], x_edges=[0, 1, 2, 3])
     field = bs.sel(stats="mean").isel(sid=0)
     hatch = field > 3
@@ -566,6 +636,7 @@ def test_plot_bin_field_hatch_and_ticks(tmp_path):
 
 
 def test_plot_bin_summary_and_facets(tmp_path, rng, mask, edges):
+    """plot_bin_summary and plot_bin_facets run on per-member stats and save their figures."""
     y_edges, x_edges = edges
     inp = be.prepare_inputs(
         monthly(rng, 20, members=2), monthly(rng, 1, members=2),
@@ -580,6 +651,7 @@ def test_plot_bin_summary_and_facets(tmp_path, rng, mask, edges):
 
 
 def test_plot_edges_and_hist(tmp_path, inputs, edges):
+    """plot_edges, plot_edges_compare and plot_input_hist (log scale, edge lines) run and save."""
     y_edges, x_edges = edges
     be.plot_edges(y_edges, fout=tmp_path / "edges.png")
     be.plot_edges_compare({"lai": y_edges, "ai": x_edges}, fout=tmp_path / "cmp.png")
@@ -591,6 +663,7 @@ def test_plot_edges_and_hist(tmp_path, inputs, edges):
 
 
 def test_map_plots(tmp_path, inputs):
+    """quick_map saves a map, and plot_input_maps draws one map per input."""
     be.quick_map(inputs["lai"], tmp_path / "map.png", title="lai")
     fig = be.plot_input_maps(inputs, title="inputs")
     assert len([ax for ax in fig.axes if hasattr(ax, "projection")]) == 3

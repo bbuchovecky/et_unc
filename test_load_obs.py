@@ -59,6 +59,7 @@ def spec(tmp_path):
 # ------------------------------------------------------------------
 
 def test_list_variables_and_years(spec):
+    """Variables and years are found from the files, per frequency and version."""
     assert lo.list_variables(spec) == ["ET", "GPP"]
     assert lo.list_variables(spec, freq="yearly") == ["ET"]
     assert lo.list_years(spec, "ET") == [2000, 2001, 2002, 2003]
@@ -66,11 +67,13 @@ def test_list_variables_and_years(spec):
 
 
 def test_find_files_by_year(spec):
+    """Only the files for the years in the time slice are returned."""
     files = lo.find_files(spec, "ET", slice("2001-06", "2002-02"))
     assert [f.name for f in files] == ["FAKE-v1_ET_2001.nc", "FAKE-v1_ET_2002.nc"]
 
 
 def test_find_files_warns_missing_years(spec):
+    """Requested years without a file trigger a warning that lists them."""
     with pytest.warns(UserWarning, match=r"\[1998, 1999\]"):
         files = lo.find_files(spec, "ET", slice("1998", "2000"))
     assert len(files) == 1
@@ -85,6 +88,7 @@ def test_scan_does_not_match_other_variable_prefix(tmp_path):
 
 
 def test_bad_names(spec):
+    """Unknown datasets, versions, frequencies and variables raise clear errors."""
     with pytest.raises(KeyError, match="Unknown dataset"):
         lo.get_dataset("nope")
     with pytest.raises(ValueError, match="unknown version"):
@@ -96,6 +100,7 @@ def test_bad_names(spec):
 
 
 def test_registered_datasets():
+    """GLEAM and PML are registered, and dataset names are case-insensitive."""
     assert {"gleam", "pml"} <= set(lo.DATASETS)
     assert lo.get_dataset("PML") is lo.DATASETS["pml"]
 
@@ -105,6 +110,10 @@ def test_registered_datasets():
 # ------------------------------------------------------------------
 
 def test_load_obs_single_grid_across_offset_files(spec):
+    """
+    Files with coordinates offset by ~1e-5 deg load onto one grid (lat ascending, lon in [-180, 180]) without
+    NaN, with the standard attrs.
+    """
     da = lo.load_obs(spec, "ET", slice("2001-07", "2002-06"))
     assert da.dims == ("time", "lat", "lon")
     assert da.sizes == {"time": 12, "lat": 3, "lon": 3}
@@ -116,12 +125,14 @@ def test_load_obs_single_grid_across_offset_files(spec):
 
 
 def test_load_obs_lat_bnds_and_chunks(spec):
+    """lat_bnds selects a latitude range, and chunks sets the dask chunks."""
     da = lo.load_obs(spec, "ET", lat_bnds=slice(44.9, 50), chunks={"lat": 1, "time": 12})
     np.testing.assert_array_equal(da.lat, [44.95, 45.05])
     assert da.chunks[1] == (1, 1)
 
 
 def test_load_obs_mismatched_grids_raise(spec, tmp_path):
+    """Files whose grids differ by more than round-off raise."""
     write_year(tmp_path / "v2/monthly/ET/FAKE-v2_ET_2000.nc", "ET", 2000)
     write_year(tmp_path / "v2/monthly/ET/FAKE-v2_ET_2001.nc", "ET", 2001, lat=LAT + 0.1)
     with pytest.raises(ValueError):
@@ -129,6 +140,7 @@ def test_load_obs_mismatched_grids_raise(spec, tmp_path):
 
 
 def test_load_obs_preprocess_hook(spec):
+    """The dataset's preprocess function is applied to each file."""
     def relabel(ds, var, version, freq):
         ds[var].attrs["units"] = f"{version}-{freq}"
         return ds
@@ -138,6 +150,7 @@ def test_load_obs_preprocess_hook(spec):
 
 
 def test_load_obs_template_without_year(tmp_path):
+    """A single file that holds every year is loaded and subset to the time slice."""
     s = lo.ObsDataset("one", tmp_path, "{var}_{version}.nc", ("v",), {"monthly": ""},
                       lat_name="lat", lon_name="lon")
     time = pd.date_range("2000-01", periods=36, freq="MS")
@@ -177,6 +190,10 @@ def test_load_obs_period_files(tmp_path):
 
 
 def test_at_resolution():
+    """
+    at_resolution points a dataset at its regridded files (root, lat/lon names) for a supported res and raises
+    otherwise.
+    """
     spec = lo.get_dataset("pml")
     assert lo.at_resolution(spec) is spec
     regridded = lo.at_resolution("pml", "0.5")
@@ -206,6 +223,7 @@ def test_load_obs_regridded(spec, monkeypatch, tmp_path):
 
 
 def test_gleam_units_fix():
+    """The mislabeled units of GLEAM v4.3b yearly files are corrected to mm.year-1."""
     ds = xr.Dataset({"E": ("time", [1.0], {"units": "mm.day-1"})})
     out = lo._fix_gleam_units(ds, "E", "v4.3b", "yearly")
     assert out["E"].attrs["units"] == "mm.year-1"
@@ -226,6 +244,7 @@ def gleam(tmp_path):
 
 @pytest.mark.parametrize("chunks", ["auto", None])
 def test_gleam_v43b_ocean_masked_like_v43a(gleam, chunks):
+    """GLEAM v4.3b ocean cells (stored as 0) are NaN wherever v4.3a is NaN, with or without dask."""
     a = lo.load_obs(gleam, "E", slice("2003", "2004"), version="v4.3a", chunks=chunks)
     b = lo.load_obs(gleam, "E", slice("2003", "2004"), version="v4.3b", chunks=chunks)
     xr.testing.assert_equal(a.isnull(), b.isnull())
@@ -235,6 +254,7 @@ def test_gleam_v43b_ocean_masked_like_v43a(gleam, chunks):
 
 
 def test_gleam_v43b_needs_v43a_file(gleam, tmp_path):
+    """Loading v4.3b raises if the v4.3a file used as its ocean mask is missing."""
     (tmp_path / "v4.3a/monthly/E/E_2004_GLEAM_v4.3a_MO.nc").unlink()
     with pytest.raises(FileNotFoundError, match="ocean mask"):
         lo.load_obs(gleam, "E", slice("2004", "2004"), version="v4.3b").load()
@@ -253,6 +273,7 @@ def test_gleam_v43b_needs_v43a_file(gleam, tmp_path):
     ("mm.day-1", ["2000-01-01"], [1]),
 ])
 def test_accumulation_to_flux(units, time, days):
+    """Totals in mm per month, year or day are divided by the length of each time step's period in seconds."""
     da = xr.DataArray(np.ones(len(time)), dims="time", coords={"time": pd.DatetimeIndex(time)},
                       attrs={"units": units, "long_name": "x"})
     out = lo.accumulation_to_flux(da)
@@ -261,6 +282,7 @@ def test_accumulation_to_flux(units, time, days):
 
 
 def test_accumulation_to_flux_bad_units():
+    """Units other than mm per day, month or year raise."""
     da = xr.DataArray([1.0], dims="time", coords={"time": pd.DatetimeIndex(["2000-01-01"])},
                       attrs={"units": "gC/m2/month"})
     with pytest.raises(ValueError, match="Cannot convert"):

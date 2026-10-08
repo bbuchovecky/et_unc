@@ -27,6 +27,9 @@ def field(lat, lon, value=1.0):
 # ------------------------------------------------------------------
 
 def test_target_grid_values():
+    """
+    The 1 deg and 0.5 deg grids have the expected centers and edges, with each center midway between its edges.
+    """
     g1, g05 = rg.target_grid(1.0), rg.target_grid(0.5)
     np.testing.assert_array_equal(g1.lat, np.arange(-89.5, 90, 1.0))
     np.testing.assert_array_equal(g1.lon, np.arange(-179.5, 180, 1.0))
@@ -40,12 +43,14 @@ def test_target_grid_values():
 
 @pytest.mark.parametrize("res, tag", [(0.5, "0.5deg"), (1.0, "1deg"), (1, "1deg")])
 def test_target_grid_by_tag_or_spacing(res, tag):
+    """A grid can be requested by spacing or by tag, and grid_tag maps both to the tag."""
     xr.testing.assert_identical(rg.target_grid(res), rg.target_grid(tag))
     assert rg.grid_tag(res) == rg.grid_tag(tag) == tag
 
 
 @pytest.mark.parametrize("res", [0.25, 2.0, "2deg", "0.5"])
 def test_unsupported_resolution_raises(res):
+    """Spacings or tags other than 0.5 and 1 deg raise."""
     with pytest.raises(ValueError, match="unsupported resolution"):
         rg.target_grid(res)
 
@@ -65,6 +70,7 @@ def test_scripts_use_target_grids():
 # ------------------------------------------------------------------
 
 def test_source_grid_bounds():
+    """The edges of a regular 0.1 deg grid are halfway between its centers."""
     da = field(np.round(10.05 + 0.1 * np.arange(20), 4), np.round(20.05 + 0.1 * np.arange(30), 4))
     grid = rg.source_grid(da)
     np.testing.assert_allclose(grid.lat_b, 10 + 0.1 * np.arange(21), atol=1e-9)
@@ -72,17 +78,23 @@ def test_source_grid_bounds():
 
 
 def test_source_grid_clips_poles():
+    """Edges beyond the pole are clipped to 90."""
     da = field([89.85, 89.95], [0.05, 0.15])
     assert float(rg.source_grid(da).lat_b[-1]) == 90.0
 
 
 def test_source_grid_irregular_raises():
+    """An irregularly spaced grid raises."""
     da = field([10.05, 10.15, 10.35], [20.05, 20.15, 20.25])
     with pytest.raises(ValueError, match="regularly spaced"):
         rg.source_grid(da)
 
 
 def test_cell_edges_from_bounds_and_midpoints():
+    """
+    Edges come from CF bounds when given and from midpoints otherwise; bounds that do not enclose the centers
+    raise.
+    """
     centers = np.array([-60.0, -20.0, 10.0, 70.0])
     bnds = np.array([[-90.0, -40.0], [-40.0, 0.0], [0.0, 30.0], [30.0, 90.0]])
     np.testing.assert_array_equal(rg.cell_edges(centers, bnds), [-90, -40, 0, 30, 90])
@@ -135,6 +147,7 @@ def test_regridded_coords_are_target_grid(res):
 
 
 def test_conservative_regridder_cached():
+    """The regridder is reused for the same source grid and resolution, but not for another resolution."""
     da = field(np.round(10.05 + 0.1 * np.arange(10), 4), np.round(20.05 + 0.1 * np.arange(10), 4))
     assert rg.conservative_regridder(da, 1.0) is rg.conservative_regridder(da * 2, "1deg")
     assert rg.conservative_regridder(da, 1.0) is not rg.conservative_regridder(da, 0.5)
@@ -161,6 +174,7 @@ def test_bilinear_periodic_across_dateline():
 # ------------------------------------------------------------------
 
 def test_approx_resolution():
+    """The grid spacing is found from lat/lon or latitude/longitude coords, and is (None, None) without them."""
     assert rg.approx_resolution(rg.target_grid(0.5)) == (0.5, 0.5)
     da = xr.DataArray(np.zeros((3, 4)), dims=("y", "x"),
                       coords={"latitude": ("y", [0.0, 2.0, 4.0]), "longitude": ("x", [0.0, 3.0, 6.0, 9.0])})

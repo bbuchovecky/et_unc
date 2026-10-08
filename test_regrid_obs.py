@@ -72,6 +72,7 @@ def test_constant_field_and_unmapped_nan(res):
 
 @pytest.mark.parametrize("res", [0.5, 1.0])
 def test_conserves_area_weighted_total(res):
+    """The area-weighted total of a random field is the same before and after regridding."""
     rng = np.random.default_rng(0)
     da = fine_field(rng.uniform(0, 100, (20, 30)))  # 10-12N, 20-23E
     out = ro.regrid(da, rg.conservative_regridder(da, res))
@@ -108,6 +109,7 @@ def test_time_varying_missing_values():
 
 
 def test_output_path_mirrors_source(monkeypatch, tmp_path):
+    """The output path mirrors the source path under REGRID_ROOT/<dataset dir>/<res tag>."""
     monkeypatch.setattr(ro, "REGRID_ROOT", tmp_path)
     spec = lo.get_dataset("gleam")
     src = spec.root / "v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
@@ -175,6 +177,10 @@ GLOBAL_MEAN_RTOL = 0.02
 @pytest.mark.parametrize("res", [0.5, 1.0])
 @pytest.mark.parametrize("dataset, version, var, month", REAL_MONTHS)
 def test_global_area_weighted_mean_real_month(dataset, version, var, month, res):
+    """
+    On real GLEAM and PML months, regridding changes the global area-weighted mean by less than 2% (skipped
+    without glade data).
+    """
     da = lo.load_obs(dataset, var, slice(month, month), version=version, chunks=None).load()
     assert da.sizes["time"] == 1
     out = ro.regrid(da, rg.conservative_regridder(da, res))
