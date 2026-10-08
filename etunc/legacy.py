@@ -19,7 +19,7 @@ import xarray as xr
 
 from etunc.binning import ensure_bin_coords
 from etunc.config import ILAMB_ROOT, LAT_BNDS, LF_THRESH
-from etunc.grid import equal_coords, mask_greenland
+from etunc.grid import cell_area, equal_coords, mask_greenland
 from etunc.temporal import to_yyyymm
 from etunc.units import convert_units
 
@@ -40,11 +40,10 @@ def safe_squeeze(da: xr.DataArray, dim: str, drop: bool = True) -> xr.DataArray:
 
 def compute_cell_area(ds: xr.Dataset | xr.DataArray) -> tuple[xr.DataArray, xr.DataArray]:
     """
-    Grid cell area and land grid cell area [m2], using ILAMB's CellAreas and
-    the Natural Earth land mask. Uses `lat_bounds`/`lon_bounds` if present.
+    Grid cell area and land grid cell area [m2], using `etunc.grid.cell_area`
+    (a port of ILAMB's CellAreas) and the Natural Earth land mask. Uses
+    `lat_bounds`/`lon_bounds` if present.
     """
-    from ILAMB import ilamblib
-
     land = regmask.defined_regions.natural_earth_v5_1_2.land_50
 
     if "lat_bounds" in ds and "lon_bounds" in ds:
@@ -56,7 +55,7 @@ def compute_cell_area(ds: xr.Dataset | xr.DataArray) -> tuple[xr.DataArray, xr.D
         lat_bounds = None
         lon_bounds = None
 
-    area = ilamblib.CellAreas(
+    area = cell_area(
         lat=ds["lat"].values,
         lon=ds["lon"].values,
         lat_bnds=lat_bounds,

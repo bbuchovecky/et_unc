@@ -57,6 +57,7 @@ LF_THRESH = 0.5            # gridcell land fraction threshold
 
 LATENT_HEAT_VAPORIZATION = 2.45e6  # J/kg
 LIQ_WATER_DENSITY = 1e3            # kg/m3
+EARTH_RADIUS = 6.371e6             # m, as in ILAMB
 
 PROJECTION = ccrs.PlateCarree()
 DPI = 120

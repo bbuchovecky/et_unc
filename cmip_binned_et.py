@@ -206,8 +206,7 @@ def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
 def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
     """
     Natural Earth land mask without Greenland/Iceland. (Same land mask as
-    `etunc.legacy.compute_cell_area`, which is not used because importing ILAMB
-    initializes MPI.)
+    `etunc.legacy.compute_cell_area`.)
     """
     land = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask(grid.lon, grid.lat)
     return rg.mask_greenland(xr.where(land.notnull(), 1.0, 0.0))

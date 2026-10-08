@@ -47,7 +47,7 @@ import regionmask as regmask
 import xarray as xr
 import xesmf as xe
 
-from etunc.config import LF_THRESH
+from etunc.config import EARTH_RADIUS, LF_THRESH
 
 
 RESOLUTIONS = {"0.5deg": 0.5, "1deg": 1.0}  # grid tag (output directory name) -> spacing [deg]
@@ -270,3 +270,56 @@ def mask_greenland(landfrac: xr.DataArray, lf_thresh: float = LF_THRESH) -> xr.D
     """Land mask: True where landfrac > lf_thresh, excluding Greenland/Iceland (AR6 region 0)."""
     mask = regmask.defined_regions.ar6.land.mask(landfrac.lon, landfrac.lat)
     return xr.where((mask == 0) & (landfrac > lf_thresh), False, landfrac > lf_thresh)
+
+
+# ------------------------------------------------------------------
+# Cell areas
+# ------------------------------------------------------------------
+
+def cell_area(
+    lat: np.ndarray,
+    lon: np.ndarray,
+    lat_bnds: np.ndarray | None = None,
+    lon_bnds: np.ndarray | None = None,
+) -> np.ndarray:
+    """
+    Cell areas [m2] of a 1-D lat/lon grid, shape (lat, lon). Port of ILAMB's
+    `ilamblib.CellAreas`, so the package does not need ILAMB (whose import
+    initializes MPI).
+
+    With `lat_bnds`/`lon_bnds` (shape (n, 2)) the areas are exact. Otherwise
+    the cell edges are the midpoints between centers, extrapolated by half a
+    cell at both ends and clipped to [-90, 90] and [-180, 180]; longitudes in
+    [0, 360] are shifted by -180 first (which leaves the widths unchanged).
+    """
+    if lat_bnds is not None and lon_bnds is not None:
+        return EARTH_RADIUS**2 * np.outer(
+            (
+                np.sin(lat_bnds[:, 1] * np.pi / 180.0)
+                - np.sin(lat_bnds[:, 0] * np.pi / 180.0)
+            ),
+            (lon_bnds[:, 1] - lon_bnds[:, 0]) * np.pi / 180.0,
+        )
+
+    x = np.zeros(lon.size + 1)
+    x[1:-1] = 0.5 * (lon[1:] + lon[:-1])
+    x[0] = lon[0] - 0.5 * (lon[1] - lon[0])
+    x[-1] = lon[-1] + 0.5 * (lon[-1] - lon[-2])
+    if x.max() > 181:
+        x -= 180
+    x = x.clip(-180, 180)
+    x *= np.pi / 180.0
+
+    y = np.zeros(lat.size + 1)
+    y[1:-1] = 0.5 * (lat[1:] + lat[:-1])
+    y[0] = lat[0] - 0.5 * (lat[1] - lat[0])
+    y[-1] = lat[-1] + 0.5 * (lat[-1] - lat[-2])
+    y = y.clip(-90, 90)
+    y *= np.pi / 180.0
+
+    dx = EARTH_RADIUS * (x[1:] - x[:-1])
+    dy = EARTH_RADIUS * (np.sin(y[1:]) - np.sin(y[:-1]))
+    areas = np.outer(dx, dy).T
+
+    return areas
+

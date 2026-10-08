@@ -12,7 +12,7 @@ Runs on NCAR's glade (Derecho/Casper). Data and outputs live outside the repo:
 
 ## Commands
 
-The Python env is `etunc` (`/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python`), defined in `envs/etunc.yml` (exact versions in `envs/etunc.lock.yml`) with the repo installed editable (`pip install --no-deps -e .`). It has xarray, xesmf, regionmask, cartopy and dask-jobqueue, but not ILAMB: `etunc.legacy.compute_cell_area` and the notebooks that call `ilamblib` still need `data-sci-py312` until the refactor ports `CellAreas`. The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
+The Python env is `etunc` (`/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python`), defined in `envs/etunc.yml` (exact versions in `envs/etunc.lock.yml`) with the repo installed editable (`pip install --no-deps -e .`). It has xarray, xesmf, regionmask, cartopy and dask-jobqueue, but not ILAMB: `etunc.grid.cell_area` is a bit-identical port of `ilamblib.CellAreas`. The notebooks that still call `ilamblib` need `data-sci-py312` until their imports are updated (refactor step 7). The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
 
 ```bash
 PY=/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python
@@ -59,7 +59,7 @@ The dataset-agnostic core library is the `etunc` package (split out of the forme
 - **Units:** there are two conversion paths. `convert_units` keys on the variable name (CMIP, CESM, ERA5), and `latent_heat_to_wm2` keys on the `units` attr (ILAMB). Both use L = 2.45e6 J/kg.
 - **Net radiation sign conventions** differ by source. Use the matching `net_radiation_cmip`, `net_radiation_cesm` or `net_radiation_era5`.
 - **Domain:** `LAT_BNDS = slice(-58, 90)` excludes Antarctica, and the land fraction threshold is `LF_THRESH = 0.5`.
-- **Tests:** all tests use synthetic data. `test_binned_et.py` covers `units`, `temporal`, `binning`, `plotting`, the grid checks and `legacy`, `test_regrid.py` covers `etunc/grid.py`, `test_load_obs.py` and `test_regrid_obs.py` cover the obs loader and regridder, and `test_load_ilamb.py` and `test_load_cmip.py` pin the driver loaders (`ib.load_product`, the monthly ILAMB loaders, CMIP member selection, `cbe.load_model`). Not tested, because they need glade data, PBS or ILAMB: `load_cmip`, `load_cesm_*`, `load_ilamb_obs`, `etunc/load/cesm.py`, `etunc/load/era5.py`, `etunc/dask_cluster.py` and `compute_cell_area`.
+- **Tests:** all tests use synthetic data. `test_binned_et.py` covers `units`, `temporal`, `binning`, `plotting`, the grid checks and `legacy`, `test_regrid.py` covers `etunc/grid.py` (including `cell_area`), `test_load_obs.py` and `test_regrid_obs.py` cover the obs loader and regridder, and `test_load_ilamb.py` and `test_load_cmip.py` pin the driver loaders (`ib.load_product`, the monthly ILAMB loaders, CMIP member selection, `cbe.load_model`). Not tested, because they need glade data or PBS: `load_cmip`, `load_cesm_*`, `load_ilamb_obs`, `etunc/load/cesm.py`, `etunc/load/era5.py`, `etunc/dask_cluster.py`, and `compute_cell_area` (its land mask downloads Natural Earth shapes).
 
 ## Refactoring guidelines
 - Prefer incremental changes over large rewrites

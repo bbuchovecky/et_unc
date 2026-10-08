@@ -1,5 +1,5 @@
 """
-Tests for regrid.py. Run from the project root with:
+Tests for etunc/grid.py. Run from the project root with:
 
     python -m pytest test_regrid.py
 
@@ -11,6 +11,7 @@ import pytest
 import xarray as xr
 
 import cmip_binned_et as cb
+import etunc.config as config
 import ilamb_binned_et as ib
 import etunc.load.obs as lo
 import etunc.grid as rg
@@ -180,3 +181,54 @@ def test_approx_resolution():
                       coords={"latitude": ("y", [0.0, 2.0, 4.0]), "longitude": ("x", [0.0, 3.0, 6.0, 9.0])})
     assert rg.approx_resolution(da) == (2.0, 3.0)
     assert rg.approx_resolution(xr.DataArray([1.0], dims="t")) == (None, None)
+
+
+# ------------------------------------------------------------------
+# Cell areas (port of ILAMB's CellAreas)
+# ------------------------------------------------------------------
+
+R = config.EARTH_RADIUS
+
+
+def band_areas(lat_edges, lon_edges):
+    """Exact (lat, lon) cell areas from cell edges in degrees."""
+    dy = np.diff(np.sin(np.deg2rad(lat_edges)))
+    dx = np.diff(np.deg2rad(lon_edges))
+    return R**2 * np.outer(dy, dx)
+
+
+@pytest.mark.parametrize("res", [10.0, 1.0])
+def test_cell_area_global_sum(res):
+    """On a global regular grid the cell areas, from centers or from bounds, sum to 4 pi R^2."""
+    lat = np.arange(-90 + res / 2, 90, res)
+    lon = np.arange(-180 + res / 2, 180, res)
+    lat_bnds = np.stack([lat - res / 2, lat + res / 2], axis=1)
+    lon_bnds = np.stack([lon - res / 2, lon + res / 2], axis=1)
+    for area in (rg.cell_area(lat, lon), rg.cell_area(lat, lon, lat_bnds, lon_bnds)):
+        assert area.shape == (lat.size, lon.size)
+        np.testing.assert_allclose(area.sum(), 4 * np.pi * R**2, rtol=1e-12)
+
+
+def test_cell_area_regular_grid_exact():
+    """
+    On a regular 10 deg grid the midpoint edges are the true edges, so centers and bounds both give the exact
+    band areas, and lon in [0, 360] gives the same areas as lon in [-180, 180].
+    """
+    lat = np.arange(-85.0, 90.0, 10.0)
+    lon180 = np.arange(-175.0, 180.0, 10.0)
+    expected = band_areas(np.arange(-90.0, 91.0, 10.0), np.arange(-180.0, 181.0, 10.0))
+    bnds = lambda c: np.stack([c - 5.0, c + 5.0], axis=1)  # noqa: E731
+    np.testing.assert_allclose(rg.cell_area(lat, lon180), expected, rtol=1e-12)
+    np.testing.assert_allclose(rg.cell_area(lat, lon180, bnds(lat), bnds(lon180)), expected, rtol=1e-12)
+    np.testing.assert_allclose(rg.cell_area(lat, lon180 + 180.0), expected, rtol=1e-12)
+
+
+def test_cell_area_irregular_lat_extrapolates_and_clips():
+    """
+    Without bounds, interior lat edges are midpoints, and the outer edges are extrapolated by half a cell and
+    clipped to +-90 (as in ILAMB): lat [-80, -30, 40, 85] has edges [-90, -55, 5, 62.5, 90].
+    """
+    lat = np.array([-80.0, -30.0, 40.0, 85.0])
+    lon = np.arange(-170.0, 180.0, 20.0)
+    expected = band_areas(np.array([-90.0, -55.0, 5.0, 62.5, 90.0]), np.arange(-180.0, 181.0, 20.0))
+    np.testing.assert_allclose(rg.cell_area(lat, lon), expected, rtol=1e-12)
