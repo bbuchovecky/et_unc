@@ -128,8 +128,8 @@ et_unc/
 stay in their scripts, since each is used once.
 
 `config.py` contents:
-- **Inputs:** `CAMPAIGN_ROOT` (`/glade/campaign/univ/uwas0155`), `OBS_ROOT`, `ILAMB_ROOT`, the regridded-file roots `OBS_REGRID_ROOT` and `CMIP_REGRID_ROOT` (written by `regrid_obs`/`regrid_cmip` and read by `load_obs(res=)`; env-var overridable), and the CMIP catalogs: `CMIP_CATALOG_ROOT`, `CMIP_CATALOG`, `CMIP_FX_CATALOG`, `ESGF_CACHE_CATALOG` (the last is used by `regrid_cmip`). Each catalog path can be overridden by an env var, with a comment on the scratch purge risk.
-- **Outputs:** `WORK_ROOT = Path(os.environ.get("ETUNC_WORK_ROOT", "/glade/work/bbuchovecky/et_unc"))`, plus `PROC_ROOT`, `FIG_ROOT`, `BIN_EDGES_ROOT`. The environment variable allows a test run that writes elsewhere.
+- **Inputs:** `CAMPAIGN_ROOT` (`/glade/campaign/univ/uwas0155`), `OBS_ROOT`, `ILAMB_ROOT`, the regridded-file roots `OBS_REGRID_ROOT` and `CMIP_REGRID_ROOT` (written by `regrid_obs`/`regrid_cmip` and read by `load_obs(res=)`), and the CMIP catalogs: `CMIP_CATALOG_ROOT`, `CMIP_CATALOG`, `CMIP_FX_CATALOG`, `ESGF_CACHE_CATALOG` (the last is used by `regrid_cmip`). A comment notes the scratch purge risk.
+- **Outputs:** `WORK_ROOT` (`/glade/work/bbuchovecky/et_unc`), plus `PROC_ROOT`, `FIG_ROOT`, `BIN_EDGES_ROOT`.
 - **Constants:** `LAT_BNDS`, `LF_THRESH`, `LATENT_HEAT_VAPORIZATION`, `LIQ_WATER_DENSITY`, `DPI`, `PROJECTION`.
 
 Conventions for every module:
