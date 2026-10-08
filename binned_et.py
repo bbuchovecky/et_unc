@@ -54,6 +54,8 @@ import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
 import cartopy.crs as ccrs
 
+import load_cesm as lc
+
 
 # ------------------------------------------------------------------
 # Constants
@@ -1182,15 +1184,8 @@ def load_ilamb_obs(
 
 
 def load_cesm_grid(source: Literal["fppe", "goga", "lens"], lat_bnds: slice = LAT_BNDS) -> xr.Dataset:
-    """Grid dataset (LANDFRAC, LANDAREA, ...) of a CESM ensemble via xclimate."""
-    import xclimate as xclim
-
-    loaders = {
-        "fppe": xclim.load_fhist_ppe_grid,
-        "goga": xclim.load_goga2_grid,
-        "lens": xclim.load_cesm2le_grid,
-    }
-    return loaders[source]().sel(lat=lat_bnds)
+    """Grid dataset (LANDFRAC, LANDAREA, ...) of a CESM ensemble."""
+    return lc.load_grid(source).sel(lat=lat_bnds)
 
 
 def load_cesm_variable(
@@ -1207,13 +1202,14 @@ def load_cesm_variable(
     verbose: bool = True,
 ) -> xr.DataArray:
     """
-    Load a CESM ensemble variable via xclimate on `grid`, masked and converted to W/m2.
+    Load a CESM ensemble variable on `grid`, masked and converted to W/m2.
 
     source : "fppe" (FHIST PPE), "goga" (GOGA2) or "lens" (LENS2)
     variable : name with frequency suffix, e.g. "EFLX_LH_TOT_month_1"
+    gcomp, stream : model component ("lnd" or "atm") and history stream of
+        `variable`, for every source. For "fppe", PRECT is read as
+        PRECT_calculated from "atm" whatever `gcomp` is.
     """
-    import xclimate as xclim
-
     if verbose:
         print(f"{source.upper()}: Loading {variable}")
     v = "_".join(variable.split("_")[:-2])
@@ -1223,11 +1219,12 @@ def load_cesm_variable(
         if v == "PRECT":
             v = "PRECT_calculated"
             variable = f"PRECT_calculated_{frq}"
-        ds = xclim.load_fhist(variable, keep_var_only=False)
+            gcomp = "atm"
+        ds = lc.load_fhist_ppe(v, gcomp, frq, stream, verbose=verbose)
     elif source == "goga":
-        ds = xclim.load_goga2(v, gcomp, frq, stream)
+        ds = lc.load_goga2(v, gcomp, frq, stream)
     elif source == "lens":
-        ds = xclim.load_cesm2le(v, gcomp, frq, stream, bb=bb)
+        ds = lc.load_cesm2le(v, gcomp, frq, stream, bb=bb, verbose=verbose)
     else:
         raise ValueError(f"Unknown CESM source {source!r}")
 

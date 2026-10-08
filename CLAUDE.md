@@ -12,7 +12,7 @@ Runs on NCAR's glade (Derecho/Casper). Data and outputs live outside the repo:
 
 ## Commands
 
-The Python env is `/glade/work/bbuchovecky/miniforge3/envs/data-sci-py312/bin/python`. It has xarray, xesmf, regionmask, cartopy, ILAMB, and the user's own `xclimate` package.
+The Python env is `/glade/work/bbuchovecky/miniforge3/envs/data-sci-py312/bin/python`. It has xarray, xesmf, regionmask, cartopy, ILAMB and dask-jobqueue. The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
 
 ```bash
 PY=/glade/work/bbuchovecky/miniforge3/envs/data-sci-py312/bin/python
@@ -45,6 +45,8 @@ The driver scripts take no CLI arguments. They are configured by module-level co
 
 **`load_obs.py`** loads per-year gridded obs products (GLEAM v4.3, PML-V2.2 in `/glade/campaign/univ/uwas0155/obs/`) into one lazy DataArray with `load_obs(dataset, var, time_slice, version=, freq=)` (or `load_gleam`/`load_pml`). Each product is an `ObsDataset` entry (path template, versions, frequencies, coord names), so a new product is added with `register_dataset`. Monthly and yearly files hold totals (mm/month, mm/year); `accumulation_to_flux` converts them to kg m-2 s-1. Tested in `test_load_obs.py`.
 
+**`load_cesm.py`** (imported as `lc`) loads the CESM2 ensembles from the tseries archives on glade: `load_fhist_ppe` (FHIST PPE, members in parallel threads), `load_goga2`, `load_cesm2le`, plus `load_grid("fppe"|"goga"|"lens")` and `ppe_member_name`. Callers give each variable's `gcomp` ("lnd"/"atm") and `stream` explicitly; there is no variable lookup table. `be.load_cesm_grid` / `be.load_cesm_variable` wrap it. **`load_era5.py`** (`le`) loads ERA5 monthly means from GDEX and the ERA5 grid file. **`dask_cluster.py`** (`dc`) starts and stops a PBS dask cluster on Casper or Derecho for the notebooks. All three were ported from the user's former `xclimate` package.
+
 **Notebooks** are exploratory and analysis work. `binned_stats.ipynb` is the original version in which the binning functions were defined inline; `binned_et.py` was extracted from it. `open_bin_stats` / `_ensure_bin_coords` still read the notebook-era files. `agu-abstract.ipynb` and `compare-ilamb.ipynb` read the saved `qbin` outputs. `cmip_trends.py` and `obs_trends.py` are empty placeholders.
 
 ## Conventions that matter
@@ -56,4 +58,4 @@ The driver scripts take no CLI arguments. They are configured by module-level co
 - **Units:** there are two conversion paths. `convert_units` keys on the variable name (CMIP, CESM, ERA5), and `latent_heat_to_wm2` keys on the `units` attr (ILAMB). Both use L = 2.45e6 J/kg.
 - **Net radiation sign conventions** differ by source. Use the matching `net_radiation_cmip`, `net_radiation_cesm` or `net_radiation_era5`.
 - **Domain:** `LAT_BNDS = slice(-58, 90)` excludes Antarctica, and the land fraction threshold is `LF_THRESH = 0.5`.
-- **Tests:** tests cover `binned_et.py` with synthetic data. The loaders (`load_cmip`, `load_cesm_*`, `load_ilamb_obs`) and `compute_cell_area` need glade data or ILAMB and are not tested.
+- **Tests:** tests cover `binned_et.py` with synthetic data. The loaders (`load_cmip`, `load_cesm_*`, `load_ilamb_obs`, `load_cesm.py`, `load_era5.py`), `dask_cluster.py` and `compute_cell_area` need glade data, PBS or ILAMB and are not tested.
