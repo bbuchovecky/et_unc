@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "etunc"
+version = "0.1.0"
+description = "Evapotranspiration uncertainty: ET binned by climatological LAI and aridity index"
+requires-python = ">=3.12"
+# Listed for documentation only. The env comes from envs/etunc.yml and the
+# package is installed with `pip install --no-deps -e .`.
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "xarray",
+    "dask",
+    "distributed",
+    "dask-jobqueue",
+    "netcdf4",
+    "xesmf",
+    "regionmask",
+    "cartopy",
+    "matplotlib",
+]
+
+[tool.setuptools.packages.find]
+include = ["etunc*"]

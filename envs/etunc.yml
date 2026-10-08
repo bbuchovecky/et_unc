@@ -1,0 +1,64 @@
+# etunc.yml
+# Purpose: dedicated env for the et_unc repo (the `etunc` package, scripts/, tests/, notebooks/).
+# Create:  mamba env create -f envs/etunc.yml
+#          mamba run -n etunc pip install --no-deps -e .
+#          mamba run -n etunc python -m ipykernel install --user --name etunc
+# Lock:    mamba env export -n etunc --no-builds > envs/etunc.lock.yml
+#
+# Versions are pinned to those in data-sci-py312 (2026-10-08) so the refactor's
+# regression check compares code, not package versions. Pins can be loosened
+# once the refactor is merged. ILAMB/mpi4py are left out on purpose: the only
+# use, ilamblib.CellAreas, is ported to etunc.grid.cell_area.
+
+name: etunc
+channels:
+  - conda-forge
+  - nodefaults            # prevents fallback to the defaults channel
+dependencies:
+  - python=3.12.12
+
+  # --- Numerics ---
+  - numpy=2.3.5
+  - pandas=3.0.0
+  - scipy=1.17.0          # test_significance
+  - libopenblas=0.3.30
+
+  # --- N-dimensional arrays / I/O ---
+  - xarray=2026.1.0
+  # xarray uses these silently when installed (nan-reductions, rolling,
+  # groupby), so they are pinned too: their absence can change results.
+  - bottleneck=1.6.0
+  - numbagg=0.9.4
+  - numba=0.63.1
+  - flox=0.11.1
+  - cftime=1.6.5
+  - netcdf4=1.7.4
+  - libnetcdf=4.9.3=nompi_*
+  - hdf5=1.14.6=nompi_*
+
+  # --- Parallel ---
+  - dask=2026.1.2
+  - distributed=2026.1.2
+  - dask-jobqueue=0.9.0   # dask_cluster
+
+  # --- Regridding / geospatial ---
+  - xesmf=0.9.2
+  - esmpy=8.9.1
+  - esmf=8.9.1=nompi_*
+  - regionmask=0.13.0
+  - affine=2.4.0         # used by regionmask to rasterize masks
+  - shapely=2.1.2
+  - geopandas=1.1.2
+  - pyproj=3.7.2
+  - proj=9.7.1
+
+  # --- Plotting ---
+  - matplotlib=3.10.8
+  - cartopy=0.25.0
+  - freetype=2.14.1       # text rendering in PNGs
+
+  # --- Tests / notebooks / packaging ---
+  - pytest=9.1.1
+  - ipykernel
+  - pip
+  - setuptools

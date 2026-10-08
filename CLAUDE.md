@@ -12,10 +12,10 @@ Runs on NCAR's glade (Derecho/Casper). Data and outputs live outside the repo:
 
 ## Commands
 
-The Python env is `/glade/work/bbuchovecky/miniforge3/envs/data-sci-py312/bin/python`. It has xarray, xesmf, regionmask, cartopy, ILAMB and dask-jobqueue. The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
+The Python env is `etunc` (`/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python`), defined in `envs/etunc.yml` (exact versions in `envs/etunc.lock.yml`) with the repo installed editable (`pip install --no-deps -e .`). It has xarray, xesmf, regionmask, cartopy and dask-jobqueue, but not ILAMB: `be.compute_cell_area` and the notebooks that call `ilamblib` still need `data-sci-py312` until the refactor ports `CellAreas`. The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
 
 ```bash
-PY=/glade/work/bbuchovecky/miniforge3/envs/data-sci-py312/bin/python
+PY=/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python
 $PY -m pytest                                        # full suite (~7 min, no external data needed)
 $PY -m pytest test_binned_et.py                      # binning tests only (~70 s)
 $PY -m pytest test_binned_et.py::test_bin_stats_mask # single test

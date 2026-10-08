@@ -3,3 +3,5 @@ dask-worker*
 *.o*
 *.log
 # download_*.sh
+*.egg-info/
+.pytest_cache/
