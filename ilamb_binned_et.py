@@ -18,7 +18,7 @@ Steps
 3. Each (ET, LAI, pr, rns) combination uses the complete years shared by all
    four products, and is skipped if there are fewer than MIN_YEARS. Binning
    inputs are annual mean ET and climatological LAI and AI
-   (`be.prepare_inputs`), restricted to one common area mask: land gridcells
+   (`binning.prepare_inputs`), restricted to one common area mask: land gridcells
    where ET (in any year), LAI and AI are valid in *every* combination, so
    all ET products cover the same area. The mask is static; ET years that
    are missing inside it stay NaN, so per-year availability still differs
@@ -61,7 +61,11 @@ import numpy as np
 import regionmask as regmask
 import xarray as xr
 
-import binned_et as be
+import etunc.config as config
+import etunc.units as units
+import etunc.temporal as temporal
+import etunc.binning as binning
+import etunc.plotting as plotting
 import etunc.grid as rg
 
 
@@ -69,7 +73,7 @@ import etunc.grid as rg
 # Paths
 # ------------------------------------------------------------------
 
-ILAMB_DATA_ROOT = be.ILAMB_ROOT / "ILAMB-Data"
+ILAMB_DATA_ROOT = config.ILAMB_ROOT / "ILAMB-Data"
 PROC_ROOT = Path("/glade/work/bbuchovecky/et_unc/proc/obs")
 BIN_EDGES_ROOT = Path("/glade/work/bbuchovecky/et_unc/proc/qbin_edges")
 FIG_ROOT = Path("/glade/work/bbuchovecky/et_unc/fig")
@@ -164,10 +168,10 @@ def format_grid(da: xr.DataArray) -> xr.DataArray:
 
 def to_wm2(da: xr.DataArray) -> xr.DataArray:
     """Convert an ET, precipitation or net radiation flux to W/m2."""
-    units = " ".join(str(da.attrs.get("units", "")).lower().split())
-    if units in ("mm d-1", "mm/day"):  # GPCCv2018; 1 mm of water = 1 kg/m2
+    key = " ".join(str(da.attrs.get("units", "")).lower().split())
+    if key in ("mm d-1", "mm/day"):  # GPCCv2018; 1 mm of water = 1 kg/m2
         da = (da / 86400).assign_attrs({**da.attrs, "units": "kg m-2 s-1"})
-    return be.latent_heat_to_wm2(da)
+    return units.latent_heat_to_wm2(da)
 
 
 def complete_years(da: xr.DataArray) -> list[int]:
@@ -178,13 +182,13 @@ def complete_years(da: xr.DataArray) -> list[int]:
 
 def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
     """
-    Annual mean via `be.aggregate`, which counts missing months as 0. With
+    Annual mean via `temporal.aggregate`, which counts missing months as 0. With
     `require_all_months`, years with any missing month are NaN instead;
     otherwise only years without any valid month are NaN.
     """
     n_valid = da.notnull().groupby("time.year").sum()
     with xr.set_options(keep_attrs=True):
-        ann = be.aggregate(da, "year")
+        ann = temporal.aggregate(da, "year")
         return ann.where(n_valid == 12 if require_all_months else n_valid > 0)
 
 
@@ -211,10 +215,10 @@ def load_product(variable: str, product: str) -> xr.DataArray:
     if ann.sizes["lat"] != TARGET_GRID.sizes["lat"] or ann.sizes["lon"] != TARGET_GRID.sizes["lon"]:
         print(f"{variable}/{product}: regridding {ann.sizes['lat']}x{ann.sizes['lon']} -> 0.5 deg")
         ann = regrid_to_target(ann)
-    be.check_same_grid(ann, TARGET_GRID, f"{variable}/{product}")
+    rg.check_same_grid(ann, TARGET_GRID, f"{variable}/{product}")
     # Exact coordinate values so that fields from different products align
     ann = ann.assign_coords(lat=TARGET_GRID.lat, lon=TARGET_GRID.lon)
-    ann = ann.sel(lat=be.LAT_BNDS).rename(variable)
+    ann = ann.sel(lat=config.LAT_BNDS).rename(variable)
 
     print(
         f"{variable:3} {product:12}: {ann.dims} {ann.shape} {period_str(ann.year.values)} "
@@ -226,11 +230,11 @@ def load_product(variable: str, product: str) -> xr.DataArray:
 def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
     """
     Natural Earth land mask without Greenland/Iceland. (Same land mask as
-    `be.compute_cell_area`, which is not used because importing ILAMB
+    `etunc.legacy.compute_cell_area`, which is not used because importing ILAMB
     initializes MPI.)
     """
     land = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask(grid.lon, grid.lat)
-    return be.mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
+    return rg.mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
 
 
 # ------------------------------------------------------------------
@@ -239,7 +243,7 @@ def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
 
 def period_str(years) -> str:
     """[2003, ..., 2009] -> "200301-200912"."""
-    return be.format_time_period(slice(f"{min(years)}-01", f"{max(years)}-12"))
+    return temporal.format_time_period(slice(f"{min(years)}-01", f"{max(years)}-12"))
 
 
 def shared_years(*anns: xr.DataArray) -> list[int]:
@@ -261,9 +265,9 @@ def combo_inputs(
     years: list[int],
     mask: xr.DataArray,
 ) -> dict[str, xr.DataArray]:
-    """`be.prepare_inputs` for one (et, lai, pr, rns) combination over `years`, on land gridcells."""
+    """`binning.prepare_inputs` for one (et, lai, pr, rns) combination over `years`, on land gridcells."""
     fields = {v: ann[v][p].sel(year=years) for v, p in zip(FACTORS, combo)}
-    return be.prepare_inputs(
+    return binning.prepare_inputs(
         et=fields["et"], lai=fields["lai"], precip=fields["pr"], rn=fields["rns"], mask=mask,
     )
 
@@ -329,7 +333,7 @@ def et_product_spread(bs_all: xr.DataArray) -> xr.Dataset:
 
 def save_map(da: xr.DataArray, variable: str, label: str, period: str, mask: xr.DataArray):
     fout = FIG_ROOT / "obs" / variable / f"obs.{label}.{variable}.map.{period}.png"
-    be.quick_map(
+    plotting.quick_map(
         da.where(mask), fout, title=f"{label}, {period}",
         cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **MAP_KWARGS[variable],
     )
@@ -358,7 +362,7 @@ def plot_combo_edges(combo_edges: xr.DataArray, pooled: xr.DataArray, title: str
     for ax in axs[:, 0]:
         ax.set_ylabel(f"{combo_edges.name} [{pooled.attrs.get('units', '?')}]")
     fig.suptitle(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 def hatch_bins(ax, hatch: xr.DataArray):
@@ -384,9 +388,9 @@ def plot_combo_bin_means(
     share edges, and quantile levels when each has its own edges.
 
     hatch : boolean (combo, y_bin, x_bin) field; True bins are hatched
-        (e.g. ~`be.test_significance`)
+        (e.g. ~`binning.test_significance`)
     """
-    fg = be.plot_bin_facets(
+    fg = plotting.plot_bin_facets(
         bs_all, dim="combo", col_wrap=min(col_wrap, bs_all.sizes["combo"]), size=3.5,
         cmap="YlGnBu", robust=True, cbar_kwargs={"label": f"bin mean et [{bs_all.attrs.get('units', '?')}]"},
     )
@@ -399,7 +403,7 @@ def plot_combo_bin_means(
         if hatch is not None:
             hatch_bins(ax, hatch.sel(**name_dict))
     if shared_edges:
-        be._edge_ticks(fg.axs.flat[0], bs_all, "{:.2g}")
+        plotting.set_edge_ticks(fg.axs.flat[0], bs_all, "{:.2g}")
     else:
         for dim, set_ticks in (("x_bin", fg.axs.flat[0].set_xticks), ("y_bin", fg.axs.flat[0].set_yticks)):
             n = bs_all.sizes[dim]
@@ -409,7 +413,7 @@ def plot_combo_bin_means(
         ax.tick_params(axis="x", labelrotation=90)
     fg.set_axis_labels("ai $\\rightarrow$", "lai $\\rightarrow$")
     fg.fig.suptitle(title, y=1.02)
-    return be._finish(fg.fig, fout)
+    return plotting.finish(fg.fig, fout)
 
 
 def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | None = None):
@@ -426,7 +430,7 @@ def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | Non
     vmax = float(spread["et_std"].quantile(0.98))
     for ax, g in zip(axs.ravel(), groups):
         s = spread.sel(lai_pr_rns=g)
-        be.plot_bin_field(
+        plotting.plot_bin_field(
             s["et_std"], ax=ax, hatch=s["n_products"] < s["n_et_products"],
             cmap="viridis", vmin=0, vmax=vmax, extend="max",
             cbar_kwargs={"label": f"std of bin mean et [{units}]"},
@@ -435,7 +439,7 @@ def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | Non
         ax.set_xlabel("ai $\\rightarrow$")
         ax.set_ylabel("lai $\\rightarrow$")
     fig.suptitle(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 # ------------------------------------------------------------------
@@ -443,7 +447,7 @@ def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | Non
 # ------------------------------------------------------------------
 
 def main():
-    mask = land_mask(TARGET_GRID).sel(lat=be.LAT_BNDS)
+    mask = land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
 
     # ------------------------------------------------------------------
     # Load annual means of every product
@@ -468,16 +472,16 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
     print("\n=== Maps of climatological means ===")
     for v, products in ann.items():
         for p, da in products.items():
-            save_map(be.aggregate(da, "clim"), v, p, period_str(da.year.values), mask)
+            save_map(temporal.aggregate(da, "clim"), v, p, period_str(da.year.values), mask)
 
     for pr_p, rns_p in itertools.product(ann["pr"], ann["rns"]):
         years = shared_years(ann["pr"][pr_p], ann["rns"][rns_p])
         if not years:
             print(f"{pr_p}-{rns_p}: no shared years, skipping AI map")
             continue
-        ai = be.compute_aridity_index(
-            be.aggregate(ann["pr"][pr_p].sel(year=years), "clim"),
-            be.aggregate(ann["rns"][rns_p].sel(year=years), "clim"),
+        ai = binning.compute_aridity_index(
+            temporal.aggregate(ann["pr"][pr_p].sel(year=years), "clim"),
+            temporal.aggregate(ann["rns"][rns_p].sel(year=years), "clim"),
         )
         save_map(ai, "ai", f"{pr_p}-{rns_p}", period_str(years), mask)
 
@@ -523,7 +527,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
     pooled_edges = {}
     for v in ("lai", "ai"):
         print(f"\n{v}")
-        pooled_edges[v] = be.pooled_bin_edges(
+        pooled_edges[v] = binning.pooled_bin_edges(
             {cid: inp[v] for cid, inp in inputs.items()}, n_bins[v], name=v,
             attrs={**EDGE_ATTRS[v], "time_period": span},
         )
@@ -533,7 +537,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
         pooled_edges[v].to_netcdf(fout)
         print(fout)
         fout = FIG_ROOT / "obs" / "qbin_edges" / f"{fstem}.png"
-        be.plot_edges(pooled_edges[v], fout, title=f"obs {v}, pooled across {ncombo} combinations, {span}")
+        plotting.plot_edges(pooled_edges[v], fout, title=f"obs {v}, pooled across {ncombo} combinations, {span}")
         print(fout)
 
     # ------------------------------------------------------------------
@@ -548,7 +552,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
 
         edges = {}
         for v in ("lai", "ai"):
-            edges[v] = be.pooled_bin_edges(
+            edges[v] = binning.pooled_bin_edges(
                 inp[v], n_bins[v], name=v, verbose=False,
                 attrs={**EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [cid]},
             )
@@ -558,7 +562,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
             ("pooled_obs", (pooled_edges["lai"], pooled_edges["ai"])),
             ("combo", (edges["lai"], edges["ai"])),
         ):
-            bs_c = be.bin_stats(
+            bs_c = binning.bin_stats(
                 inp["et"], inp["lai"], inp["ai"], y_edges, x_edges,
                 y_name="lai", x_name="ai", name="et",
                 attrs={
@@ -586,16 +590,16 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
 
         # Zero-width bins only exist (and can only be dropped) for the shared pooled edges
         if kind == "pooled_obs":
-            bs_all = be.drop_zero_width_bins(bs_all)
+            bs_all = binning.drop_zero_width_bins(bs_all)
         fout = FIG_ROOT / "obs" / "qbin" / f"{fstem}.summary.png"
-        be.plot_bin_summary(bs_all, dim="combo", title=f"obs ET, {ncombo} combinations, {kind} edges", fout=fout)
+        plotting.plot_bin_summary(bs_all, dim="combo", title=f"obs ET, {ncombo} combinations, {kind} edges", fout=fout)
         print(fout)
         fout = FIG_ROOT / "obs" / "qbin" / f"{fstem}.bin_mean.png"
         plot_combo_bin_means(bs_all, title=f"obs ET bin mean, {ncombo} combinations, {kind} edges", fout=fout)
         print(fout)
 
         # Hatch non-empty bins whose mean is not significantly different from 0
-        signif = be.test_significance(bs_all, alpha=SIGNIF_ALPHA, n_min=SIGNIF_N_MIN)
+        signif = binning.test_significance(bs_all, alpha=SIGNIF_ALPHA, n_min=SIGNIF_N_MIN)
         not_signif = ~signif & bs_all.sel(stats="mean").notnull()
         print(f"{kind}: {int(not_signif.sum())} of {int(bs_all.sel(stats='mean').notnull().sum())} "
               f"non-empty bins not significant at {1 - SIGNIF_ALPHA:.0%}")

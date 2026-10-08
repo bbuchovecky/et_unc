@@ -18,7 +18,7 @@ Edit the settings below (period, grid, product list, thresholds), then run
 Steps
 -----
 1. Load the monthly field of each product over TIME_SLICE on the common RES
-   grid (`rg.target_grid`), restricted to `be.LAT_BNDS` and the land mask
+   grid (`rg.target_grid`), restricted to `config.LAT_BNDS` and the land mask
    (Natural Earth without Greenland/Iceland, `ib.land_mask`).
    - ILAMB products are read as in `ib.load_product` (lon in [-180, 180], lat
      ascending, undecoded fill values removed) and bilinearly interpolated
@@ -71,7 +71,9 @@ from matplotlib.patches import Patch
 import numpy as np
 import xarray as xr
 
-import binned_et as be       # LAT_BNDS, grid checks, map helpers
+import etunc.config as config
+import etunc.temporal as temporal
+import etunc.plotting as plotting
 import ilamb_binned_et as ib  # ILAMB product table, land mask, output roots
 import etunc.load.obs as lo        # loader for PML / GLEAM / SiTH files
 import etunc.grid as rg          # common target grids and regridders
@@ -121,7 +123,7 @@ NCOLS = 4  # panels per row in plot_product_masks
 # FULL_GRID is the global grid that loaded data are checked against; GRID is
 # the same grid cut to LAT_BNDS (no Antarctica), on which the masks are built.
 FULL_GRID = rg.target_grid(RES)
-GRID = FULL_GRID.sel(lat=be.LAT_BNDS)
+GRID = FULL_GRID.sel(lat=config.LAT_BNDS)
 # load_obs names resolutions differently from regrid.py
 LO_RES = {tag: res for res, tag in lo.RES_DIRS.items()}[RES]  # "0.5deg" -> "0.5"
 
@@ -136,11 +138,11 @@ def on_grid(da: xr.DataArray, label: str) -> xr.DataArray:
     """Exact GRID coordinates (lat within LAT_BNDS), after checking the grid matches."""
     # Raise if the grid differs by more than a small tolerance, rather than
     # silently reindexing onto the wrong cells.
-    be.check_same_grid(da, FULL_GRID, label)
+    rg.check_same_grid(da, FULL_GRID, label)
     # Overwrite lat/lon with the exact target values, so that products whose
     # coordinates differ only by float round-off line up cell for cell.
     da = da.assign_coords(lat=FULL_GRID.lat, lon=FULL_GRID.lon)
-    return da.sel(lat=be.LAT_BNDS)
+    return da.sel(lat=config.LAT_BNDS)
 
 
 def load_ilamb(variable: str, product: str) -> xr.DataArray:
@@ -229,13 +231,13 @@ def plot_mask_agreement(ds: xr.Dataset, title: str, fout: Path):
     cmap = mcolors.ListedColormap([*plt.get_cmap("Purples")(np.linspace(0.05, 0.75, n)), "#e66101"])
     # Bin edges at half-integers, so each integer count gets its own color
     norm = mcolors.BoundaryNorm(np.arange(-0.5, n + 1.5), cmap.N)
-    fig, ax = plt.subplots(figsize=(9, 3.6), layout="constrained", subplot_kw={"projection": be.PROJECTION})
-    pm = agree.plot.pcolormesh(ax=ax, transform=be.PROJECTION, cmap=cmap, norm=norm, add_colorbar=False)
-    be._map_ax(ax, be.LAT_BNDS)  # coastlines, extent, gridlines
+    fig, ax = plt.subplots(figsize=(9, 3.6), layout="constrained", subplot_kw={"projection": config.PROJECTION})
+    pm = agree.plot.pcolormesh(ax=ax, transform=config.PROJECTION, cmap=cmap, norm=norm, add_colorbar=False)
+    plotting.map_ax(ax, config.LAT_BNDS)  # coastlines, extent, gridlines
     fig.colorbar(pm, ax=ax, ticks=np.arange(n + 1), label="products with the gridcell in their mask")
     ax.set_title(f"{title}\ncommon mask (all {n} products): "
                  f"{int(ds['common_mask'].sum())} of {int(ds['land'].sum())} land cells")
-    return be._finish(fig, fout)  # save and close
+    return plotting.finish(fig, fout)  # save and close
 
 
 # Legend labels and colors of plot_product_masks (land without / with data)
@@ -254,7 +256,7 @@ def plot_product_masks(ds: xr.Dataset, title: str, fout: Path):
     nrows = math.ceil(n / ncols)
     fig, axs = plt.subplots(
         nrows, ncols, figsize=(4.6 * ncols, 2.5 * nrows), squeeze=False, layout="constrained",
-        subplot_kw={"projection": be.PROJECTION},
+        subplot_kw={"projection": config.PROJECTION},
     )
     for ax in axs.flat[n:]:
         ax.remove()
@@ -267,15 +269,15 @@ def plot_product_masks(ds: xr.Dataset, title: str, fout: Path):
         valid = (ds["n_valid_months"].sel(product=p) > 0) & land
         # Cast to float and blank out the ocean, so only land is colored
         valid.astype(float).where(land).plot.pcolormesh(
-            ax=ax, transform=be.PROJECTION, cmap=cmap, vmin=0, vmax=1, add_colorbar=False,
+            ax=ax, transform=config.PROJECTION, cmap=cmap, vmin=0, vmax=1, add_colorbar=False,
         )
-        be._map_ax(ax, be.LAT_BNDS)
+        plotting.map_ax(ax, config.LAT_BNDS)
         ax.set_title(f"{p} ({int(ds['n_product_months'].sel(product=p))} months)\n"
                      f"{int(valid.sum())} cells, {100 * int(valid.sum()) / n_land:.1f}% of land", fontsize=9)
     fig.legend(handles=[Patch(color=c, label=k) for k, c in ANY_MONTH_COLORS.items()],
                loc="outside lower center", ncols=2, frameon=False)
     fig.suptitle(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 # ------------------------------------------------------------------
@@ -283,7 +285,7 @@ def plot_product_masks(ds: xr.Dataset, title: str, fout: Path):
 # ------------------------------------------------------------------
 
 def main():
-    period = be.format_time_period(TIME_SLICE)  # e.g. "198201-202512", for file names
+    period = temporal.format_time_period(TIME_SLICE)  # e.g. "198201-202512", for file names
 
     # Land gridcells of GRID (Natural Earth, without Greenland/Iceland)
     land = (ib.land_mask(GRID) == 1).rename("land")
@@ -322,7 +324,7 @@ def main():
     ).assign_attrs(
         time_period=period,
         res=RES,
-        lat_bnds=str(be.LAT_BNDS),
+        lat_bnds=str(config.LAT_BNDS),
         min_valid_frac=str(MIN_VALID_FRAC),
         products=", ".join(labels),
         description=(

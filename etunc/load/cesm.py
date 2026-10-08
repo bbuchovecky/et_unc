@@ -31,6 +31,10 @@ from typing import Literal, Sequence
 import numpy as np
 import xarray as xr
 
+from etunc.config import LAT_BNDS
+from etunc.grid import equal_coords
+from etunc.units import convert_units
+
 
 CESM2_COMPONENT_MAP = {
     "atm": "cam",
@@ -501,3 +505,63 @@ def load_cesm2le(
             combined_ds = xr.merge(member_datasets)
 
     return shift_time(_drop_cosp(combined_ds))
+
+
+# ------------------------------------------------------------------
+# Wrappers: masked, unit-converted fields on a given grid
+# ------------------------------------------------------------------
+
+def load_cesm_grid(source: Literal["fppe", "goga", "lens"], lat_bnds: slice = LAT_BNDS) -> xr.Dataset:
+    """Grid dataset (LANDFRAC, LANDAREA, ...) of a CESM ensemble."""
+    return load_grid(source).sel(lat=lat_bnds)
+
+
+def load_cesm_variable(
+    source: Literal["fppe", "goga", "lens"],
+    variable: str,
+    grid: xr.Dataset | xr.DataArray,
+    *,
+    mask: xr.DataArray | bool = True,
+    time_slice: slice = slice(None, None),
+    lat_bnds: slice = LAT_BNDS,
+    gcomp: str = "lnd",
+    stream: str = "h0",
+    bb: str = "cmip6",
+    verbose: bool = True,
+) -> xr.DataArray:
+    """
+    Load a CESM ensemble variable on `grid`, masked and converted to W/m2.
+
+    source : "fppe" (FHIST PPE), "goga" (GOGA2) or "lens" (LENS2)
+    variable : name with frequency suffix, e.g. "EFLX_LH_TOT_month_1"
+    gcomp, stream : model component ("lnd" or "atm") and history stream of
+        `variable`, for every source. For "fppe", PRECT is read as
+        PRECT_calculated from "atm" whatever `gcomp` is.
+    """
+    if verbose:
+        print(f"{source.upper()}: Loading {variable}")
+    v = "_".join(variable.split("_")[:-2])
+    frq = "_".join(variable.split("_")[-2:])
+
+    if source == "fppe":
+        if v == "PRECT":
+            v = "PRECT_calculated"
+            variable = f"PRECT_calculated_{frq}"
+            gcomp = "atm"
+        ds = load_fhist_ppe(v, gcomp, frq, stream, verbose=verbose)
+    elif source == "goga":
+        ds = load_goga2(v, gcomp, frq, stream)
+    elif source == "lens":
+        ds = load_cesm2le(v, gcomp, frq, stream, bb=bb, verbose=verbose)
+    else:
+        raise ValueError(f"Unknown CESM source {source!r}")
+
+    da = ds[v].sel(time=time_slice, lat=lat_bnds)
+    if not equal_coords(da, grid, ("lat", "lon")):
+        raise IndexError(f"{variable} and grid do not have the same 'lat', 'lon' coordinates")
+    da = da.reindex_like(grid, method="nearest", tolerance=1e-3)
+    if isinstance(mask, xr.DataArray):
+        if not equal_coords(mask, grid, ("lat", "lon")):
+            raise IndexError("mask and grid do not have the same 'lat', 'lon' coordinates")
+        da = da.where(mask.reindex_like(grid, method="nearest", tolerance=1e-3))
+    return convert_units(variable, da, verbose=verbose)

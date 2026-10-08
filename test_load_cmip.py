@@ -14,7 +14,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import binned_et as be
+import etunc.config as config
+import etunc.grid as rg
 import cmip_binned_et as cb
 from etunc.load.cmip import CMIPESGFLoader
 
@@ -151,7 +152,7 @@ VALUES = {
     "rlds": (350.0, 300.0),
     "rlus": (400.0, 410.0),
 }
-L = be.LATENT_HEAT_VAPORIZATION
+L = config.LATENT_HEAT_VAPORIZATION
 EXPECTED = {"et": 2e-5 * L, "lai": 2.0, "pr": 3e-5 * L, "rn": 200.0 - 30.0 + 350.0 - 400.0}
 
 # Target (1 deg) cells
@@ -212,7 +213,7 @@ class StubLoader:
 
 
 def target_mask():
-    grid = cb.TARGET_GRID.sel(lat=be.LAT_BNDS)
+    grid = cb.TARGET_GRID.sel(lat=config.LAT_BNDS)
     mask = xr.DataArray(
         np.ones((grid.sizes["lat"], grid.sizes["lon"])), dims=("lat", "lon"),
         coords={"lat": grid.lat, "lon": grid.lon},
@@ -223,7 +224,7 @@ def target_mask():
 
 def expected_field(k, member, year):
     """Expected (lat, lon) values of `k` away from the LAI gap, which is checked separately."""
-    grid = cb.TARGET_GRID.sel(lat=be.LAT_BNDS)
+    grid = cb.TARGET_GRID.sel(lat=config.LAT_BNDS)
     out = xr.DataArray(np.full((grid.sizes["lat"], grid.sizes["lon"]), np.nan), dims=("lat", "lon"),
                        coords={"lat": grid.lat, "lon": grid.lon})
     out.loc[{"lat": VALID_LAT, "lon": VALID_LON}] = EXPECTED[k]
@@ -259,7 +260,7 @@ def test_load_model_dims_coords_names_units(loaded):
     """
     ann, _ = loaded
     assert list(ann) == ["et", "lai", "pr", "rn"]
-    grid = cb.TARGET_GRID.sel(lat=be.LAT_BNDS)
+    grid = cb.TARGET_GRID.sel(lat=config.LAT_BNDS)
     for k, da in ann.items():
         assert da.name == k
         assert da.dims == ("member", "year", "lat", "lon")
@@ -308,7 +309,7 @@ def test_load_model_missing_lai_month_counts_as_zero(loaded):
 def test_load_model_greenland_excluded(loaded):
     """Land in Greenland is excluded by the native mask, so it is NaN on the target grid."""
     ann, _ = loaded
-    native = be.mask_greenland(land_fraction(1.0))
+    native = rg.mask_greenland(land_fraction(1.0))
     assert not native.isel(lat=GREENLAND[0], lon=GREENLAND[1]).any()  # land in sftlf, excluded by the mask
     greenland = ann["et"].sel(lat=slice(72, 81), lon=slice(-45, -36))
     assert greenland.size > 0 and greenland.isnull().all()

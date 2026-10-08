@@ -16,7 +16,7 @@ There are two common grids. Both are global and regular, with lon in
 
 Always get a grid from `target_grid` (by spacing or tag) instead of building
 one by hand, so that every regridded product has identical lat/lon values and
-passes `binned_et.check_same_grid`. The grids carry their cell edges (`lat_b`,
+passes `check_same_grid` (below). The grids carry their cell edges (`lat_b`,
 `lon_b`) for conservative regridding.
 
 Regridders
@@ -40,9 +40,14 @@ from __future__ import annotations
 
 import warnings
 
+from typing import Iterable
+
 import numpy as np
+import regionmask as regmask
 import xarray as xr
 import xesmf as xe
+
+from etunc.config import LF_THRESH
 
 
 RESOLUTIONS = {"0.5deg": 0.5, "1deg": 1.0}  # grid tag (output directory name) -> spacing [deg]
@@ -209,3 +214,59 @@ def approx_resolution(ds: xr.DataArray | xr.Dataset) -> tuple[float | None, floa
         return float(np.nanmedian(diffs))
 
     return spacing(lat_name), spacing(lon_name)
+
+
+# ------------------------------------------------------------------
+# Coordinate checks and land masks
+# ------------------------------------------------------------------
+
+def check_coords(da: xr.DataArray, coords: Iterable[str]) -> bool:
+    """Check that da has non-empty coords."""
+    for coord in coords:
+        if coord not in da.coords:
+            return False
+        if da[coord].ndim == 0:
+            continue  # scalar coord counts as present
+        if len(da[coord]) == 0:
+            return False
+    return True
+
+
+def equal_coords(
+    a: xr.DataArray | xr.Dataset,
+    b: xr.DataArray | xr.Dataset,
+    coords: Iterable[str],
+    atol: float = 1e-3,
+) -> bool:
+    """Check that a and b have the same coords (numeric coords within atol)."""
+    if not check_coords(a, coords) or not check_coords(b, coords):
+        return False
+    for crd in coords:
+        if a[crd].shape != b[crd].shape:
+            return False
+        if np.issubdtype(a[crd].dtype, np.number):
+            if not np.allclose(a[crd], b[crd], atol=atol):
+                return False
+    return True
+
+
+def check_same_grid(
+    da: xr.DataArray,
+    ref: xr.DataArray | xr.Dataset,
+    label: str,
+    atol: float = 1e-3,
+) -> None:
+    """Raise if `da` does not share its lat/lon grid with `ref`, rather than silently reindex."""
+    if da.sizes.get("lat") != ref.sizes.get("lat") or da.sizes.get("lon") != ref.sizes.get("lon"):
+        raise ValueError(
+            f"{label}: grid shape lat={da.sizes.get('lat')}, lon={da.sizes.get('lon')} does not match "
+            f"the reference grid lat={ref.sizes.get('lat')}, lon={ref.sizes.get('lon')}."
+        )
+    if not equal_coords(da, ref, ("lat", "lon"), atol=atol):
+        raise ValueError(f"{label}: lat/lon values differ from the reference grid by more than {atol}.")
+
+
+def mask_greenland(landfrac: xr.DataArray, lf_thresh: float = LF_THRESH) -> xr.DataArray:
+    """Land mask: True where landfrac > lf_thresh, excluding Greenland/Iceland (AR6 region 0)."""
+    mask = regmask.defined_regions.ar6.land.mask(landfrac.lon, landfrac.lat)
+    return xr.where((mask == 0) & (landfrac > lf_thresh), False, landfrac > lf_thresh)

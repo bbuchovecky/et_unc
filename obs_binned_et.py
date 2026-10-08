@@ -32,7 +32,9 @@ import itertools
 
 import xarray as xr
 
-import binned_et as be
+import etunc.config as config
+import etunc.units as units
+import etunc.grid as rg
 import ilamb_binned_et as ib
 import etunc.load.obs as lo
 
@@ -82,7 +84,7 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
     da = lo.load_obs(
         dataset, var, slice(str(years[0]), str(years[1])), version=version, freq=freq, res=GRIDDED_RES,
     ).load()
-    da = be.latent_heat_to_wm2(lo.accumulation_to_flux(da))
+    da = units.latent_heat_to_wm2(lo.accumulation_to_flux(da))
 
     if freq == "monthly":
         da = da.sel(time=da.time.dt.year.isin(ib.complete_years(da)))
@@ -100,9 +102,9 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
             ann = ann.where(~outlier)
 
     # Same grid checks and LAT_BNDS selection as ib.load_product
-    be.check_same_grid(ann, ib.TARGET_GRID, f"et/{label}")
+    rg.check_same_grid(ann, ib.TARGET_GRID, f"et/{label}")
     ann = ann.assign_coords(lat=ib.TARGET_GRID.lat, lon=ib.TARGET_GRID.lon)
-    ann = ann.sel(lat=be.LAT_BNDS).rename("et")
+    ann = ann.sel(lat=config.LAT_BNDS).rename("et")
 
     print(
         f"et  {label:12}: {ann.dims} {ann.shape} {ib.period_str(ann.year.values)} "
@@ -118,7 +120,7 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
 def main():
     if float(GRIDDED_RES) != ib.TARGET_RES:
         raise ValueError(f"GRIDDED_RES {GRIDDED_RES} does not match ib.TARGET_RES {ib.TARGET_RES}")
-    mask = ib.land_mask(ib.TARGET_GRID).sel(lat=be.LAT_BNDS)
+    mask = ib.land_mask(ib.TARGET_GRID).sel(lat=config.LAT_BNDS)
 
     print("=== Load ILAMB products ===")
     ann = {v: {p: ib.load_product(v, p) for p in products} for v, products in ILAMB_PRODUCTS.items()}

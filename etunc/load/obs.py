@@ -34,7 +34,7 @@ Example
 >>> et = lo.load_gleam("E", slice("1995", "2014"), res="1")             # regridded to 1 deg
 >>> lo.list_variables("gleam"), lo.list_years("pml", "ET", version="V2.2b")
 >>> lo.list_files("sith", "ET")   # {path: (1982, 2022)}
->>> et_wm2 = be.latent_heat_to_wm2(lo.accumulation_to_flux(et))
+>>> et_wm2 = units.latent_heat_to_wm2(lo.accumulation_to_flux(et))  # import etunc.units as units
 
 Notes
 -----
@@ -422,7 +422,7 @@ def load_obs(
     freq : temporal frequency, a key of `ObsDataset.freqs`.
     res : "native", or "0.5" / "1" for the files regridded to 0.5 / 1 deg.
     lat_bnds : optional latitude slice applied after sorting lat ascending,
-        e.g. ``binned_et.LAT_BNDS``.
+        e.g. ``etunc.config.LAT_BNDS``.
     chunks : dask chunks for `xr.open_mfdataset`; dict keys may use lat/lon.
     parallel : open files in parallel with dask.
 
@@ -496,7 +496,7 @@ def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
     """
     Convert a water depth per day, month or year (mm/day, mm.month-1, mm/year, ...)
     to a mass flux [kg m-2 s-1], using each time step's days in month or year.
-    The result can go straight into ``binned_et.latent_heat_to_wm2``.
+    The result can go straight into ``etunc.units.latent_heat_to_wm2``.
     """
     units = str(da.attrs.get("units", ""))
     m = re.fullmatch(r"mm\s*[./ ]\s*([a-z]+)(?:-1)?", units.strip().lower())

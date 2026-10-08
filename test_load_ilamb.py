@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import binned_et as be
+import etunc.config as config
 import ilamb_binned_et as ib
 import mask as mk
 import obs_et_availability as oa
@@ -76,7 +76,7 @@ def ilamb_root(tmp_path, monkeypatch):
 
 
 def target_lat_lon():
-    grid = ib.TARGET_GRID.sel(lat=be.LAT_BNDS)
+    grid = ib.TARGET_GRID.sel(lat=config.LAT_BNDS)
     return grid.lat.values, grid.lon.values
 
 
@@ -89,7 +89,7 @@ def near(lat, lon):
 
 def bilinear(da):
     """Bilinear regrid of `da` (on the formatted 1 deg grid) onto the 0.5 deg target grid within LAT_BNDS."""
-    return rg.bilinear_regridder(da, ib.TARGET_RES)(da).sel(lat=be.LAT_BNDS)
+    return rg.bilinear_regridder(da, ib.TARGET_RES)(da).sel(lat=config.LAT_BNDS)
 
 
 def formatted(da):
@@ -148,7 +148,7 @@ def test_load_product_flux_needs_all_months_and_masks_fill(ilamb_root):
 
     # A year with a missing month or a fill value is NaN at that source cell, so the
     # bilinear regrid makes the target points around it NaN; elsewhere mm/day -> W/m2
-    wm2 = PR / 86400 * be.LATENT_HEAT_VAPORIZATION
+    wm2 = PR / 86400 * config.LATENT_HEAT_VAPORIZATION
     for year, (lat, lon, _) in [(2001, PR_GAP), (2002, PR_FILL)]:
         vals = ann.sel(year=year).values
         hit = near(lat, lon)
@@ -244,7 +244,7 @@ def test_availability_load_ilamb_wm2_on_month_axis(ilamb_root):
     hit = near(lat, lon)
     gap = da.sel(time=month).squeeze("time").values
     assert np.isnan(gap[hit]).all()
-    np.testing.assert_allclose(gap[~hit], ET * be.LATENT_HEAT_VAPORIZATION, rtol=1e-12)
+    np.testing.assert_allclose(gap[~hit], ET * config.LATENT_HEAT_VAPORIZATION, rtol=1e-12)
 
 
 def test_availability_load_ilamb_no_data_raises(ilamb_root):

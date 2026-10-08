@@ -14,7 +14,7 @@ Processing
   by `regrid_obs.py` (conservative, `NA_THRES`) and converted from mm/month
   to W/m2. PML V2.2a-VIIRS is skipped (its monthly E 2019 file is empty).
 - Every product is put on one monthly time axis over `TIME_SLICE`, so months
-  outside a product's record count as missing, and restricted to `be.LAT_BNDS`
+  outside a product's record count as missing, and restricted to `config.LAT_BNDS`
   and the land mask (Natural Earth, without Greenland/Iceland).
 - A gridcell-year is valid when all 12 months are valid (`ib.annual_mean` with
   `require_all_months=True`), as for ET in the binning. The bin mask of a
@@ -55,7 +55,11 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-import binned_et as be
+import etunc.config as config
+import etunc.units as units
+import etunc.temporal as temporal
+import etunc.grid as rg
+import etunc.plotting as plotting
 import ilamb_binned_et as ib
 import etunc.load.obs as lo
 import regrid_obs as ro
@@ -93,7 +97,7 @@ BOX_WHIS = (5, 95)  # whisker percentiles in box_annual_et
 # ------------------------------------------------------------------
 
 MONTHS = pd.date_range(TIME_SLICE.start, TIME_SLICE.stop, freq="MS")
-GRID = ib.TARGET_GRID.sel(lat=be.LAT_BNDS)
+GRID = ib.TARGET_GRID.sel(lat=config.LAT_BNDS)
 
 
 def on_month_axis(da: xr.DataArray) -> xr.DataArray:
@@ -106,9 +110,9 @@ def on_month_axis(da: xr.DataArray) -> xr.DataArray:
 
 def on_grid(da: xr.DataArray, label: str) -> xr.DataArray:
     """Exact GRID coordinates (lat within LAT_BNDS), after checking the grid matches."""
-    be.check_same_grid(da, ib.TARGET_GRID, label)
+    rg.check_same_grid(da, ib.TARGET_GRID, label)
     da = da.assign_coords(lat=ib.TARGET_GRID.lat, lon=ib.TARGET_GRID.lon)
-    return da.sel(lat=be.LAT_BNDS)
+    return da.sel(lat=config.LAT_BNDS)
 
 
 def load_ilamb(product: str) -> xr.DataArray:
@@ -143,7 +147,7 @@ def load_gridded(label: str) -> xr.DataArray:
     if not lo.list_years(spec, var, version, "monthly"):
         raise FileNotFoundError(f"{label}: no {REGRID_TAG} files under {spec.root} (run regrid_obs.py)")
     da = lo.load_obs(spec, var, TIME_SLICE, version=version, freq="monthly").load()
-    da = be.latent_heat_to_wm2(lo.accumulation_to_flux(da))
+    da = units.latent_heat_to_wm2(lo.accumulation_to_flux(da))
     return on_month_axis(on_grid(da, label))
 
 
@@ -197,7 +201,7 @@ def facets(n: int, *, maps: bool = False, panel_size: tuple[float, float] = (4.2
     """Figure with `n` panels in rows of NCOLS (unused panels removed); returns (fig, list of axes)."""
     ncols = min(n, NCOLS)
     nrows = math.ceil(n / ncols)
-    subplot_kw = {"projection": be.PROJECTION} if maps else None
+    subplot_kw = {"projection": config.PROJECTION} if maps else None
     fig, axs = plt.subplots(
         nrows, ncols, figsize=(panel_size[0] * ncols, panel_size[1] * nrows), squeeze=False,
         layout="constrained", subplot_kw=subplot_kw, **kwargs,
@@ -231,7 +235,7 @@ def plot_hist_valid_months(av: xr.Dataset, title: str, fout: Path):
         ax.set_ylabel("land gridcells")
         ax.label_outer()
     fig.suptitle(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 def plot_map_valid_months(av: xr.Dataset, title: str, fout: Path):
@@ -241,14 +245,14 @@ def plot_map_valid_months(av: xr.Dataset, title: str, fout: Path):
     fig, axs = facets(av.sizes["product"], maps=True, panel_size=(4.6, 2.3))
     for ax, p in zip(axs, av["product"].values):
         pm = av["n_valid_months"].sel(product=p).plot.pcolormesh(
-            ax=ax, transform=be.PROJECTION, cmap=cmap, vmin=0.5, vmax=n_months, add_colorbar=False,
+            ax=ax, transform=config.PROJECTION, cmap=cmap, vmin=0.5, vmax=n_months, add_colorbar=False,
         )
-        be._map_ax(ax, be.LAT_BNDS)
+        plotting.map_ax(ax, config.LAT_BNDS)
         ax.set_title(p, fontsize=9)
     fig.colorbar(pm, ax=axs, shrink=0.6, extend="min",
                  label=f"valid months of {n_months} (gray: land, none valid)")
     fig.suptitle(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 def plot_line_calendar_month(av: xr.Dataset, n_land: int, title: str, fout: Path):
@@ -271,7 +275,7 @@ def plot_line_calendar_month(av: xr.Dataset, n_land: int, title: str, fout: Path
         ax.label_outer()
     axs[0].legend(fontsize=7, frameon=False, loc="lower left")
     fig.suptitle(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 MASK_COLORS = {"land, no valid year": "#f0b67f", "bin mask": "#2b6a99"}
@@ -283,14 +287,14 @@ def plot_map_bin_mask(av: xr.Dataset, land: xr.DataArray, title: str, fout: Path
     for ax, p in zip(axs, av["product"].values):
         m = av["bin_mask"].sel(product=p)
         m.astype(float).where(land).plot.pcolormesh(
-            ax=ax, transform=be.PROJECTION, cmap=cmap, vmin=0, vmax=1, add_colorbar=False,
+            ax=ax, transform=config.PROJECTION, cmap=cmap, vmin=0, vmax=1, add_colorbar=False,
         )
-        be._map_ax(ax, be.LAT_BNDS)
+        plotting.map_ax(ax, config.LAT_BNDS)
         ax.set_title(f"{p}: {int(m.sum())} cells", fontsize=9)
     fig.legend(handles=[Patch(color=c, label=k) for k, c in MASK_COLORS.items()],
                loc="outside lower center", ncols=2, frameon=False)
     fig.suptitle(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 def plot_heatmap_complete_years(av: xr.Dataset, n_land: int, title: str, fout: Path):
@@ -308,7 +312,7 @@ def plot_heatmap_complete_years(av: xr.Dataset, n_land: int, title: str, fout: P
         s.set_visible(False)
     fig.colorbar(pm, ax=ax, label="fraction of land gridcells with all 12 months valid")
     ax.set_title(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 def plot_map_mask_agreement(av: xr.Dataset, land: xr.DataArray, title: str, fout: Path):
@@ -316,12 +320,12 @@ def plot_map_mask_agreement(av: xr.Dataset, land: xr.DataArray, title: str, fout
     agree = av["bin_mask"].sum("product").where(land)
     cmap = plt.get_cmap("Purples", n + 1)
     norm = mcolors.BoundaryNorm(np.arange(-0.5, n + 1.5), cmap.N)
-    fig, ax = plt.subplots(figsize=(9, 3.6), layout="constrained", subplot_kw={"projection": be.PROJECTION})
-    pm = agree.plot.pcolormesh(ax=ax, transform=be.PROJECTION, cmap=cmap, norm=norm, add_colorbar=False)
-    be._map_ax(ax, be.LAT_BNDS)
+    fig, ax = plt.subplots(figsize=(9, 3.6), layout="constrained", subplot_kw={"projection": config.PROJECTION})
+    pm = agree.plot.pcolormesh(ax=ax, transform=config.PROJECTION, cmap=cmap, norm=norm, add_colorbar=False)
+    plotting.map_ax(ax, config.LAT_BNDS)
     fig.colorbar(pm, ax=ax, ticks=np.arange(n + 1), label="products with the gridcell in their bin mask")
     ax.set_title(f"{title}\ncommon mask (all {n} products): {int((agree == n).sum())} of {int(land.sum())} land cells")
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 FAMILIES = {
@@ -356,7 +360,7 @@ def plot_zonal_mean_et(clim: xr.DataArray, av: xr.Dataset, common: xr.DataArray,
     for ax in axs[:, 0]:
         ax.set_ylabel("latitude")
     fig.suptitle(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 def plot_box_annual_et(ann: xr.DataArray, common: xr.DataArray, title: str, fout: Path):
@@ -376,7 +380,7 @@ def plot_box_annual_et(ann: xr.DataArray, common: xr.DataArray, title: str, fout
                   f"{BOX_WHIS[0]}th/{BOX_WHIS[1]}th percentiles")
     _clean(ax)
     ax.set_title(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 # ------------------------------------------------------------------
@@ -384,8 +388,8 @@ def plot_box_annual_et(ann: xr.DataArray, common: xr.DataArray, title: str, fout
 # ------------------------------------------------------------------
 
 def main():
-    period = be.format_time_period(TIME_SLICE)
-    land = (ib.land_mask(ib.TARGET_GRID).sel(lat=be.LAT_BNDS) == 1).rename("land")
+    period = temporal.format_time_period(TIME_SLICE)
+    land = (ib.land_mask(ib.TARGET_GRID).sel(lat=config.LAT_BNDS) == 1).rename("land")
     n_land = int(land.sum())
     print(f"{period}: {len(MONTHS)} months, {n_land} land gridcells\n")
 
@@ -405,7 +409,7 @@ def main():
 
     products = np.array(list(avs))  # numpy str, not pandas' StringDtype, which netCDF cannot write
     av = xr.concat(list(avs.values()), dim="product").assign_coords(product=products)
-    av = av.assign_attrs(time_period=period, n_land_cells=n_land, lat_bnds=str(be.LAT_BNDS))
+    av = av.assign_attrs(time_period=period, n_land_cells=n_land, lat_bnds=str(config.LAT_BNDS))
     ann = xr.concat(list(anns.values()), dim="product").assign_coords(product=products).assign_attrs(units="W/m2")
     clim = ann.mean("year", keep_attrs=True)
     common = av["bin_mask"].all("product")

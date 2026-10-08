@@ -24,7 +24,7 @@ Steps
    (MIROC-ES2H).
 3. Map each model's member-mean climatological ET, LAI, pr, Rn and AI.
 4. The binning inputs per member are annual mean ET and climatological LAI and
-   AI (`be.prepare_inputs`). They are restricted to one common area mask: land
+   AI (`binning.prepare_inputs`). They are restricted to one common area mask: land
    gridcells where ET (in any year), LAI and AI are valid in every member of
    every model, so all models cover the same area.
 5. Bin ET separately for each member with two sets of quantile edges:
@@ -65,7 +65,11 @@ import pandas as pd
 import regionmask as regmask
 import xarray as xr
 
-import binned_et as be
+import etunc.config as config
+import etunc.units as units
+import etunc.temporal as temporal
+import etunc.binning as binning
+import etunc.plotting as plotting
 import etunc.grid as rg
 from etunc.load.cmip import CMIPESGFLoader
 
@@ -189,24 +193,24 @@ def complete_years(da: xr.DataArray) -> list[int]:
 
 def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
     """
-    Annual mean via `be.aggregate`, which counts missing months as 0. With
+    Annual mean via `temporal.aggregate`, which counts missing months as 0. With
     `require_all_months`, years with any missing month are NaN instead;
     otherwise only years without any valid month are NaN.
     """
     n_valid = da.notnull().groupby("time.year").sum()
     with xr.set_options(keep_attrs=True):
-        ann = be.aggregate(da, "year")
+        ann = temporal.aggregate(da, "year")
         return ann.where(n_valid == 12 if require_all_months else n_valid > 0)
 
 
 def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
     """
     Natural Earth land mask without Greenland/Iceland. (Same land mask as
-    `be.compute_cell_area`, which is not used because importing ILAMB
+    `etunc.legacy.compute_cell_area`, which is not used because importing ILAMB
     initializes MPI.)
     """
     land = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask(grid.lon, grid.lat)
-    return be.mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
+    return rg.mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
 
 
 def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
@@ -233,7 +237,7 @@ def load_model(
     and masked with `mask`.
     """
     lf, src_grid = load_land_fraction(sftlf_path)
-    native_mask = be.mask_greenland(lf, be.LF_THRESH)
+    native_mask = rg.mask_greenland(lf, config.LF_THRESH)
 
     data = loader.load_data(
         VARIABLES, EXPERIMENT_ID, source_id=sid, member_id=members, time_slice=TIME_SLICE, verbose=False,
@@ -246,15 +250,15 @@ def load_model(
     for v in VARIABLES:
         da = data[v].reset_coords(drop=True)  # member_id is re-added after regridding
         # sftlf comes from another experiment, so check that it is on the same grid
-        be.check_same_grid(da, lf, f"{sid}/{v}")
+        rg.check_same_grid(da, lf, f"{sid}/{v}")
         da = da.assign_coords(lat=lf.lat, lon=lf.lon)
         fields[v] = da.sel(time=da.time.dt.year.isin(complete_years(da)))
 
     monthly = {
-        "et": be.convert_units("evspsbl", fields["evspsbl"]),
+        "et": units.convert_units("evspsbl", fields["evspsbl"]),
         "lai": fields["lai"].assign_attrs(units="m2/m2"),
-        "pr": be.convert_units("pr", fields["pr"]),
-        "rn": be.net_radiation_cmip(fields["rsds"], fields["rsus"], fields["rlds"], fields["rlus"]),
+        "pr": units.convert_units("pr", fields["pr"]),
+        "rn": units.net_radiation_cmip(fields["rsds"], fields["rsus"], fields["rlds"], fields["rlus"]),
     }
 
     regridder = rg.bounded_conservative_regridder(src_grid, TARGET_RES)
@@ -268,7 +272,7 @@ def load_model(
         a = regridder(a, skipna=True, na_thres=NA_THRES, keep_attrs=True)
         a = a.assign_coords(lat=TARGET_GRID.lat, lon=TARGET_GRID.lon, member_id=("member", members))
         with xr.set_options(keep_attrs=True):
-            ann[k] = a.sel(lat=be.LAT_BNDS).where(mask).rename(k)
+            ann[k] = a.sel(lat=config.LAT_BNDS).where(mask).rename(k)
 
     print(
         f"{sid:16}: {len(members)} member(s), native {lf.sizes['lat']}x{lf.sizes['lon']} "
@@ -283,7 +287,7 @@ def load_model(
 
 def period_str(years) -> str:
     """[1995, ..., 2014] -> "199501-201412"."""
-    return be.format_time_period(slice(f"{min(years)}-01", f"{max(years)}-12"))
+    return temporal.format_time_period(slice(f"{min(years)}-01", f"{max(years)}-12"))
 
 
 def valid_area(inputs: dict[str, xr.DataArray]) -> xr.DataArray:
@@ -318,7 +322,7 @@ def pool_members(bs: xr.DataArray) -> xr.DataArray:
         var_samp = xr.where(n > 1, pooled_var * n / (n - 1), np.nan)
     out = xr.concat(
         [pooled_mean.where(n > 0), pooled_var.where(n > 0), var_samp, n, count_pos.sum("member")], dim="stats",
-    ).assign_coords(stats=list(be.STATS)).transpose("stats", "y_bin", "x_bin")
+    ).assign_coords(stats=list(binning.STATS)).transpose("stats", "y_bin", "x_bin")
     out = out.drop_vars([c for c in out.coords if "member" in out[c].dims or c == "member_id"], errors="ignore")
     out.attrs = {**bs.attrs, "members": list(bs["member_id"].values)}
     return out.rename(bs.name)
@@ -337,7 +341,7 @@ def concat_models(das: list[xr.DataArray], sids: list[str]) -> xr.DataArray:
 def save_map(da: xr.DataArray, variable: str, sid: str, period: str, mtag: str):
     fout = FIG_ROOT / "cmip6" / variable / f"cmip6.{sid}.{variable}.{GRID_TAG}.map.{period}.{mtag}.png"
     title = f"{sid}, {period}" + (f", mean of {da.attrs['n_members']} members" if da.attrs.get("n_members", 1) > 1 else "")
-    be.quick_map(
+    plotting.quick_map(
         da, fout, title=title,
         cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **MAP_KWARGS[variable],
     )
@@ -359,7 +363,7 @@ def plot_model_edges(
     ax.set_ylabel(f"{pooled.name} [{pooled.attrs.get('units', '?')}]")
     ax.legend(fontsize=6, ncols=2, loc="center left", bbox_to_anchor=(1.01, 0.5))
     ax.set_title(title)
-    return be._finish(fig, fout)
+    return plotting.finish(fig, fout)
 
 
 def hatch_bins(ax, hatch: xr.DataArray):
@@ -385,9 +389,9 @@ def plot_model_bin_means(
     and quantile levels when each has its own edges.
 
     hatch : boolean (source_id, y_bin, x_bin) field; True bins are hatched
-        (e.g. ~`be.test_significance`)
+        (e.g. ~`binning.test_significance`)
     """
-    fg = be.plot_bin_facets(
+    fg = plotting.plot_bin_facets(
         bs_all, dim="source_id", col_wrap=min(col_wrap, bs_all.sizes["source_id"]), size=3,
         cmap="YlGnBu", robust=True, cbar_kwargs={"label": f"bin mean evspsbl [{bs_all.attrs.get('units', '?')}]"},
     )
@@ -398,7 +402,7 @@ def plot_model_bin_means(
         if hatch is not None:
             hatch_bins(ax, hatch.sel(**name_dict))
     if "source_id" not in bs_all["y_bin_lower"].dims and "source_id" not in bs_all["x_bin_lower"].dims:
-        be._edge_ticks(fg.axs.flat[0], bs_all, "{:.2g}")
+        plotting.set_edge_ticks(fg.axs.flat[0], bs_all, "{:.2g}")
     else:
         for dim, set_ticks in (("x_bin", fg.axs.flat[0].set_xticks), ("y_bin", fg.axs.flat[0].set_yticks)):
             n = bs_all.sizes[dim]
@@ -408,7 +412,7 @@ def plot_model_bin_means(
         ax.tick_params(axis="x", labelrotation=90)
     fg.set_axis_labels("ai $\\rightarrow$", "lai $\\rightarrow$")
     fg.fig.suptitle(title, y=1.02)
-    return be._finish(fg.fig, fout)
+    return plotting.finish(fg.fig, fout)
 
 
 # ------------------------------------------------------------------
@@ -416,8 +420,8 @@ def plot_model_bin_means(
 # ------------------------------------------------------------------
 
 def main():
-    period = be.format_time_period(TIME_SLICE)
-    mask = land_mask(TARGET_GRID).sel(lat=be.LAT_BNDS)
+    period = temporal.format_time_period(TIME_SLICE)
+    mask = land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
     loader = CMIPESGFLoader(CATALOG)
 
     # ------------------------------------------------------------------
@@ -452,15 +456,15 @@ def main():
         except ValueError as err:  # e.g. sftlf on a different grid than the data
             print(f"{sid}: {err}, skipping")
             continue
-        inputs[sid] = be.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
+        inputs[sid] = binning.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
 
         # Maps of member-mean climatologies (each model's own area, before the common area mask)
         mtag = member_tag(mids)
         clim = {
-            "evspsbl": be.aggregate(ann["et"], "clim"),
+            "evspsbl": temporal.aggregate(ann["et"], "clim"),
             "lai": inputs[sid]["lai"],
-            "pr": be.aggregate(ann["pr"], "clim"),
-            "rn": be.aggregate(ann["rn"], "clim"),
+            "pr": temporal.aggregate(ann["pr"], "clim"),
+            "rn": temporal.aggregate(ann["rn"], "clim"),
             "ai": inputs[sid]["ai"],
         }
         for v, da in clim.items():
@@ -498,7 +502,7 @@ def main():
     pooled_edges = {}
     for v in ("lai", "ai"):
         print(f"\n{v}")
-        pooled_edges[v] = be.pooled_bin_edges(
+        pooled_edges[v] = binning.pooled_bin_edges(
             {sid: inputs[sid][v].mean("member") for sid in sids}, n_bins[v], name=v,
             attrs={**EDGE_ATTRS[v], "time_period": period, "grid": GRID_TAG,
                    "members": [f"{sid}.{m}" for sid in sids for m in members[sid]]},
@@ -509,7 +513,7 @@ def main():
         pooled_edges[v].to_netcdf(fout)
         print(fout)
         fout = FIG_ROOT / "cmip6" / "qbin_edges" / f"{fstem}.png"
-        be.plot_edges(pooled_edges[v], fout, title=f"CMIP6 {v}, pooled across {nsid} models, {period}")
+        plotting.plot_edges(pooled_edges[v], fout, title=f"CMIP6 {v}, pooled across {nsid} models, {period}")
         print(fout)
 
     # ------------------------------------------------------------------
@@ -525,7 +529,7 @@ def main():
         # This model's own edges, pooled over its members
         edges = {}
         for v in ("lai", "ai"):
-            edges[v] = be.pooled_bin_edges(
+            edges[v] = binning.pooled_bin_edges(
                 inputs[sid][v], n_bins[v], name=v, verbose=False,
                 attrs={**EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [sid], "members": mids},
             )
@@ -535,7 +539,7 @@ def main():
             ("pooled_cmip", (pooled_edges["lai"], pooled_edges["ai"])),
             ("model", (edges["lai"], edges["ai"])),
         ):
-            bs_m = be.bin_stats(
+            bs_m = binning.bin_stats(
                 inputs[sid]["et"], inputs[sid]["lai"], inputs[sid]["ai"], y_edges, x_edges,
                 member_dim="member", y_name="lai", x_name="ai", name="evspsbl",
                 attrs={
@@ -562,9 +566,9 @@ def main():
 
         # Zero-width bins only exist (and can only be dropped) for the shared pooled edges
         if kind == "pooled_cmip":
-            bs_all = be.drop_zero_width_bins(bs_all)
+            bs_all = binning.drop_zero_width_bins(bs_all)
         fout = FIG_ROOT / "cmip6" / "qbin" / f"{fstem}.summary.png"
-        be.plot_bin_summary(
+        plotting.plot_bin_summary(
             bs_all, dim="source_id", title=f"CMIP6 evspsbl, {nsid} models, {kind} edges, {period}", fout=fout,
         )
         print(fout)
@@ -573,7 +577,7 @@ def main():
         print(fout)
 
         # Hatch non-empty bins whose mean is not significantly different from 0
-        signif = be.test_significance(bs_all, alpha=SIGNIF_ALPHA, n_min=SIGNIF_N_MIN)
+        signif = binning.test_significance(bs_all, alpha=SIGNIF_ALPHA, n_min=SIGNIF_N_MIN)
         not_signif = ~signif & bs_all.sel(stats="mean").notnull()
         print(f"{kind}: {int(not_signif.sum())} of {int(bs_all.sel(stats='mean').notnull().sum())} "
               f"non-empty bins not significant at {1 - SIGNIF_ALPHA:.0%}")
