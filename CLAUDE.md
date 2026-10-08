@@ -16,7 +16,8 @@ The Python env is `/glade/work/bbuchovecky/miniforge3/envs/data-sci-py312/bin/py
 
 ```bash
 PY=/glade/work/bbuchovecky/miniforge3/envs/data-sci-py312/bin/python
-$PY -m pytest test_binned_et.py                      # full suite (~70 s, no external data needed)
+$PY -m pytest                                        # full suite (~7 min, no external data needed)
+$PY -m pytest test_binned_et.py                      # binning tests only (~70 s)
 $PY -m pytest test_binned_et.py::test_bin_stats_mask # single test
 $PY ilamb_binned_et.py                               # obs pipeline (log: ilamb_binned_et.log)
 $PY cmip_binned_et.py                                # CMIP6 pipeline
@@ -47,7 +48,7 @@ The driver scripts take no CLI arguments. They are configured by module-level co
 
 **`load_cesm.py`** (imported as `lc`) loads the CESM2 ensembles from the tseries archives on glade: `load_fhist_ppe` (FHIST PPE, members in parallel threads), `load_goga2`, `load_cesm2le`, plus `load_grid("fppe"|"goga"|"lens")` and `ppe_member_name`. Callers give each variable's `gcomp` ("lnd"/"atm") and `stream` explicitly; there is no variable lookup table. `be.load_cesm_grid` / `be.load_cesm_variable` wrap it. **`load_era5.py`** (`le`) loads ERA5 monthly means from GDEX and the ERA5 grid file. **`dask_cluster.py`** (`dc`) starts and stops a PBS dask cluster on Casper or Derecho for the notebooks. All three were ported from the user's former `xclimate` package.
 
-**Notebooks** are exploratory and analysis work. `binned_stats.ipynb` is the original version in which the binning functions were defined inline; `binned_et.py` was extracted from it. `open_bin_stats` / `_ensure_bin_coords` still read the notebook-era files. `agu-abstract.ipynb` and `compare-ilamb.ipynb` read the saved `qbin` outputs. `cmip_trends.py` and `obs_trends.py` are empty placeholders.
+**Notebooks** are exploratory and analysis work. `binned_stats.ipynb` is the original version in which the binning functions were defined inline; `binned_et.py` was extracted from it. `open_bin_stats` / `_ensure_bin_coords` still read the notebook-era files. `agu-abstract.ipynb` and `compare-ilamb.ipynb` read the saved `qbin` outputs.
 
 ## Conventions that matter
 
@@ -58,4 +59,17 @@ The driver scripts take no CLI arguments. They are configured by module-level co
 - **Units:** there are two conversion paths. `convert_units` keys on the variable name (CMIP, CESM, ERA5), and `latent_heat_to_wm2` keys on the `units` attr (ILAMB). Both use L = 2.45e6 J/kg.
 - **Net radiation sign conventions** differ by source. Use the matching `net_radiation_cmip`, `net_radiation_cesm` or `net_radiation_era5`.
 - **Domain:** `LAT_BNDS = slice(-58, 90)` excludes Antarctica, and the land fraction threshold is `LF_THRESH = 0.5`.
-- **Tests:** tests cover `binned_et.py` with synthetic data. The loaders (`load_cmip`, `load_cesm_*`, `load_ilamb_obs`, `load_cesm.py`, `load_era5.py`), `dask_cluster.py` and `compute_cell_area` need glade data, PBS or ILAMB and are not tested.
+- **Tests:** all tests use synthetic data. `test_binned_et.py` covers `binned_et.py`, `test_regrid.py` covers `regrid.py`, `test_load_obs.py` and `test_regrid_obs.py` cover the obs loader and regridder, and `test_load_ilamb.py` and `test_load_cmip.py` pin the driver loaders (`ib.load_product`, the monthly ILAMB loaders, CMIP member selection, `cbe.load_model`). Not tested, because they need glade data, PBS or ILAMB: `load_cmip`, `load_cesm_*`, `load_ilamb_obs`, `load_cesm.py`, `load_era5.py`, `dask_cluster.py` and `compute_cell_area`.
+
+## Refactoring guidelines
+- Prefer incremental changes over large rewrites
+- Document any behavior changes in commit messages
+- Add comments to improve readability and interpretability. Keep the comments concise and avoid being excessively verbose.
+
+## Hard Rules
+- Do NOT create stub functions
+- Do NOT modify any files outside of /glade/u/home/bbuchovecky/projects/et_unc/. The only exceptions are for the refactor in `refactor.md`:
+  - the regression baseline and verification outputs in `/glade/derecho/scratch/bbuchovecky/et_unc_refactor/`
+  - creating and installing into the `etunc` env at `/glade/work/bbuchovecky/miniforge3/envs/etunc`
+  - installing the `etunc` Jupyter kernel (`~/.local/share/jupyter/kernels/etunc`)
+- Always run tests before reporting a task is complete
