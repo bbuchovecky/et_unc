@@ -73,8 +73,8 @@ import xarray as xr
 
 import binned_et as be       # LAT_BNDS, grid checks, map helpers
 import ilamb_binned_et as ib  # ILAMB product table, land mask, output roots
-import load_obs as lo        # loader for PML / GLEAM / SiTH files
-import regrid as rg          # common target grids and regridders
+import etunc.load.obs as lo        # loader for PML / GLEAM / SiTH files
+import etunc.grid as rg          # common target grids and regridders
 
 
 # ------------------------------------------------------------------

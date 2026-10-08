@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-import regrid as rg
-from load_cmip_esgf import CMIPESGFLoader
+import etunc.grid as rg
+from etunc.load.cmip import CMIPESGFLoader
 
 
 CATALOG_PATH = Path("/glade/derecho/scratch/bbuchovecky/cmip_intake_esgf_fetch/manifests/esgf_cache_catalog.csv")

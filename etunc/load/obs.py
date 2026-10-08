@@ -1,6 +1,6 @@
 """
-load_obs.py
-===========
+etunc.load.obs
+==============
 Load gridded observational products stored as NetCDF files per variable and
 year (GLEAM v4.3, PML-V2.2) or per variable and multi-year period (SiTHv2) into
 a single DataArray over a time period.
@@ -26,7 +26,7 @@ as the dataset dir (see ``at_resolution``).
 
 Example
 -------
->>> import load_obs as lo
+>>> import etunc.load.obs as lo
 >>> et = lo.load_gleam("E", slice("1995-01", "2014-12"))                 # v4.3a, monthly
 >>> et = lo.load_pml("ET", slice("1995", "2014"), version="V2.2c")
 >>> et = lo.load_obs("pml", "ET", slice("2003", "2005"), version="V2.2a-MODIS", freq="8-day")

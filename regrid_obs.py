@@ -25,7 +25,7 @@ source file:
 so a regridded product can be read back with the `load_obs` functions via
 their `res` argument ("0.5" or "1"; see `load_obs.at_resolution`):
 
->>> import load_obs as lo
+>>> import etunc.load.obs as lo
 >>> et = lo.load_obs("pml", "ET", slice("2003", "2014"), res="1")
 
 Regridded SiTHv2 files are float32 with NaN and dims (time, lat, lon); the
@@ -46,8 +46,8 @@ import numpy as np
 import xarray as xr
 import xesmf as xe
 
-import load_obs as lo
-import regrid as rg
+import etunc.load.obs as lo
+import etunc.grid as rg
 
 
 REGRID_ROOT = lo.REGRID_ROOT  # = /glade/campaign/univ/uwas0155/obs/regridded

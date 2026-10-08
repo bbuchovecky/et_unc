@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import load_obs as lo
+import etunc.load.obs as lo
 
 
 # ------------------------------------------------------------------

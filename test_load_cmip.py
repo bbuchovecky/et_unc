@@ -16,7 +16,7 @@ import xarray as xr
 
 import binned_et as be
 import cmip_binned_et as cb
-from load_cmip_esgf import CMIPESGFLoader
+from etunc.load.cmip import CMIPESGFLoader
 
 
 # ------------------------------------------------------------------

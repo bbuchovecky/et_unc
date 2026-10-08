@@ -12,8 +12,8 @@ import xarray as xr
 
 import cmip_binned_et as cb
 import ilamb_binned_et as ib
-import load_obs as lo
-import regrid as rg
+import etunc.load.obs as lo
+import etunc.grid as rg
 import regrid_cmip_esgf as rce
 import regrid_obs as ro
 

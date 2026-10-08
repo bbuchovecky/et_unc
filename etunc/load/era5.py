@@ -1,12 +1,12 @@
 """
-load_era5.py
-============
+etunc.load.era5
+===============
 Load ERA5 monthly means from the NCAR GDEX archive (ds633.0 / ds633.5) and the
 ERA5 grid file (LANDFRAC, ...).
 
 Example
 -------
->>> import load_era5 as le
+>>> import etunc.load.era5 as le
 >>> grid = le.load_era5_grid()
 >>> rns = le.load_era5("msnswrf", "1995-01", "2014-12", kind="meanflux")
 """

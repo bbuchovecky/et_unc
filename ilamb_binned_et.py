@@ -62,7 +62,7 @@ import regionmask as regmask
 import xarray as xr
 
 import binned_et as be
-import regrid as rg
+import etunc.grid as rg
 
 
 # ------------------------------------------------------------------

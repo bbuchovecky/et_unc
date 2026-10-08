@@ -14,8 +14,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import load_obs as lo
-import regrid as rg
+import etunc.load.obs as lo
+import etunc.grid as rg
 import regrid_obs as ro
 
 

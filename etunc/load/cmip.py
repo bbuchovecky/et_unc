@@ -1,4 +1,6 @@
 """
+etunc.load.cmip
+===============
 Module to load CMIP ESGF catalog data and selected datasets from a catalog CSV file.
 Primarily for data downloaded using `cmip-intake-esgf-fetch`.
 """

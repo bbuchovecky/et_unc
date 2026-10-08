@@ -1,6 +1,6 @@
 """
-regrid.py
-=========
+etunc.grid
+==========
 Core regridding utilities shared by every script that puts a dataset on a
 common grid (`regrid_obs.py`, `regrid_cmip_esgf.py`, `ilamb_binned_et.py`,
 `cmip_binned_et.py`).

@@ -1,6 +1,6 @@
 """
-load_cesm.py
-============
+etunc.load.cesm
+===============
 Load CESM2 ensemble output from the CESM time-series (tseries) archives on glade:
 the FHIST perturbed-parameter ensemble ("fppe"), the GOGA2 10-member ensemble
 ("goga") and the CESM2 Large Ensemble ("lens"). Also holds each ensemble's grid
@@ -12,7 +12,7 @@ averages (see ``shift_time``).
 
 Example
 -------
->>> import load_cesm as lc
+>>> import etunc.load.cesm as lc
 >>> grid = lc.load_grid("fppe")
 >>> ds = lc.load_fhist_ppe("EFLX_LH_TOT", "lnd", "month_1")
 >>> ds = lc.load_goga2("EFLX_LH_TOT", "lnd", "month_1", "h0")

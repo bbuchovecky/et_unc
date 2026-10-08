@@ -57,7 +57,7 @@ import xarray as xr
 
 import binned_et as be
 import ilamb_binned_et as ib
-import load_obs as lo
+import etunc.load.obs as lo
 import regrid_obs as ro
 
 

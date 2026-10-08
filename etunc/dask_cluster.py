@@ -1,12 +1,12 @@
 """
-dask_cluster.py
-===============
+etunc.dask_cluster
+==================
 Start and stop a dask PBS cluster on NCAR's Casper or Derecho
 (https://ncar.github.io/dask-tutorial/notebooks/05-dask-hpc.html).
 
 Example
 -------
->>> import dask_cluster as dc
+>>> import etunc.dask_cluster as dc
 >>> client_cluster = dc.create_dask_cluster(account="UWAS0155", nworkers=4, ncores=4, nmem="32GB")
 >>> ...
 >>> dc.close_dask_cluster(client_cluster)

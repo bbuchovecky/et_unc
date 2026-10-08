@@ -66,8 +66,8 @@ import regionmask as regmask
 import xarray as xr
 
 import binned_et as be
-import regrid as rg
-from load_cmip_esgf import CMIPESGFLoader
+import etunc.grid as rg
+from etunc.load.cmip import CMIPESGFLoader
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
 

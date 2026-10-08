@@ -18,7 +18,7 @@ import binned_et as be
 import ilamb_binned_et as ib
 import mask as mk
 import obs_et_availability as oa
-import regrid as rg
+import etunc.grid as rg
 
 
 # ------------------------------------------------------------------

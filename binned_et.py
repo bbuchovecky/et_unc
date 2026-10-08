@@ -42,7 +42,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterable, Literal, Mapping, Sequence
-import sys
 import warnings
 
 import numpy as np
@@ -54,7 +53,7 @@ import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
 import cartopy.crs as ccrs
 
-import load_cesm as lc
+import etunc.load.cesm as lc
 
 
 # ------------------------------------------------------------------
@@ -1294,11 +1293,7 @@ def load_cmip(
     -------
     {source_id: {variable: da, "la": land area, "lf": land fraction, "mask": mask}}
     """
-    try:
-        from load_cmip_esgf import CMIPESGFLoader
-    except ImportError:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from load_cmip_esgf import CMIPESGFLoader
+    from etunc.load.cmip import CMIPESGFLoader
 
     loader = CMIPESGFLoader(catalog)
     cmip = loader.load_data(
