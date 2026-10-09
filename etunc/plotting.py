@@ -310,6 +310,55 @@ def plot_bin_facets(
     return fg
 
 
+def plot_bin_means(
+    bs: xr.DataArray,
+    dim: str,
+    *,
+    title: str = "",
+    fout: str | Path | None = None,
+    col_wrap: int = 6,
+    size: float = 3,
+    hatch: xr.DataArray | None = None,
+):
+    """
+    One heatmap of the bin mean of `bs` per entry along `dim` (e.g. "combo",
+    "source_id") on a shared colour scale. Panels share axes, so ticks show
+    the bin edge values when all panels share edges, and quantile levels when
+    each has its own edges. Panel titles are the `dim` label, plus its
+    `time_period` when that is a coord along `dim`.
+
+    hatch : boolean (dim, y_bin, x_bin) field; True bins are hatched
+        (e.g. ~`binning.test_significance`)
+    """
+    fg = plot_bin_facets(
+        bs, dim=dim, col_wrap=min(col_wrap, bs.sizes[dim]), size=size,
+        cmap="YlGnBu", robust=True, cbar_kwargs={"label": f"bin mean {bs.name} [{bs.attrs.get('units', '?')}]"},
+    )
+    shared_edges = dim not in bs["y_bin_lower"].dims and dim not in bs["x_bin_lower"].dims
+    with_period = "time_period" in bs.coords and bs["time_period"].dims == (dim,)
+    for ax, name_dict in zip(fg.axs.flat, fg.name_dicts.flat):
+        if name_dict is None:
+            continue
+        label = name_dict[dim]
+        if with_period:
+            label = f"{label}\n{bs.sel(**name_dict).time_period.item()}"
+        ax.set_title(label, fontsize=8)
+        if hatch is not None:
+            hatch_bins(ax, hatch.sel(**name_dict))
+    if shared_edges:
+        set_edge_ticks(fg.axs.flat[0], bs, "{:.2g}")
+    else:
+        for d, set_ticks in (("x_bin", fg.axs.flat[0].set_xticks), ("y_bin", fg.axs.flat[0].set_yticks)):
+            n = bs.sizes[d]
+            set_ticks(np.arange(n + 1) - 0.5, [f"Q{q:.0f}" for q in np.linspace(0, 100, n + 1)])
+    for ax in fg.axs.flat:
+        ax.tick_params(axis="both", labelsize=7)
+        ax.tick_params(axis="x", labelrotation=90)
+    fg.set_axis_labels("ai $\\rightarrow$", "lai $\\rightarrow$")
+    fg.fig.suptitle(title, y=1.02)
+    return finish(fg.fig, fout)
+
+
 def plot_bin_summary(
     bs: xr.DataArray,
     dim: str | None = None,

@@ -771,3 +771,27 @@ def test_save_map_writes_styled_map(tmp_path, inputs, capsys):
     with pytest.raises(KeyError):
         plotting.save_map(da, "not_a_variable", tmp_path / "x.png")
     plt.close("all")
+
+
+def test_plot_bin_means_titles_and_ticks(inputs, edges):
+    """
+    plot_bin_means titles each panel with its `dim` label (plus time_period when that is a coord along dim),
+    uses edge values as ticks when all panels share edges and quantile levels otherwise, and hatches.
+    """
+    y_edges, x_edges = edges
+    bs = binning.bin_stats(inputs["et"], inputs["lai"], inputs["ai"], y_edges, x_edges, name="et")
+    shared = xr.concat([bs, bs * 2], dim="combo").assign_coords(
+        combo=["a", "b"], time_period=("combo", ["200001-200212", "200101-200212"]))
+    fig = plotting.plot_bin_means(shared, "combo", hatch=shared.sel(stats="count") > 0)
+    titles = [ax.get_title() for ax in fig.axes if ax.get_title()]
+    assert titles[:2] == ["a\n200001-200212", "b\n200101-200212"]
+    assert fig.axes[0].get_xticklabels()[0].get_text() != "Q0"
+    assert len(fig.axes[0].patches) > 0
+    plt.close(fig)
+
+    own = xr.concat([bs, bs.assign_coords(y_bin_lower=bs.y_bin_lower + 1)], dim="source_id", compat="equals",
+                    coords="different").assign_coords(source_id=["M1", "M2"])
+    fig = plotting.plot_bin_means(own, "source_id")
+    assert [ax.get_title() for ax in fig.axes if ax.get_title()][:2] == ["M1", "M2"]
+    assert fig.axes[0].get_xticklabels()[0].get_text() == "Q0"
+    plt.close(fig)

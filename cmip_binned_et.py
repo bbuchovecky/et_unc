@@ -59,7 +59,6 @@ import warnings
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -276,45 +275,6 @@ def plot_model_edges(
     return plotting.finish(fig, fout)
 
 
-def plot_model_bin_means(
-    bs_all: xr.DataArray,
-    title: str = "",
-    fout: Path | None = None,
-    col_wrap: int = 6,
-    hatch: xr.DataArray | None = None,
-):
-    """
-    One heatmap of the bin mean ET per model on a shared colour scale. Panels
-    share axes, so ticks show the bin edge values when all models share edges,
-    and quantile levels when each has its own edges.
-
-    hatch : boolean (source_id, y_bin, x_bin) field; True bins are hatched
-        (e.g. ~`binning.test_significance`)
-    """
-    fg = plotting.plot_bin_facets(
-        bs_all, dim="source_id", col_wrap=min(col_wrap, bs_all.sizes["source_id"]), size=3,
-        cmap="YlGnBu", robust=True, cbar_kwargs={"label": f"bin mean evspsbl [{bs_all.attrs.get('units', '?')}]"},
-    )
-    for ax, name_dict in zip(fg.axs.flat, fg.name_dicts.flat):
-        if name_dict is None:
-            continue
-        ax.set_title(name_dict["source_id"], fontsize=8)
-        if hatch is not None:
-            plotting.hatch_bins(ax, hatch.sel(**name_dict))
-    if "source_id" not in bs_all["y_bin_lower"].dims and "source_id" not in bs_all["x_bin_lower"].dims:
-        plotting.set_edge_ticks(fg.axs.flat[0], bs_all, "{:.2g}")
-    else:
-        for dim, set_ticks in (("x_bin", fg.axs.flat[0].set_xticks), ("y_bin", fg.axs.flat[0].set_yticks)):
-            n = bs_all.sizes[dim]
-            set_ticks(np.arange(n + 1) - 0.5, [f"Q{q:.0f}" for q in np.linspace(0, 100, n + 1)])
-    for ax in fg.axs.flat:
-        ax.tick_params(axis="both", labelsize=7)
-        ax.tick_params(axis="x", labelrotation=90)
-    fg.set_axis_labels("ai $\\rightarrow$", "lai $\\rightarrow$")
-    fg.fig.suptitle(title, y=1.02)
-    return plotting.finish(fg.fig, fout)
-
-
 # ------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------
@@ -473,7 +433,7 @@ def main():
         )
         print(fout)
         fout = FIG_ROOT / "cmip6" / "qbin" / f"{fstem}.bin_mean.png"
-        plot_model_bin_means(bs_all, title=f"CMIP6 evspsbl bin mean, {nsid} models, {kind} edges, {period}", fout=fout)
+        plotting.plot_bin_means(bs_all, "source_id", title=f"CMIP6 evspsbl bin mean, {nsid} models, {kind} edges, {period}", fout=fout)
         print(fout)
 
         # Hatch non-empty bins whose mean is not significantly different from 0
@@ -482,8 +442,8 @@ def main():
         print(f"{kind}: {int(not_signif.sum())} of {int(bs_all.sel(stats='mean').notnull().sum())} "
               f"non-empty bins not significant at {1 - SIGNIF_ALPHA:.0%}")
         fout = FIG_ROOT / "cmip6" / "qbin" / f"{fstem}.bin_mean_signif.png"
-        plot_model_bin_means(
-            bs_all, fout=fout, hatch=not_signif,
+        plotting.plot_bin_means(
+            bs_all, "source_id", fout=fout, hatch=not_signif,
             title=(f"CMIP6 evspsbl bin mean, {nsid} models, {kind} edges, {period}; hatched: not significantly "
                    f"different from 0 at {1 - SIGNIF_ALPHA:.0%} (t-test, n > {SIGNIF_N_MIN})"),
         )

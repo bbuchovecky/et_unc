@@ -274,47 +274,6 @@ def plot_combo_edges(combo_edges: xr.DataArray, pooled: xr.DataArray, title: str
     return plotting.finish(fig, fout)
 
 
-def plot_combo_bin_means(
-    bs_all: xr.DataArray,
-    title: str = "",
-    fout: Path | None = None,
-    col_wrap: int = 4,
-    hatch: xr.DataArray | None = None,
-):
-    """
-    One heatmap of the bin mean ET per combination on a shared colour scale.
-    Panels share axes, so ticks show the bin edge values when all combinations
-    share edges, and quantile levels when each has its own edges.
-
-    hatch : boolean (combo, y_bin, x_bin) field; True bins are hatched
-        (e.g. ~`binning.test_significance`)
-    """
-    fg = plotting.plot_bin_facets(
-        bs_all, dim="combo", col_wrap=min(col_wrap, bs_all.sizes["combo"]), size=3.5,
-        cmap="YlGnBu", robust=True, cbar_kwargs={"label": f"bin mean et [{bs_all.attrs.get('units', '?')}]"},
-    )
-    shared_edges = "combo" not in bs_all["y_bin_lower"].dims and "combo" not in bs_all["x_bin_lower"].dims
-    for ax, name_dict in zip(fg.axs.flat, fg.name_dicts.flat):
-        if name_dict is None:
-            continue
-        panel = bs_all.sel(**name_dict)
-        ax.set_title(f"{name_dict['combo']}\n{panel.time_period.item()}", fontsize=8)
-        if hatch is not None:
-            plotting.hatch_bins(ax, hatch.sel(**name_dict))
-    if shared_edges:
-        plotting.set_edge_ticks(fg.axs.flat[0], bs_all, "{:.2g}")
-    else:
-        for dim, set_ticks in (("x_bin", fg.axs.flat[0].set_xticks), ("y_bin", fg.axs.flat[0].set_yticks)):
-            n = bs_all.sizes[dim]
-            set_ticks(np.arange(n + 1) - 0.5, [f"Q{q:.0f}" for q in np.linspace(0, 100, n + 1)])
-    for ax in fg.axs.flat:
-        ax.tick_params(axis="both", labelsize=7)
-        ax.tick_params(axis="x", labelrotation=90)
-    fg.set_axis_labels("ai $\\rightarrow$", "lai $\\rightarrow$")
-    fg.fig.suptitle(title, y=1.02)
-    return plotting.finish(fg.fig, fout)
-
-
 def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | None = None):
     """
     One heatmap per (lai, pr, rns) product set of the std of bin mean ET across
@@ -494,7 +453,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
         plotting.plot_bin_summary(bs_all, dim="combo", title=f"obs ET, {ncombo} combinations, {kind} edges", fout=fout)
         print(fout)
         fout = FIG_ROOT / "obs" / "qbin" / f"{fstem}.bin_mean.png"
-        plot_combo_bin_means(bs_all, title=f"obs ET bin mean, {ncombo} combinations, {kind} edges", fout=fout)
+        plotting.plot_bin_means(bs_all, "combo", col_wrap=4, size=3.5, title=f"obs ET bin mean, {ncombo} combinations, {kind} edges", fout=fout)
         print(fout)
 
         # Hatch non-empty bins whose mean is not significantly different from 0
@@ -503,8 +462,8 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
         print(f"{kind}: {int(not_signif.sum())} of {int(bs_all.sel(stats='mean').notnull().sum())} "
               f"non-empty bins not significant at {1 - SIGNIF_ALPHA:.0%}")
         fout = FIG_ROOT / "obs" / "qbin" / f"{fstem}.bin_mean_signif.png"
-        plot_combo_bin_means(
-            bs_all, fout=fout, hatch=not_signif,
+        plotting.plot_bin_means(
+            bs_all, "combo", col_wrap=4, size=3.5, fout=fout, hatch=not_signif,
             title=(f"obs ET bin mean, {ncombo} combinations, {kind} edges; hatched: not significantly "
                    f"different from 0 at {1 - SIGNIF_ALPHA:.0%} (t-test, n > {SIGNIF_N_MIN})"),
         )
