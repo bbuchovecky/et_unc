@@ -59,7 +59,6 @@ import warnings
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import pandas as pd
 import xarray as xr
 
 import etunc.config as config
@@ -68,6 +67,7 @@ import etunc.temporal as temporal
 import etunc.binning as binning
 import etunc.plotting as plotting
 import etunc.grid as rg
+import etunc.load.cmip as cmip
 from etunc.load.cmip import CMIPESGFLoader
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
@@ -119,65 +119,8 @@ TARGET_GRID = rg.target_grid(TARGET_RES)
 NA_THRES = 0.5  # target cells with more than this fraction of area outside the native land mask are NaN
 
 # ------------------------------------------------------------------
-# Model and member selection
-# ------------------------------------------------------------------
-
-def available_members(catalog: pd.DataFrame) -> dict[str, list[str]]:
-    """{source_id: sorted members with every VARIABLE} for EXPERIMENT_ID."""
-    hist = catalog[catalog["experiment_id"] == EXPERIMENT_ID]
-    avail = {}
-    for sid, g in hist.groupby("source_id"):
-        mids = set.intersection(*(set(g.loc[g["variable_id"] == v, "member_id"]) for v in VARIABLES))
-        if mids:
-            avail[sid] = CMIPESGFLoader.sort_member_ids(mids)
-    return avail
-
-
-def sftlf_files(fx_catalog: Path) -> dict[str, str]:
-    """{source_id: sftlf file}. The fx catalog holds one file per model (often from piControl)."""
-    fx = pd.read_csv(fx_catalog)
-    rows = fx[fx["variable_id"] == "sftlf"]
-    dup = rows["source_id"][rows["source_id"].duplicated()].tolist()
-    if dup:
-        raise ValueError(f"{fx_catalog}: more than one sftlf file for {dup}")
-    return dict(zip(rows["source_id"], rows["path"]))
-
-
-def select_members(sid: str, avail: list[str]) -> list[str]:
-    """Resolve MEMBER_IDS / DEFAULT_MEMBERS for one model against its available members."""
-    spec = MEMBER_IDS.get(sid, DEFAULT_MEMBERS)
-    if spec == "top":
-        return avail[:1]
-    if spec == "all":
-        return avail
-    if spec == "max_r":
-        return max(CMIPESGFLoader.group_member_ids_by_ipf(avail).values(), key=len)
-    if isinstance(spec, str):
-        raise ValueError(f"{sid}: unknown member selection {spec!r}")
-    missing = [m for m in spec if m not in avail]
-    if missing:
-        print(f"{sid}: members {missing} do not have all of {VARIABLES}, skipping them")
-    return [m for m in spec if m in avail]
-
-
-def member_tag(members: list[str]) -> str:
-    return members[0] if len(members) == 1 else f"{len(members)}members"
-
-
-# ------------------------------------------------------------------
 # Loading and regridding
 # ------------------------------------------------------------------
-
-def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
-    """Land fraction [0-1] on a model's native grid, and that grid with cell edges for regridding."""
-    with xr.open_dataset(path) as ds:
-        ds = ds.load()
-    lf = ds["sftlf"].reset_coords(drop=True)
-    # sftlf should be in %, but some files store a fraction labelled "%" (E3SM-1-0), so check the values
-    if float(lf.max()) > 1.5:
-        lf = lf / 100
-    return lf.assign_attrs(units="1"), rg.bounded_source_grid(ds)
-
 
 def load_model(
     loader: CMIPESGFLoader,
@@ -191,7 +134,7 @@ def load_model(
     for one model, conservatively regridded onto TARGET_GRID within LAT_BNDS
     and masked with `mask`.
     """
-    lf, src_grid = load_land_fraction(sftlf_path)
+    lf, src_grid = cmip.load_land_fraction(sftlf_path)
     native_mask = rg.mask_greenland(lf, config.LF_THRESH)
 
     data = loader.load_data(
@@ -288,8 +231,8 @@ def main():
     # Models (all VARIABLES and sftlf) and members
     # ------------------------------------------------------------------
     print("=== Models and members ===")
-    avail = available_members(loader.catalog)
-    sftlf = sftlf_files(FX_CATALOG)
+    avail = cmip.available_members(loader.catalog, VARIABLES, EXPERIMENT_ID)
+    sftlf = cmip.sftlf_files(FX_CATALOG)
     sids = sorted(set(SOURCE_IDS or avail) - set(OMIT_SOURCE_IDS))
     no_vars = [s for s in sids if s not in avail]
     no_sftlf = [s for s in sids if s in avail and s not in sftlf]
@@ -300,7 +243,7 @@ def main():
     members = {}
     for sid in sids:
         if sid in avail and sid in sftlf:
-            members[sid] = select_members(sid, avail[sid])
+            members[sid] = cmip.select_members(sid, avail[sid], MEMBER_IDS, DEFAULT_MEMBERS)
             print(f"{sid:16}: {len(members[sid])} of {len(avail[sid])} members {members[sid]}")
     members = {sid: m for sid, m in members.items() if m}
 
@@ -319,7 +262,7 @@ def main():
         inputs[sid] = binning.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
 
         # Maps of member-mean climatologies (each model's own area, before the common area mask)
-        mtag = member_tag(mids)
+        mtag = cmip.member_tag(mids)
         clim = {
             "evspsbl": temporal.aggregate(ann["et"], "clim"),
             "lai": inputs[sid]["lai"],
@@ -383,7 +326,7 @@ def main():
     bs = {"pooled_cmip": [], "model": []}
     model_edges = {"lai": {}, "ai": {}}
     for sid in sids:
-        mids, mtag = members[sid], member_tag(members[sid])
+        mids, mtag = members[sid], cmip.member_tag(members[sid])
         attrs = {"source_id": sid, "time_period": period, "grid": GRID_TAG, "n_members": len(mids)}
 
         # This model's own edges, pooled over its members

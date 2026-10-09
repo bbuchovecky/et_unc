@@ -17,12 +17,16 @@ import xarray as xr
 import etunc.config as config
 import etunc.grid as rg
 import cmip_binned_et as cb
+import etunc.load.cmip as cmip
 from etunc.load.cmip import CMIPESGFLoader
 
 
 # ------------------------------------------------------------------
 # Member IDs and member selection
 # ------------------------------------------------------------------
+
+# cmip_binned_et.VARIABLES, passed explicitly
+VARIABLES = ["evspsbl", "lai", "pr", "rsds", "rsus", "rlds", "rlus"]
 
 def test_sort_member_ids_numeric():
     """Member IDs sort numerically by r, i, p, f (r10 after r2), and invalid IDs raise."""
@@ -51,7 +55,7 @@ def test_available_members():
     """
     A model's members are the historical members with every VARIABLE, sorted; models without any are left out.
     """
-    allv = cb.VARIABLES
+    allv = VARIABLES
     rows = (
         catalog_rows("A", "r2i1p1f1", allv)
         + catalog_rows("A", "r1i1p1f1", allv)
@@ -62,7 +66,7 @@ def test_available_members():
         + catalog_rows("C", "r2i1p1f1", allv)
         + catalog_rows("D", "r1i1p1f1", allv, experiment_id="ssp585")
     )
-    avail = cb.available_members(pd.DataFrame(rows))
+    avail = cmip.available_members(pd.DataFrame(rows), VARIABLES, "historical")
     assert avail == {"A": ["r1i1p1f1", "r2i1p1f1"], "C": ["r2i1p1f1", "r10i1p1f1"]}
 
 
@@ -76,29 +80,24 @@ AVAIL = ["r1i1p1f1", "r1i1p2f1", "r2i1p1f1", "r2i1p2f1", "r3i1p2f1"]
     (["r3i1p2f1", "r1i1p1f1"], ["r3i1p2f1", "r1i1p1f1"]),  # order of the list, not of AVAIL
     (["r1i1p1f1", "r9i1p1f1"], ["r1i1p1f1"]),              # unavailable members dropped
 ])
-def test_select_members_default(monkeypatch, spec, expected):
-    """Each DEFAULT_MEMBERS mode (top, all, max_r, explicit list) selects the expected members."""
-    monkeypatch.setattr(cb, "MEMBER_IDS", {})
-    monkeypatch.setattr(cb, "DEFAULT_MEMBERS", spec)
-    assert cb.select_members("A", AVAIL) == expected
+def test_select_members_default(spec, expected):
+    """Each default mode (top, all, max_r, explicit list) selects the expected members."""
+    assert cmip.select_members("A", AVAIL, {}, spec) == expected
 
 
-def test_select_members_max_r_tie_takes_first_group(monkeypatch):
+def test_select_members_max_r_tie_takes_first_group():
     """With max_r, a tie between groups goes to the group of the first sorted member."""
-    monkeypatch.setattr(cb, "MEMBER_IDS", {})
-    monkeypatch.setattr(cb, "DEFAULT_MEMBERS", "max_r")
     # Two groups of two: the group of the first sorted member wins
-    assert cb.select_members("A", ["r2i1p2f1", "r1i1p2f1", "r2i1p1f1", "r1i1p1f1"]) == ["r1i1p1f1", "r2i1p1f1"]
+    assert cmip.select_members("A", ["r2i1p2f1", "r1i1p2f1", "r2i1p1f1", "r1i1p1f1"], {}, "max_r") == ["r1i1p1f1", "r2i1p1f1"]
 
 
-def test_select_members_per_model_and_unknown(monkeypatch):
-    """MEMBER_IDS overrides DEFAULT_MEMBERS for a model, and an unknown mode raises."""
-    monkeypatch.setattr(cb, "DEFAULT_MEMBERS", "top")
-    monkeypatch.setattr(cb, "MEMBER_IDS", {"B": "all", "C": "first"})
-    assert cb.select_members("A", AVAIL) == ["r1i1p1f1"]
-    assert cb.select_members("B", AVAIL) == AVAIL
+def test_select_members_per_model_and_unknown():
+    """member_ids overrides the default for a model, and an unknown mode raises."""
+    member_ids = {"B": "all", "C": "first"}
+    assert cmip.select_members("A", AVAIL, member_ids, "top") == ["r1i1p1f1"]
+    assert cmip.select_members("B", AVAIL, member_ids, "top") == AVAIL
     with pytest.raises(ValueError, match="unknown member selection"):
-        cb.select_members("C", AVAIL)
+        cmip.select_members("C", AVAIL, member_ids, "top")
 
 
 def test_sftlf_files(tmp_path):
@@ -110,18 +109,18 @@ def test_sftlf_files(tmp_path):
     ]
     path = tmp_path / "fx.csv"
     pd.DataFrame(rows).to_csv(path, index=False)
-    assert cb.sftlf_files(path) == {"A": "/a/sftlf.nc", "B": "/b/sftlf.nc"}
+    assert cmip.sftlf_files(path) == {"A": "/a/sftlf.nc", "B": "/b/sftlf.nc"}
 
     rows.append({"source_id": "B", "variable_id": "sftlf", "path": "/b/other/sftlf.nc"})
     pd.DataFrame(rows).to_csv(path, index=False)
     with pytest.raises(ValueError, match=r"more than one sftlf file for \['B'\]"):
-        cb.sftlf_files(path)
+        cmip.sftlf_files(path)
 
 
 def test_member_tag():
     """One member is tagged by its ID, several by their count."""
-    assert cb.member_tag(["r1i1p1f1"]) == "r1i1p1f1"
-    assert cb.member_tag(["r1i1p1f1", "r2i1p1f1", "r3i1p1f1"]) == "3members"
+    assert cmip.member_tag(["r1i1p1f1"]) == "r1i1p1f1"
+    assert cmip.member_tag(["r1i1p1f1", "r2i1p1f1", "r3i1p1f1"]) == "3members"
 
 
 # ------------------------------------------------------------------

@@ -10,11 +10,13 @@ from __future__ import annotations
 import re
 import warnings
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+
+from etunc.grid import bounded_source_grid
 
 # -----------------------
 # Helpers
@@ -628,3 +630,74 @@ class CMIPESGFLoader:
 
         return data_dict
 
+
+# ------------------------------------------------------------------
+# Model and member selection, land fraction (cmip_binned_et.py)
+# ------------------------------------------------------------------
+
+def available_members(
+    catalog: pd.DataFrame, variables: Sequence[str], experiment_id: str = "historical",
+) -> dict[str, list[str]]:
+    """{source_id: sorted members with every one of `variables`} for `experiment_id`."""
+    hist = catalog[catalog["experiment_id"] == experiment_id]
+    avail = {}
+    for sid, g in hist.groupby("source_id"):
+        mids = set.intersection(*(set(g.loc[g["variable_id"] == v, "member_id"]) for v in variables))
+        if mids:
+            avail[sid] = CMIPESGFLoader.sort_member_ids(mids)
+    return avail
+
+
+def sftlf_files(fx_catalog: Path) -> dict[str, str]:
+    """{source_id: sftlf file}. The fx catalog holds one file per model (often from piControl)."""
+    fx = pd.read_csv(fx_catalog)
+    rows = fx[fx["variable_id"] == "sftlf"]
+    dup = rows["source_id"][rows["source_id"].duplicated()].tolist()
+    if dup:
+        raise ValueError(f"{fx_catalog}: more than one sftlf file for {dup}")
+    return dict(zip(rows["source_id"], rows["path"]))
+
+
+def select_members(
+    sid: str,
+    avail: list[str],
+    member_ids: Mapping[str, str | list[str]] | None = None,
+    default: str | list[str] = "top",
+) -> list[str]:
+    """
+    Members of model `sid` to use, from its available members `avail` (sorted,
+    see `available_members`) and the selection `member_ids.get(sid, default)`:
+    a list of member_ids (unavailable ones are dropped), or
+      "top"   : the first member
+      "max_r" : the largest group of members sharing i/p/f (ties: the first group)
+      "all"   : every available member
+    """
+    spec = (member_ids or {}).get(sid, default)
+    if spec == "top":
+        return avail[:1]
+    if spec == "all":
+        return avail
+    if spec == "max_r":
+        return max(CMIPESGFLoader.group_member_ids_by_ipf(avail).values(), key=len)
+    if isinstance(spec, str):
+        raise ValueError(f"{sid}: unknown member selection {spec!r}")
+    missing = [m for m in spec if m not in avail]
+    if missing:
+        print(f"{sid}: members {missing} are not available (not all variables), skipping them")
+    return [m for m in spec if m in avail]
+
+
+def member_tag(members: list[str]) -> str:
+    """File-name tag: the member_id of a single member, "<n>members" otherwise."""
+    return members[0] if len(members) == 1 else f"{len(members)}members"
+
+
+def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
+    """Land fraction [0-1] on a model's native grid, and that grid with cell edges for regridding."""
+    with xr.open_dataset(path) as ds:
+        ds = ds.load()
+    lf = ds["sftlf"].reset_coords(drop=True)
+    # sftlf should be in %, but some files store a fraction labelled "%" (E3SM-1-0), so check the values
+    if float(lf.max()) > 1.5:
+        lf = lf / 100
+    return lf.assign_attrs(units="1"), bounded_source_grid(ds)
