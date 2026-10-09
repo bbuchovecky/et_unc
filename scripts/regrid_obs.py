@@ -32,7 +32,7 @@ Regridded SiTHv2 files are float32 with NaN and dims (time, lat, lon); the
 "sith" `_decode_sith` preprocess still reads them correctly (scale factor 1).
 
 Existing outputs are skipped unless `OVERWRITE` is True, so the batch job
-(`regrid_obs.pbs`) can be resubmitted after hitting its walltime.
+(`scripts/regrid_obs.pbs`) can be resubmitted after hitting its walltime.
 """
 from __future__ import annotations
 

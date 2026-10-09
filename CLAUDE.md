@@ -7,12 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Research code for quantifying evapotranspiration (ET) uncertainty. ET is binned in a 2-D space of climatological leaf area index (LAI, y-axis) and aridity index (AI = Rn / L·P, x-axis), so CMIP6 models, CESM ensembles (FHIST PPE "fppe", GOGA2, LENS2) and ILAMB observational products can be compared bin by bin.
 
 Runs on NCAR's glade (Derecho/Casper). Data and outputs live outside the repo:
-- Inputs: `/glade/campaign/univ/uwas0155/` (ILAMB obs, CMIP6 catalogs, regridded CMIP6). This is shared campaign storage, so don't write there unless asked.
+- Inputs: `/glade/campaign/univ/uwas0155/` (ILAMB and gridded obs, regridded obs and CMIP6). This is shared campaign storage, so don't write there unless asked.
+- CMIP6 catalogs: `/glade/derecho/scratch/bbuchovecky/cmip_intake_esgf_fetch/`. They, and about 2/3 of the file paths in `cmip_evap.csv`, are on purgeable Derecho scratch. Moving them only needs `CMIP_FETCH_ROOT` changed in `etunc/config.py`.
 - Outputs: `/glade/work/bbuchovecky/et_unc/{proc,fig}` (binned stats `proc/<dataset>/qbin/`, bin edges `proc/qbin_edges/`, figures `fig/`).
+- Every path above is set in `etunc/config.py`.
 
 ## Commands
 
-The Python env is `etunc` (`/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python`), defined in `envs/etunc.yml` (exact versions in `envs/etunc.lock.yml`) with the repo installed editable (`pip install --no-deps -e .`). It has xarray, xesmf, regionmask, cartopy and dask-jobqueue, but not ILAMB: `etunc.grid.cell_area` is a bit-identical port of `ilamblib.CellAreas`. The notebooks that still call `ilamblib` need `data-sci-py312` until their imports are updated (refactor step 7). The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
+The Python env is `etunc` (`/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python`), defined in `envs/etunc.yml` (exact versions in `envs/etunc.lock.yml`) with the repo installed editable (`pip install --no-deps -e .`). It has xarray, xesmf, regionmask, cartopy and dask-jobqueue, but not ILAMB (`etunc.grid.cell_area` is a bit-identical port of `ilamblib.CellAreas`). The notebooks run on the `etunc` Jupyter kernel, except `notebooks/check-disalexi.ipynb` (`openet` env, `envs/openet.yml`). The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
 
 ```bash
 PY=/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python
@@ -30,6 +32,8 @@ qsub scripts/regrid_obs.pbs                          # batch regrid of GLEAM/PML
 The scripts in `scripts/` take no CLI arguments and import only the `etunc` package, never each other. They are configured by module-level constants at the top of each file (`TIME_SLICE`, `N_XBINS`/`N_YBINS`, `SOURCE_IDS`, `MEMBER_IDS`, `MIN_YEARS`, `ILAMB_PRODUCTS`, `GRIDDED_ET_PRODUCTS`, …). Output folders come from `etunc.config`. The download scripts are in `scripts/download/`.
 
 ## Architecture
+
+Layout: `etunc/` (library), `scripts/` (runnable pipelines; `scripts/download/`), `notebooks/`, `tests/`, `envs/`. README.md has a table of the modules.
 
 The dataset-agnostic core library is the `etunc` package (split out of the former `binned_et.py`): `config` (paths and domain constants), `units` (unit conversions, net radiation), `temporal` (annual means, aggregation, period strings), `binning` (inputs, edges, bin statistics, post-processing), `plotting` (maps and bin heatmaps), `grid` (below; also `check_same_grid`/`equal_coords` and `mask_greenland`) and `legacy` (notebook-only loaders and helpers). Scripts import them as `import etunc.binning as binning` etc., with `etunc.grid` as `rg`. The `etunc.binning` docstring documents the pipeline:
 1. Load monthly fields plus a land mask on one shared lat/lon grid, with water fluxes converted to energy fluxes in W/m².
@@ -51,7 +55,7 @@ The dataset-agnostic core library is the `etunc` package (split out of the forme
 
 **`etunc/load/cesm.py`** (imported as `lc`) loads the CESM2 ensembles from the tseries archives on glade: `load_fhist_ppe` (FHIST PPE, members in parallel threads), `load_goga2`, `load_cesm2le`, plus `load_grid("fppe"|"goga"|"lens")` and `ppe_member_name`. Callers give each variable's `gcomp` ("lnd"/"atm") and `stream` explicitly; there is no variable lookup table. `load_cesm_grid` / `load_cesm_variable` in the same module wrap it. **`etunc/load/era5.py`** (`le`) loads ERA5 monthly means from GDEX and the ERA5 grid file. **`etunc/dask_cluster.py`** (`dc`) starts and stops a PBS dask cluster on Casper or Derecho for the notebooks. All three were ported from the user's former `xclimate` package.
 
-**Notebooks** are exploratory and analysis work. `binned_stats.ipynb` is the original version in which the binning functions were defined inline; the former `binned_et.py` was extracted from it. `legacy.open_bin_stats` / `binning.ensure_bin_coords` still read the notebook-era files. `agu-abstract.ipynb` and `compare-ilamb.ipynb` read the saved `qbin` outputs.
+**Notebooks** (`notebooks/`) are exploratory and analysis work. Each starts with a cell naming its env. `binned_stats.ipynb` is the original version in which the binning functions were defined inline; the former `binned_et.py` was extracted from it. `legacy.open_bin_stats` / `binning.ensure_bin_coords` still read the notebook-era files. `agu-abstract.ipynb` and `compare-ilamb.ipynb` read the saved `qbin` outputs.
 
 ## Conventions that matter
 
@@ -71,7 +75,5 @@ The dataset-agnostic core library is the `etunc` package (split out of the forme
 
 ## Hard Rules
 - Do NOT create stub functions
-- Do NOT modify any files outside of /glade/u/home/bbuchovecky/projects/et_unc/. The only exceptions are for the refactor in `refactor.md`:
-  - creating and installing into the `etunc` env at `/glade/work/bbuchovecky/miniforge3/envs/etunc`
-  - installing the `etunc` Jupyter kernel (`~/.local/share/jupyter/kernels/etunc`)
+- Do NOT modify any files outside of /glade/u/home/bbuchovecky/projects/et_unc/
 - Always run tests before reporting a task is complete
