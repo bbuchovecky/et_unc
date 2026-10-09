@@ -83,7 +83,7 @@ import etunc.grid as rg          # common target grids and regridders
 # ------------------------------------------------------------------
 
 # Period over which validity is assessed. Each product only counts the months
-# it actually has inside this window (see `product_mask`).
+# it actually has inside this window (see `rg.product_mask`).
 TIME_SLICE = slice("1982-01", "2025-12")
 RES = "0.5deg"     # common grid, a key of rg.RESOLUTIONS
 MASK_NAME = "obs"  # file name prefix; change it when changing the product set
@@ -161,31 +161,6 @@ def product_loaders() -> dict[str, tuple[str, partial]]:
 # Masks
 # ------------------------------------------------------------------
 
-def product_mask(da: xr.DataArray, land: xr.DataArray, min_frac: float, label: str) -> xr.Dataset:
-    """
-    Valid-month counts of one product and its mask: land gridcells valid in at
-    least `min_frac` of the product's valid months (months with any valid land
-    gridcell). Months without valid land data add 0 to every gridcell's count,
-    so they only need to be left out of the denominator.
-    """
-    # True where the product has data on a land gridcell, per month
-    valid = da.notnull() & land
-    # The product's valid months: months with data on at least one land
-    # gridcell. This is the denominator of the valid fraction.
-    n_months = int(valid.any(("lat", "lon")).sum())
-    if n_months == 0:
-        raise ValueError(f"{label}: no valid land data in {TIME_SLICE}")
-    # Number of months with data at each gridcell (0 over the ocean)
-    n_valid = valid.sum("time")
-    return xr.Dataset({
-        "n_product_months": n_months,
-        "n_valid_months": n_valid.astype("i2"),
-        "frac_valid_months": (n_valid / n_months).where(land).astype("f4"),  # NaN over the ocean
-        # Compare counts rather than fractions, so 1.0 means exactly "every month"
-        "product_mask": land & (n_valid >= min_frac * n_months),
-    })
-
-
 # ------------------------------------------------------------------
 # Plotting
 # ------------------------------------------------------------------
@@ -198,7 +173,7 @@ def plot_product_masks(ds: xr.Dataset, title: str, fout: Path):
     """
     Mask of each product, one map per product: land gridcells with data in any
     month of the product's record within TIME_SLICE (`n_valid_months > 0`).
-    This is looser than `product_mask`, which needs MIN_VALID_FRAC of the months.
+    This is looser than `rg.product_mask`, which needs MIN_VALID_FRAC of the months.
     """
     # Grid of map panels, NCOLS per row (unused panels of the last row removed)
     fig, axs = plotting.facets(ds.sizes["product"], ncols=NCOLS, maps=True, panel_size=(4.6, 2.5))
@@ -238,7 +213,7 @@ def main():
     #    (lat, lon) results are kept, not the monthly data.
     masks = {}
     for label, (variable, load) in product_loaders().items():
-        masks[label] = product_mask(load(), land, MIN_VALID_FRAC[variable], label)
+        masks[label] = rg.product_mask(load(), land, MIN_VALID_FRAC[variable], label)
         m = masks[label]
         print(f"{label:22}: {int(m['n_product_months']):4d} valid months, "
               f"{int(m['product_mask'].sum()):6d} cells in mask "

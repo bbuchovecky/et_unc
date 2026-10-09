@@ -7,6 +7,7 @@ Synthetic data only; takes a few seconds.
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -283,3 +284,27 @@ def test_cell_area_irregular_lat_extrapolates_and_clips():
     lon = np.arange(-170.0, 180.0, 20.0)
     expected = band_areas(np.array([-90.0, -55.0, 5.0, 62.5, 90.0]), np.arange(-180.0, 181.0, 20.0))
     np.testing.assert_allclose(rg.cell_area(lat, lon), expected, rtol=1e-12)
+
+
+# ------------------------------------------------------------------
+# Valid-month product masks (mask.py)
+# ------------------------------------------------------------------
+
+def test_product_mask_counts_only_the_products_valid_months():
+    """
+    A land cell is in the mask when valid in at least min_frac of the product's valid months; months with no
+    valid land data at all are left out of the denominator, and ocean cells are never in the mask.
+    """
+    coords = {"time": pd.date_range("2000-01-01", periods=4, freq="MS"), "lat": [0.0, 1.0], "lon": [0.0, 1.0]}
+    da = xr.DataArray(np.ones((4, 2, 2)), dims=("time", "lat", "lon"), coords=coords)
+    land = xr.DataArray([[True, True], [True, False]], dims=("lat", "lon"), coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0]})
+    da[3] = np.nan                    # a month without data (e.g. a missing file): not counted
+    da[0, 0, 1] = np.nan              # one missing month at (0, 1): 2 of 3 valid months
+    ds = rg.product_mask(da, land, 1.0, "test")
+    assert int(ds["n_product_months"]) == 3
+    np.testing.assert_array_equal(ds["n_valid_months"], [[3, 2], [3, 0]])  # 0 over the ocean
+    np.testing.assert_array_equal(ds["product_mask"], [[True, False], [True, False]])
+    np.testing.assert_allclose(ds["frac_valid_months"], [[1.0, 2 / 3], [1.0, np.nan]])
+    np.testing.assert_array_equal(rg.product_mask(da, land, 0.6, "test")["product_mask"], [[True, True], [True, False]])
+    with pytest.raises(ValueError, match="no valid land data"):
+        rg.product_mask(da * np.nan, land, 1.0, "empty")

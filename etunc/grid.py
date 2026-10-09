@@ -333,6 +333,32 @@ def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
     return mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
 
 
+def product_mask(da: xr.DataArray, land: xr.DataArray, min_frac: float, label: str) -> xr.Dataset:
+    """
+    Valid-month counts of one product's monthly field `da` (time, lat, lon) and
+    its mask: `land` gridcells valid in at least `min_frac` of the product's
+    valid months (months with any valid land gridcell). Months without valid
+    land data add 0 to every gridcell's count, so they only need to be left
+    out of the denominator. Raises if no month has valid land data.
+    """
+    # True where the product has data on a land gridcell, per month
+    valid = da.notnull() & land
+    # The product's valid months: months with data on at least one land
+    # gridcell. This is the denominator of the valid fraction.
+    n_months = int(valid.any(("lat", "lon")).sum())
+    if n_months == 0:
+        raise ValueError(f"{label}: no valid land data")
+    # Number of months with data at each gridcell (0 over the ocean)
+    n_valid = valid.sum("time")
+    return xr.Dataset({
+        "n_product_months": n_months,
+        "n_valid_months": n_valid.astype("i2"),
+        "frac_valid_months": (n_valid / n_months).where(land).astype("f4"),  # NaN over the ocean
+        # Compare counts rather than fractions, so 1.0 means exactly "every month"
+        "product_mask": land & (n_valid >= min_frac * n_months),
+    })
+
+
 # ------------------------------------------------------------------
 # Cell areas
 # ------------------------------------------------------------------
