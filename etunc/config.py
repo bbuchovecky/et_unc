@@ -63,3 +63,30 @@ EARTH_RADIUS = 6.371e6             # m, as in ILAMB, so cell areas match ILAMB's
 
 PROJECTION = ccrs.PlateCarree()
 DPI = 120
+
+
+def summarize():
+    print("######### config.py")
+    print("\nInput Paths:")
+    print(f"{'CAMPAIGN_ROOT':18} = {CAMPAIGN_ROOT}")
+    print(f"{'OBS_ROOT':18} = {OBS_ROOT}")
+    print(f"{'ILAMB_ROOT':18} = {ILAMB_ROOT}")
+    print(f"{'OBS_REGRID_ROOT':18} = {OBS_REGRID_ROOT}")
+    print(f"{'CMIP_REGRID_ROOT':18} = {CMIP_REGRID_ROOT}")
+    print(f"{'CMIP_FETCH_ROOT':18} = {CMIP_FETCH_ROOT}")
+    print(f"{'CMIP_CATALOG_ROOT':18} = {CMIP_CATALOG_ROOT}")
+    print(f"{'CMIP_CATALOG':18} = {CMIP_CATALOG}")
+    print(f"{'CMIP_FX_CATALOG':18} = {CMIP_FX_CATALOG}")
+    print(f"{'ESGF_CACHE_CATALOG':18} = {ESGF_CACHE_CATALOG}")
+    print("\nOutput Paths:")
+    print(f"{'WORK_ROOT':18} = {WORK_ROOT}")
+    print(f"{'PROC_ROOT':18} = {PROC_ROOT}")
+    print(f"{'FIG_ROOT':18} = {FIG_ROOT}")
+    print(f"{'BIN_EDGES_ROOT':18} = {BIN_EDGES_ROOT}")
+    print("\nConstants:")
+    print(f"{'LAT_BNDS':18} = {LAT_BNDS}")
+    print(f"{'LF_THRESH':18} = {LF_THRESH}")
+    print(f"{'LATENT_HEAT_VAPORIZATION':18} = {LATENT_HEAT_VAPORIZATION}")
+    print(f"{'LIQ_WATER_DENSITY':18} = {LIQ_WATER_DENSITY}")
+    print(f"{'EARTH_RADIUS':18} = {EARTH_RADIUS}")
+    print("\n######### config.py")

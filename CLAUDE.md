@@ -25,6 +25,7 @@ $PY scripts/bin_obs.py                               # obs pipeline (ILAMB + gri
 $PY scripts/bin_cmip.py                              # CMIP6 pipeline
 $PY scripts/make_mask.py                             # common valid-data mask of the obs products
 $PY scripts/obs_et_availability.py                   # data availability of the obs ET products
+scripts/run_logged.sh scripts/bin_obs.py             # any script, output also logged to WORK_ROOT/logs (header: git commit + diff)
 qsub scripts/regrid_cmip.pbs                         # DEPRECATED: saves CMIP6 regridded to 1° (only notebooks read it)
 qsub scripts/regrid_obs.pbs                          # DEPRECATED: saves GLEAM/PML/SiTH regridded to 0.5° and 1°
 ```
