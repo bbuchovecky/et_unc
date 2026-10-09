@@ -34,6 +34,7 @@ import xarray as xr
 
 import etunc.config as config
 import etunc.units as units
+import etunc.temporal as temporal
 import etunc.grid as rg
 import ilamb_binned_et as ib
 import etunc.load.obs as lo
@@ -70,14 +71,6 @@ MIN_ANNUAL_ET = -1.0
 # Loading
 # ------------------------------------------------------------------
 
-def yearly_to_annual(da: xr.DataArray) -> xr.DataArray:
-    """Yearly field (one time step per year) with `time` replaced by `year`."""
-    years = da.time.dt.year.values
-    if len(set(years)) != len(years):
-        raise ValueError(f"{da.name}: more than one time step in a year")
-    return da.assign_coords(year=("time", years)).swap_dims(time="year").drop_vars("time")
-
-
 def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
     """Annual mean ET [W/m2] (year, lat, lon) of a gridded product within `years` (first, last)."""
     dataset, version, var, freq = GRIDDED_ET_PRODUCTS[label]
@@ -87,10 +80,10 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
     da = units.latent_heat_to_wm2(lo.accumulation_to_flux(da))
 
     if freq == "monthly":
-        da = da.sel(time=da.time.dt.year.isin(ib.complete_years(da)))
-        ann = ib.annual_mean(da, require_all_months=True)
+        da = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))
+        ann = temporal.annual_mean(da, require_all_months=True)
     elif freq == "yearly":
-        ann = yearly_to_annual(da)
+        ann = temporal.yearly_to_annual(da)
     else:
         raise ValueError(f"{label}: unsupported freq {freq!r}")
 
@@ -107,7 +100,7 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
     ann = ann.sel(lat=config.LAT_BNDS).rename("et")
 
     print(
-        f"et  {label:12}: {ann.dims} {ann.shape} {ib.period_str(ann.year.values)} "
+        f"et  {label:12}: {ann.dims} {ann.shape} {temporal.period_str(ann.year.values)} "
         f"[{float(ann.min()):0.3g}, {float(ann.max()):0.3g}] {ann.attrs['units']}"
     )
     return ann
@@ -127,7 +120,7 @@ def main():
 
     # Gridded ET only over the years that some (lai, pr, rns) product set shares
     years = set().union(*(
-        ib.shared_years(*das) for das in itertools.product(*(ann[v].values() for v in ib.FACTORS[1:]))
+        temporal.shared_years(*das) for das in itertools.product(*(ann[v].values() for v in ib.FACTORS[1:]))
     ))
     if not years:
         raise RuntimeError("No (lai, pr, rns) product set shares any year.")

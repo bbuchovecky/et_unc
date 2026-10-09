@@ -174,24 +174,6 @@ def to_wm2(da: xr.DataArray) -> xr.DataArray:
     return units.latent_heat_to_wm2(da)
 
 
-def complete_years(da: xr.DataArray) -> list[int]:
-    """Years with all 12 months in the time axis."""
-    years, months = da.time.dt.year.values, da.time.dt.month.values
-    return [int(y) for y in np.unique(years) if np.unique(months[years == y]).size == 12]
-
-
-def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
-    """
-    Annual mean via `temporal.aggregate`, which counts missing months as 0. With
-    `require_all_months`, years with any missing month are NaN instead;
-    otherwise only years without any valid month are NaN.
-    """
-    n_valid = da.notnull().groupby("time.year").sum()
-    with xr.set_options(keep_attrs=True):
-        ann = temporal.aggregate(da, "year")
-        return ann.where(n_valid == 12 if require_all_months else n_valid > 0)
-
-
 def regrid_to_target(da: xr.DataArray) -> xr.DataArray:
     """Bilinear interpolation onto TARGET_GRID; target points outside the source grid are NaN."""
     return rg.bilinear_regridder(da, TARGET_RES)(da, keep_attrs=True)
@@ -202,7 +184,7 @@ def load_product(variable: str, product: str) -> xr.DataArray:
     relpath, name = PRODUCTS[variable][product]
     ds = xr.open_dataset(ILAMB_DATA_ROOT / relpath)
     da = format_grid(ds[name])
-    da = da.sel(time=da.time.dt.year.isin(complete_years(da))).load()
+    da = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da))).load()
     with xr.set_options(keep_attrs=True):
         da = da.where(np.abs(da) < FILL_THRESH)
 
@@ -210,7 +192,7 @@ def load_product(variable: str, product: str) -> xr.DataArray:
         da.attrs["units"] = "m2/m2"
     else:
         da = to_wm2(da)
-    ann = annual_mean(da, require_all_months=(variable != "lai"))
+    ann = temporal.annual_mean(da, require_all_months=(variable != "lai"))
 
     if ann.sizes["lat"] != TARGET_GRID.sizes["lat"] or ann.sizes["lon"] != TARGET_GRID.sizes["lon"]:
         print(f"{variable}/{product}: regridding {ann.sizes['lat']}x{ann.sizes['lon']} -> 0.5 deg")
@@ -221,7 +203,7 @@ def load_product(variable: str, product: str) -> xr.DataArray:
     ann = ann.sel(lat=config.LAT_BNDS).rename(variable)
 
     print(
-        f"{variable:3} {product:12}: {ann.dims} {ann.shape} {period_str(ann.year.values)} "
+        f"{variable:3} {product:12}: {ann.dims} {ann.shape} {temporal.period_str(ann.year.values)} "
         f"[{float(ann.min()):0.3g}, {float(ann.max()):0.3g}] {ann.attrs['units']}"
     )
     return ann
@@ -240,20 +222,11 @@ def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
 # Combinations
 # ------------------------------------------------------------------
 
-def period_str(years) -> str:
-    """[2003, ..., 2009] -> "200301-200912"."""
-    return temporal.format_time_period(slice(f"{min(years)}-01", f"{max(years)}-12"))
-
-
-def shared_years(*anns: xr.DataArray) -> list[int]:
-    return sorted(set.intersection(*(set(a.year.values.tolist()) for a in anns)))
-
-
 def combo_attrs(combo: tuple[str, ...], years: list[int]) -> dict:
     return {
         **{f"{v}_product": p for v, p in zip(FACTORS, combo)},
         "combo": "-".join(combo),
-        "time_period": period_str(years),
+        "time_period": temporal.period_str(years),
         "n_years": len(years),
     }
 
@@ -299,7 +272,7 @@ def concat_combos(das: list[xr.DataArray], combos: dict[str, tuple]) -> xr.DataA
     return out.assign_coords(
         combo=list(combos),
         **{f"{v}_product": ("combo", [c[i] for c, _ in combos.values()]) for i, v in enumerate(FACTORS)},
-        time_period=("combo", [period_str(y) for _, y in combos.values()]),
+        time_period=("combo", [temporal.period_str(y) for _, y in combos.values()]),
         n_years=("combo", [len(y) for _, y in combos.values()]),
     )
 
@@ -471,10 +444,10 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
     print("\n=== Maps of climatological means ===")
     for v, products in ann.items():
         for p, da in products.items():
-            save_map(temporal.aggregate(da, "clim"), v, p, period_str(da.year.values), mask)
+            save_map(temporal.aggregate(da, "clim"), v, p, temporal.period_str(da.year.values), mask)
 
     for pr_p, rns_p in itertools.product(ann["pr"], ann["rns"]):
-        years = shared_years(ann["pr"][pr_p], ann["rns"][rns_p])
+        years = temporal.shared_years(ann["pr"][pr_p], ann["rns"][rns_p])
         if not years:
             print(f"{pr_p}-{rns_p}: no shared years, skipping AI map")
             continue
@@ -482,7 +455,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
             temporal.aggregate(ann["pr"][pr_p].sel(year=years), "clim"),
             temporal.aggregate(ann["rns"][rns_p].sel(year=years), "clim"),
         )
-        save_map(ai, "ai", f"{pr_p}-{rns_p}", period_str(years), mask)
+        save_map(ai, "ai", f"{pr_p}-{rns_p}", temporal.period_str(years), mask)
 
     # ------------------------------------------------------------------
     # Combinations and their shared years
@@ -491,7 +464,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
     combos = {}
     for combo in itertools.product(*(ann[v] for v in FACTORS)):
         cid = "-".join(combo)
-        years = shared_years(*(ann[v][p] for v, p in zip(FACTORS, combo)))
+        years = temporal.shared_years(*(ann[v][p] for v, p in zip(FACTORS, combo)))
         if len(years) < MIN_YEARS:
             print(f"{cid:50}: {len(years)} shared years < {MIN_YEARS}, skipping")
             continue
@@ -499,7 +472,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
     ncombo = len(combos)
     if ncombo == 0:
         raise RuntimeError(f"No combination has at least {MIN_YEARS} shared years.")
-    span = period_str([y for _, years in combos.values() for y in years])
+    span = temporal.period_str([y for _, years in combos.values() for y in years])
     print(f"{ncombo} of {np.prod([len(ann[v]) for v in FACTORS])} combinations have >= {MIN_YEARS} shared years ({span})")
 
     # ------------------------------------------------------------------

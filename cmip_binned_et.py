@@ -185,24 +185,6 @@ def member_tag(members: list[str]) -> str:
 # Loading and regridding
 # ------------------------------------------------------------------
 
-def complete_years(da: xr.DataArray) -> list[int]:
-    """Years with all 12 months in the time axis."""
-    years, months = da.time.dt.year.values, da.time.dt.month.values
-    return [int(y) for y in np.unique(years) if np.unique(months[years == y]).size == 12]
-
-
-def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
-    """
-    Annual mean via `temporal.aggregate`, which counts missing months as 0. With
-    `require_all_months`, years with any missing month are NaN instead;
-    otherwise only years without any valid month are NaN.
-    """
-    n_valid = da.notnull().groupby("time.year").sum()
-    with xr.set_options(keep_attrs=True):
-        ann = temporal.aggregate(da, "year")
-        return ann.where(n_valid == 12 if require_all_months else n_valid > 0)
-
-
 def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
     """
     Natural Earth land mask without Greenland/Iceland. (Same land mask as
@@ -251,7 +233,7 @@ def load_model(
         # sftlf comes from another experiment, so check that it is on the same grid
         rg.check_same_grid(da, lf, f"{sid}/{v}")
         da = da.assign_coords(lat=lf.lat, lon=lf.lon)
-        fields[v] = da.sel(time=da.time.dt.year.isin(complete_years(da)))
+        fields[v] = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))
 
     monthly = {
         "et": units.convert_units("evspsbl", fields["evspsbl"]),
@@ -266,7 +248,7 @@ def load_model(
     for k, da in monthly.items():
         with xr.set_options(keep_attrs=True):
             da = da.where(native_mask).load()
-        a = annual_mean(da, require_all_months=(k != "lai")).transpose(..., "lat", "lon")
+        a = temporal.annual_mean(da, require_all_months=(k != "lai")).transpose(..., "lat", "lon")
         # Area-weighted mean of the native land cells in each target cell (ocean is NaN and skipped)
         a = regridder(a, skipna=True, na_thres=NA_THRES, keep_attrs=True)
         a = a.assign_coords(lat=TARGET_GRID.lat, lon=TARGET_GRID.lon, member_id=("member", members))
@@ -275,7 +257,7 @@ def load_model(
 
     print(
         f"{sid:16}: {len(members)} member(s), native {lf.sizes['lat']}x{lf.sizes['lon']} "
-        f"-> {ann['et'].dims} {ann['et'].shape}, years {period_str(ann['et'].year.values)}"
+        f"-> {ann['et'].dims} {ann['et'].shape}, years {temporal.period_str(ann['et'].year.values)}"
     )
     return ann
 
@@ -283,11 +265,6 @@ def load_model(
 # ------------------------------------------------------------------
 # Binning helpers
 # ------------------------------------------------------------------
-
-def period_str(years) -> str:
-    """[1995, ..., 2014] -> "199501-201412"."""
-    return temporal.format_time_period(slice(f"{min(years)}-01", f"{max(years)}-12"))
-
 
 def valid_area(inputs: dict[str, xr.DataArray]) -> xr.DataArray:
     """Gridcells where ET (in any year), LAI and AI are valid in every member of one model."""

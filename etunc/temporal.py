@@ -35,6 +35,11 @@ def to_yyyymm(time) -> str:
     raise TypeError(f"Unsupported type {type(time)!r} for time")
 
 
+def period_str(years) -> str:
+    """Years [2003, ..., 2009] -> "200301-200912", for file names."""
+    return format_time_period(slice(f"{min(years)}-01", f"{max(years)}-12"))
+
+
 # ------------------------------------------------------------------
 # Aggregation
 # ------------------------------------------------------------------
@@ -78,3 +83,42 @@ def aggregate(da: xr.DataArray, how: Aggregation = "clim") -> xr.DataArray:
     if how == "clim_max":
         return da.groupby("time.month").mean(keep_attrs=True).max("month", keep_attrs=True)
     raise ValueError(f"Unknown aggregation {how!r}")
+
+
+def complete_years(da: xr.DataArray) -> list[int]:
+    """Years with all 12 months in the time axis."""
+    years, months = da.time.dt.year.values, da.time.dt.month.values
+    return [int(y) for y in np.unique(years) if np.unique(months[years == y]).size == 12]
+
+
+def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
+    """
+    Annual mean via `aggregate`, which counts missing months as 0. With
+    `require_all_months`, years with any missing month are NaN instead;
+    otherwise only years without any valid month are NaN.
+    """
+    n_valid = da.notnull().groupby("time.year").sum()
+    with xr.set_options(keep_attrs=True):
+        ann = aggregate(da, "year")
+        return ann.where(n_valid == 12 if require_all_months else n_valid > 0)
+
+
+def shared_years(*anns: xr.DataArray) -> list[int]:
+    """Sorted years present in the `year` dim of every one of `anns`."""
+    return sorted(set.intersection(*(set(a.year.values.tolist()) for a in anns)))
+
+
+def yearly_to_annual(da: xr.DataArray) -> xr.DataArray:
+    """Yearly field (one time step per year) with `time` replaced by `year`."""
+    years = da.time.dt.year.values
+    if len(set(years)) != len(years):
+        raise ValueError(f"{da.name}: more than one time step in a year")
+    return da.assign_coords(year=("time", years)).swap_dims(time="year").drop_vars("time")
+
+
+def on_month_axis(da: xr.DataArray, months: pd.DatetimeIndex) -> xr.DataArray:
+    """Time stamps set to the first of the month, reindexed to `months` (missing months are NaN)."""
+    t = pd.to_datetime(pd.DataFrame({"year": da.time.dt.year.values, "month": da.time.dt.month.values, "day": 1}))
+    if t.duplicated().any():
+        raise ValueError(f"{da.name}: more than one time step in a month")
+    return da.assign_coords(time=t.values).reindex(time=months)

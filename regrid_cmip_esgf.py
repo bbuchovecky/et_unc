@@ -9,11 +9,10 @@ import time
 from datetime import datetime as dt
 import warnings
 from pathlib import Path
-import numpy as np
-import pandas as pd
 import xarray as xr
 
 import etunc.grid as rg
+import etunc.temporal as temporal
 from etunc.load.cmip import CMIPESGFLoader
 
 
@@ -72,15 +71,6 @@ def regrid_to_target(da: xr.DataArray, res: float | str = TARGET_RES, verbose: b
 
     except Exception as exc:  # pragma: no cover - environment specific
         raise RuntimeError(f"xESMF regridding failed - da: {da.dims} {da.shape}") from exc
-
-
-def to_yyyymm(time) -> str:
-    time_raw = time.values
-    if isinstance(time_raw, np.datetime64):
-        return pd.Timestamp(time_raw).strftime("%Y%m")
-    elif isinstance(time_raw, np.ndarray):
-        return time.item().strftime("%Y%m")
-    raise TypeError(f"Unsupported type {type(time)!r} for time")
 
 
 def main() -> None:
@@ -145,8 +135,8 @@ def main() -> None:
                 ].iloc[0].table_id
 
             # Handle output path
-            start_str = to_yyyymm(da_regridded.time.isel(time=0))
-            stop_str = to_yyyymm(da_regridded.time.isel(time=-1))
+            start_str = temporal.to_yyyymm(da_regridded.time.isel(time=0))
+            stop_str = temporal.to_yyyymm(da_regridded.time.isel(time=-1))
             fname = f"{var}_{table_id}_{sid}_{EXPERIMENT_ID}_gr{rg.grid_tag(TARGET_RES)}_{start_str}-{stop_str}.nc"
             outpath = REGRID_ROOT / sid / EXPERIMENT_ID / table_id / var
             outpath.mkdir(parents=True, exist_ok=True)

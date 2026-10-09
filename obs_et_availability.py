@@ -16,7 +16,7 @@ Processing
 - Every product is put on one monthly time axis over `TIME_SLICE`, so months
   outside a product's record count as missing, and restricted to `config.LAT_BNDS`
   and the land mask (Natural Earth, without Greenland/Iceland).
-- A gridcell-year is valid when all 12 months are valid (`ib.annual_mean` with
+- A gridcell-year is valid when all 12 months are valid (`temporal.annual_mean` with
   `require_all_months=True`), as for ET in the binning. The bin mask of a
   product is the land gridcells with at least one valid gridcell-year (the ET
   part of `ib.valid_area`; LAI and AI are not used).
@@ -100,14 +100,6 @@ MONTHS = pd.date_range(TIME_SLICE.start, TIME_SLICE.stop, freq="MS")
 GRID = ib.TARGET_GRID.sel(lat=config.LAT_BNDS)
 
 
-def on_month_axis(da: xr.DataArray) -> xr.DataArray:
-    """Time stamps set to the first of the month, reindexed to MONTHS (missing months are NaN)."""
-    t = pd.to_datetime(pd.DataFrame({"year": da.time.dt.year.values, "month": da.time.dt.month.values, "day": 1}))
-    if t.duplicated().any():
-        raise ValueError(f"{da.name}: more than one time step in a month")
-    return da.assign_coords(time=t.values).reindex(time=MONTHS)
-
-
 def on_grid(da: xr.DataArray, label: str) -> xr.DataArray:
     """Exact GRID coordinates (lat within LAT_BNDS), after checking the grid matches."""
     rg.check_same_grid(da, ib.TARGET_GRID, label)
@@ -128,7 +120,7 @@ def load_ilamb(product: str) -> xr.DataArray:
     if da.sizes["lat"] != ib.TARGET_GRID.sizes["lat"] or da.sizes["lon"] != ib.TARGET_GRID.sizes["lon"]:
         print(f"{product}: regridding {da.sizes['lat']}x{da.sizes['lon']} -> 0.5 deg")
         da = ib.regrid_to_target(da)
-    return on_month_axis(on_grid(da, product))
+    return temporal.on_month_axis(on_grid(da, product), MONTHS)
 
 
 def regridded_dataset(dataset: str) -> lo.ObsDataset:
@@ -148,7 +140,7 @@ def load_gridded(label: str) -> xr.DataArray:
         raise FileNotFoundError(f"{label}: no {REGRID_TAG} files under {spec.root} (run regrid_obs.py)")
     da = lo.load_obs(spec, var, TIME_SLICE, version=version, freq="monthly").load()
     da = units.latent_heat_to_wm2(lo.accumulation_to_flux(da))
-    return on_month_axis(on_grid(da, label))
+    return temporal.on_month_axis(on_grid(da, label), MONTHS)
 
 
 # ------------------------------------------------------------------
@@ -162,7 +154,7 @@ def availability(et: xr.DataArray, land: xr.DataArray) -> tuple[xr.Dataset, xr.D
     """
     et = et.where(land)
     valid = et.notnull()
-    ann = ib.annual_mean(et, require_all_months=True)
+    ann = temporal.annual_mean(et, require_all_months=True)
     complete = ann.notnull()
     ds = xr.Dataset({
         "n_valid_months": valid.sum("time").where(land),
