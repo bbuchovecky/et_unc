@@ -64,7 +64,6 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")  # write figures to file without a display
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Patch
 import numpy as np
@@ -209,25 +208,6 @@ def product_mask(da: xr.DataArray, land: xr.DataArray, min_frac: float, label: s
 # Plotting
 # ------------------------------------------------------------------
 
-def plot_mask_agreement(ds: xr.Dataset, title: str, fout: Path):
-    """Number of products whose mask includes each land gridcell; the common mask (all products) in orange."""
-    n = ds.sizes["product"]
-    # 0..n products per land gridcell; NaN (blank) over the ocean
-    agree = ds["product_mask"].sum("product").where(ds["land"])
-    # One discrete color per count: shades of purple for 0..n-1, and orange for
-    # n (all products agree, i.e. the common mask) so it stands out.
-    cmap = mcolors.ListedColormap([*plt.get_cmap("Purples")(np.linspace(0.05, 0.75, n)), "#e66101"])
-    # Bin edges at half-integers, so each integer count gets its own color
-    norm = mcolors.BoundaryNorm(np.arange(-0.5, n + 1.5), cmap.N)
-    fig, ax = plt.subplots(figsize=(9, 3.6), layout="constrained", subplot_kw={"projection": config.PROJECTION})
-    pm = agree.plot.pcolormesh(ax=ax, transform=config.PROJECTION, cmap=cmap, norm=norm, add_colorbar=False)
-    plotting.map_ax(ax, config.LAT_BNDS)  # coastlines, extent, gridlines
-    fig.colorbar(pm, ax=ax, ticks=np.arange(n + 1), label="products with the gridcell in their mask")
-    ax.set_title(f"{title}\ncommon mask (all {n} products): "
-                 f"{int(ds['common_mask'].sum())} of {int(ds['land'].sum())} land cells")
-    return plotting.finish(fig, fout)  # save and close
-
-
 # Legend labels and colors of plot_product_masks (land without / with data)
 ANY_MONTH_COLORS = {"land, no data in any month": "#f0b67f", "data in at least one month": "#2b6a99"}
 
@@ -322,7 +302,10 @@ def main():
     # 5. Figures
     # Agreement between the product masks (the common mask is the top class)
     fout = FIG_ROOT / f"{stem}.png"
-    plot_mask_agreement(ds, f"Product masks, {TIME_SLICE.start} to {TIME_SLICE.stop}", fout)
+    plotting.plot_mask_agreement(
+        ds["product_mask"], ds["land"], f"Product masks, {TIME_SLICE.start} to {TIME_SLICE.stop}", fout,
+        highlight_common=True,
+    )
     print(fout)
 
     # Per-product coverage: gridcells with data in any month of the record

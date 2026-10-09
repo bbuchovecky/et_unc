@@ -126,6 +126,39 @@ def save_map(da: xr.DataArray, variable: str, fout: str | Path, title: str = "")
     print(fout)
 
 
+def plot_mask_agreement(
+    masks: xr.DataArray,
+    land: xr.DataArray,
+    title: str = "",
+    fout: str | Path | None = None,
+    *,
+    label: str = "products with the gridcell in their mask",
+    highlight_common: bool = False,
+):
+    """
+    Map of the number of products whose mask (`masks`, boolean (product, lat,
+    lon)) includes each `land` gridcell, one discrete color per count. The
+    title gives the size of the common mask (all products). With
+    `highlight_common`, the common mask is orange instead of the darkest purple.
+    """
+    n = masks.sizes["product"]
+    # 0..n products per land gridcell; NaN (blank) over the ocean
+    agree = masks.sum("product").where(land)
+    if highlight_common:
+        # Shades of purple for 0..n-1, and orange for n (all products agree) so it stands out
+        cmap = mcolors.ListedColormap([*plt.get_cmap("Purples")(np.linspace(0.05, 0.75, n)), "#e66101"])
+    else:
+        cmap = plt.get_cmap("Purples", n + 1)
+    # Bin edges at half-integers, so each integer count gets its own color
+    norm = mcolors.BoundaryNorm(np.arange(-0.5, n + 1.5), cmap.N)
+    fig, ax = plt.subplots(figsize=(9, 3.6), layout="constrained", subplot_kw={"projection": PROJECTION})
+    pm = agree.plot.pcolormesh(ax=ax, transform=PROJECTION, cmap=cmap, norm=norm, add_colorbar=False)
+    map_ax(ax, LAT_BNDS)
+    fig.colorbar(pm, ax=ax, ticks=np.arange(n + 1), label=label)
+    ax.set_title(f"{title}\ncommon mask (all {n} products): {int((agree == n).sum())} of {int(land.sum())} land cells")
+    return finish(fig, fout)
+
+
 def plot_input_maps(
     inputs: Mapping[str, xr.DataArray],
     title: str = "",

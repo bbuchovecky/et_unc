@@ -795,3 +795,16 @@ def test_plot_bin_means_titles_and_ticks(inputs, edges):
     assert [ax.get_title() for ax in fig.axes if ax.get_title()][:2] == ["M1", "M2"]
     assert fig.axes[0].get_xticklabels()[0].get_text() == "Q0"
     plt.close(fig)
+
+
+@pytest.mark.parametrize("highlight_common", [False, True])
+def test_plot_mask_agreement_counts_common_mask(highlight_common, mask):
+    """The title counts land cells in every product's mask; there is one colour per count 0..n."""
+    land = mask
+    masks = xr.concat([land, land, land.where(land.lat > 0, False)], dim="product").assign_coords(
+        product=["a", "b", "c"])
+    fig = plotting.plot_mask_agreement(masks, land, "t", highlight_common=highlight_common)
+    expected = int((land & (land.lat > 0)).sum())
+    assert f"common mask (all 3 products): {expected} of {int(land.sum())} land cells" in fig.axes[0].get_title()
+    assert fig.axes[0].collections[0].cmap.N == 4
+    plt.close(fig)

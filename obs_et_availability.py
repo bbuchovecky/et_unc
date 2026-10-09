@@ -285,19 +285,6 @@ def plot_heatmap_complete_years(av: xr.Dataset, n_land: int, title: str, fout: P
     return plotting.finish(fig, fout)
 
 
-def plot_map_mask_agreement(av: xr.Dataset, land: xr.DataArray, title: str, fout: Path):
-    n = av.sizes["product"]
-    agree = av["bin_mask"].sum("product").where(land)
-    cmap = plt.get_cmap("Purples", n + 1)
-    norm = mcolors.BoundaryNorm(np.arange(-0.5, n + 1.5), cmap.N)
-    fig, ax = plt.subplots(figsize=(9, 3.6), layout="constrained", subplot_kw={"projection": config.PROJECTION})
-    pm = agree.plot.pcolormesh(ax=ax, transform=config.PROJECTION, cmap=cmap, norm=norm, add_colorbar=False)
-    plotting.map_ax(ax, config.LAT_BNDS)
-    fig.colorbar(pm, ax=ax, ticks=np.arange(n + 1), label="products with the gridcell in their bin mask")
-    ax.set_title(f"{title}\ncommon mask (all {n} products): {int((agree == n).sum())} of {int(land.sum())} land cells")
-    return plotting.finish(fig, fout)
-
-
 FAMILIES = {
     "ILAMB": lambda p: p in ILAMB_PRODUCTS,
     "PML": lambda p: p.startswith("PML"),
@@ -408,8 +395,9 @@ def main():
             av, land, f"Bin mask: land gridcells with at least one year of 12 valid ET months, {span}", f),
         "heatmap_complete_years": lambda f: plot_heatmap_complete_years(
             av, n_land, f"Land gridcells with all 12 ET months valid, {span}", f),
-        "map_mask_agreement": lambda f: plot_map_mask_agreement(
-            av, land, f"Agreement of ET bin masks, {span}", f),
+        "map_mask_agreement": lambda f: plotting.plot_mask_agreement(
+            av["bin_mask"], land, f"Agreement of ET bin masks, {span}", f,
+            label="products with the gridcell in their bin mask"),
         "zonal_mean_et": lambda f: plot_zonal_mean_et(
             clim, av, common, f"Zonal mean of climatological ET (mean of valid years), {span}", f),
         "box_annual_et": lambda f: plot_box_annual_et(
