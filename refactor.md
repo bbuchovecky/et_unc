@@ -204,3 +204,11 @@ refactored code looks wrong, restart from the `pre-refactor` tag.
 - `grep -rE "import (binned_et|ilamb_binned_et|cmip_binned_et|obs_binned_et|load_obs|load_cmip_esgf|regrid_obs|regrid)\b|from (load_cmip_esgf|regrid|ILAMB) |ilamblib"` over `etunc scripts tests notebooks` finds nothing.
 - Each moved notebook's import cell runs without errors.
 - `qsub` dry check: the `.pbs` files point at `scripts/…` paths, which exist.
+
+## TODO
+Tasks still to be done for the full, safe refactor:
+- Write a script to download all ILAMB datasets - need to deal with the ILAMB dependency somehow.
+- Run the pipelines `bin_obs`, `bin_cmip`, `make_mask`, and `obs_et_availability` end-to-end. Save the output to temporary directories in `config.PROC_ROOT` and `config.FIG_ROOT` then compare to the old NetCDF output and figures.
+- Then perform the final merge: `git merge --no-ff refactor/package` into `main`.
+- ~~Add comments throughout the codebase for interpretability.~~
+- **Long-term:** Transition from environment-based `mamba`/`conda` package management to project-based `pixi` workflow.
