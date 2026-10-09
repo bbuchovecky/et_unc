@@ -61,9 +61,13 @@ Notes
 
 from __future__ import annotations
 
+import gc
+import os
 import re
 import string
+import time
 import warnings
+from datetime import datetime as dt
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Mapping
@@ -71,6 +75,8 @@ from typing import Callable, Mapping
 import numpy as np
 import pandas as pd
 import xarray as xr
+
+from etunc.grid import NA_THRES, RESOLUTIONS, approx_resolution, conservative_regridder, regrid_with_na_thres
 
 OBS_ROOT = Path("/glade/campaign/univ/uwas0155/obs")
 REGRID_ROOT = OBS_ROOT / "regridded"
@@ -483,3 +489,93 @@ def load_pml(var: str, time_slice: slice = slice(None, None), **kwargs) -> xr.Da
 def load_sith(var: str, time_slice: slice = slice(None, None), **kwargs) -> xr.DataArray:
     """SiTHv2 variable (ET, Tr, Es, Ei, En); see `load_obs` for kwargs."""
     return load_obs("sith", var, time_slice, **kwargs)
+
+
+# ------------------------------------------------------------------
+# Writing regridded files (regrid_obs.py)
+# ------------------------------------------------------------------
+
+def output_path(spec: ObsDataset, res_tag: str, src: Path) -> Path:
+    """Regridded file of `src` at `res_tag` ("0.5deg", "1deg"): the tree that `at_resolution` reads."""
+    return REGRID_ROOT / spec.root.name / res_tag / src.relative_to(spec.root)
+
+
+def _save(da: xr.DataArray, var: str, src: Path, outpath: Path, complevel: int) -> None:
+    """Write `da` next to `outpath` as .tmp, then move it into place."""
+    with xr.open_dataset(src) as ds_src:
+        global_attrs = dict(ds_src.attrs)
+    da.encoding = {}
+    ds = xr.Dataset({var: da}, attrs=global_attrs)
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    tmp = outpath.with_name(outpath.name + ".tmp")
+    ds.to_netcdf(tmp, encoding={var: {"zlib": True, "complevel": complevel}})
+    os.replace(tmp, outpath)
+
+
+def regrid_file(
+    spec: ObsDataset, var: str, src: Path, years: tuple[int, int], version: str, freq: str,
+    *,
+    resolutions: Mapping[str, float] = RESOLUTIONS,
+    na_thres: float = NA_THRES,
+    overwrite: bool = True,
+    complevel: int = 4,
+    script: str = "regrid_obs.py",
+) -> dict[str, float] | None:
+    """
+    Conservatively regrid one source file, covering `years` (first, last), to
+    every grid in `resolutions` ({tag: spacing}), and write each to
+    `output_path` (`regrid_with_na_thres`). A multi-year file is read in
+    blocks of its on-disk time chunks. Existing outputs are skipped unless
+    `overwrite`. `script` is recorded in the "regrid_script" attr. Returns
+    timings, or None if skipped.
+    """
+    outpaths = {tag: output_path(spec, tag, src) for tag in resolutions}
+    if not overwrite and all(p.exists() for p in outpaths.values()):
+        return None
+
+    first, last = years
+    label = str(first) if first == last else f"{first}-{last}"
+    print(f"    {label}: load+regrid...", end="", flush=True)
+    # Per-year file: read whole. Multi-year file: dask chunks = on-disk chunks.
+    da_all = load_obs(spec, var, slice(str(first), str(last)), version=version, freq=freq,
+                         chunks=None if first == last else {})
+    sizes = np.array(da_all.chunksizes.get("time", (da_all.sizes["time"],)))
+    stops = np.cumsum(sizes)
+    t = {"load": 0.0, "regrid": 0.0, "save": 0.0}
+    pieces: dict[str, list[xr.DataArray]] = {tag: [] for tag in resolutions}
+    for i0, i1 in zip(stops - sizes, stops):
+        t0 = time.perf_counter()
+        da = da_all.isel(time=slice(i0, i1)).load()
+        t["load"] += time.perf_counter() - t0
+        t0 = time.perf_counter()
+        for tag, res in resolutions.items():
+            pieces[tag].append(regrid_with_na_thres(da, conservative_regridder(da, res), na_thres))
+        t["regrid"] += time.perf_counter() - t0
+        if first != last:
+            print(f" {da.time.dt.year.values[-1]}", end="", flush=True)
+        del da
+    print(f" load {t['load']:.1f}s", end="", flush=True)
+    if not any(pieces.values()):
+        raise ValueError(f"{src} has no time steps in {label}")
+
+    for tag in resolutions:
+        out = xr.concat(pieces[tag], dim="time")
+        out.attrs["src_dims"] = da_all.dims
+        out.attrs["src_shape"] = da_all.shape
+        out.attrs["src_dlat_deg"], out.attrs["src_dlon_deg"] = approx_resolution(da_all)
+        out.attrs["tgt_dlat_deg"], out.attrs["tgt_dlon_deg"] = approx_resolution(out)
+        out.attrs["source_file"] = str(src)
+        out.attrs["regrid_method"] = "xesmf conservative, skipna=True, unmapped_to_nan=True"
+        out.attrs["na_thres"] = na_thres
+        out.attrs["regrid_script"] = script
+        out.attrs["regrid_date"] = dt.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        t0 = time.perf_counter()
+        _save(out, var, src, outpaths[tag], complevel)
+        t["save"] += time.perf_counter() - t0
+        print(f" | {tag} {out.shape}", end="", flush=True)
+
+    print(f" | regrid {t['regrid']:.1f}s save {t['save']:.1f}s")
+    del da_all, pieces
+    gc.collect()
+    return t

@@ -42,7 +42,6 @@ FIG_ROOT/obs/availability/obs.et.<diag>.<period>.png, with <diag>:
 
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 
 import matplotlib
@@ -62,7 +61,6 @@ import etunc.plotting as plotting
 import ilamb_binned_et as ib
 import etunc.load.ilamb as il
 import etunc.load.obs as lo
-import regrid_obs as ro
 
 
 # ------------------------------------------------------------------
@@ -83,7 +81,7 @@ GRIDDED_PRODUCTS = {
     "GLEAM-v4.3b":     ("gleam", "v4.3b", "E"),
     "SiTHv2":          ("sith", "v2", "ET"),
 }
-REGRID_TAG = "0.5deg"
+GRIDDED_RES = "0.5"  # load_obs `res` of the regridded files; must match ib.TARGET_RES
 
 PROC_ROOT = ib.PROC_ROOT
 FIG_DIR = ib.FIG_ROOT / "obs" / "availability"
@@ -105,22 +103,13 @@ def load_ilamb(product: str) -> xr.DataArray:
     return temporal.on_month_axis(il.load_ilamb("et", product, TIME_SLICE, ib.TARGET_RES, wm2=True), MONTHS)
 
 
-def regridded_dataset(dataset: str) -> lo.ObsDataset:
-    """`load_obs` spec of the REGRID_TAG files written by `regrid_obs.py` for `dataset`."""
-    spec = lo.get_dataset(dataset)
-    return lo.register_dataset(dataclasses.replace(
-        spec, name=f"{spec.name}-{REGRID_TAG}", root=ro.REGRID_ROOT / spec.root.name / REGRID_TAG,
-        lat_name="lat", lon_name="lon",
-    ))
-
-
 def load_gridded(label: str) -> xr.DataArray:
     """Monthly ET [W/m2] of a PML/GLEAM/SiTH product from its regridded files."""
     dataset, version, var = GRIDDED_PRODUCTS[label]
-    spec = regridded_dataset(dataset)
-    if not lo.list_years(spec, var, version, "monthly"):
-        raise FileNotFoundError(f"{label}: no {REGRID_TAG} files under {spec.root} (run regrid_obs.py)")
-    da = lo.load_obs(spec, var, TIME_SLICE, version=version, freq="monthly").load()
+    if not lo.list_years(dataset, var, version, "monthly", res=GRIDDED_RES):
+        root = lo.at_resolution(dataset, GRIDDED_RES).root
+        raise FileNotFoundError(f"{label}: no {GRIDDED_RES} deg files under {root} (run regrid_obs.py)")
+    da = lo.load_obs(dataset, var, TIME_SLICE, version=version, freq="monthly", res=GRIDDED_RES).load()
     da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
     return temporal.on_month_axis(rg.on_grid(da, ib.TARGET_RES, label), MONTHS)
 

@@ -59,6 +59,8 @@ LON_ATTRS = {"units": "degrees_east", "standard_name": "longitude"}
 
 _CONSERVATIVE: dict[tuple, xe.Regridder] = {}
 
+NA_THRES = 0.5  # default: target cells with more than this fraction of missing source area are NaN
+
 
 # ------------------------------------------------------------------
 # Grids
@@ -194,6 +196,21 @@ def bilinear_regridder(da: xr.DataArray | xr.Dataset, res: float | str) -> xe.Re
     """Bilinear regridder (periodic in lon) from the lat/lon grid of `da` onto `target_grid(res)`."""
     src = xr.Dataset(coords={"lat": da["lat"], "lon": da["lon"]})
     return make_regridder(src, res, "bilinear", periodic=True, unmapped_to_nan=True)
+
+
+def regrid_with_na_thres(da: xr.DataArray, regridder: xe.Regridder, na_thres: float = NA_THRES) -> xr.DataArray:
+    """
+    Apply a conservative `regridder` skipping NaN: each target cell is the
+    area-weighted mean of its valid source cells, and NaN where more than
+    `na_thres` of its area is missing. Keeps the dtype and attrs (minus
+    "grid_mapping") and sets standard lat/lon attrs.
+    """
+    out = regridder(da, skipna=True, na_thres=na_thres, keep_attrs=True)
+    out = out.astype(da.dtype)
+    out.attrs.pop("grid_mapping", None)  # PML's "crs" variable is not carried over
+    out["lat"].attrs = dict(LAT_ATTRS)
+    out["lon"].attrs = dict(LON_ATTRS)
+    return out
 
 
 # ------------------------------------------------------------------

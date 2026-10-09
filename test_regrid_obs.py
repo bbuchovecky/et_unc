@@ -1,5 +1,6 @@
 """
-Tests for regrid_obs.py (the shared grids are tested in test_regrid.py). Run from the project root with:
+Tests for the obs regridding of regrid_obs.py: grid.regrid_with_na_thres and
+load.obs.output_path / regrid_file (the shared grids are tested in test_regrid.py). Run from the project root with:
 
     python -m pytest test_regrid_obs.py
 
@@ -16,7 +17,6 @@ import xarray as xr
 
 import etunc.load.obs as lo
 import etunc.grid as rg
-import regrid_obs as ro
 
 
 # ------------------------------------------------------------------
@@ -62,7 +62,7 @@ def coarse_cell(out, lat, lon):
 def test_constant_field_and_unmapped_nan(res):
     """A constant stays constant; target cells outside the source domain are NaN, not 0."""
     da = fine_field(np.full((20, 20), 3.0))  # 10-12N, 20-22E
-    out = ro.regrid(da, rg.conservative_regridder(da, res))
+    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, res))
     inside = out.sel(lat=slice(10, 12), lon=slice(20, 22))
     np.testing.assert_allclose(inside, 3.0, rtol=1e-6)
     assert int(out.notnull().sum()) == inside.size
@@ -75,7 +75,7 @@ def test_conserves_area_weighted_total(res):
     """The area-weighted total of a random field is the same before and after regridding."""
     rng = np.random.default_rng(0)
     da = fine_field(rng.uniform(0, 100, (20, 30)))  # 10-12N, 20-23E
-    out = ro.regrid(da, rg.conservative_regridder(da, res))
+    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, res))
     src = rg.source_grid(da)
     tgt = rg.target_grid(res)
     native_total = np.sum(da.values * cell_area(src.lat_b.values, src.lon_b.values))
@@ -91,7 +91,7 @@ def test_missing_fraction_threshold():
     data[:, :4] = np.nan          # cell (10.5, 20.5): 40% missing
     data[:, 10:16] = np.nan       # cell (10.5, 21.5): 60% missing
     da = fine_field(data)
-    out = ro.regrid(da, rg.conservative_regridder(da, 1.0))
+    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, 1.0))
     # ESMF uses great-circle cell edges, so equal-lon columns differ in area by ~1e-5
     np.testing.assert_allclose(coarse_cell(out, 10.5, 20.5), cols[4:].mean(), rtol=1e-4)
     assert np.isnan(coarse_cell(out, 10.5, 21.5))
@@ -103,22 +103,21 @@ def test_time_varying_missing_values():
     data[0, :, :3] = np.nan   # 30% missing -> kept
     data[1, :, :7] = np.nan   # 70% missing -> NaN
     da = xr.concat([fine_field(d) for d in data], dim="time")
-    out = ro.regrid(da, rg.conservative_regridder(da, 1.0))
+    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, 1.0))
     assert coarse_cell(out.isel(time=0), 10.5, 20.5) == pytest.approx(1.0)
     assert np.isnan(coarse_cell(out.isel(time=1), 10.5, 20.5))
 
 
 def test_output_path_mirrors_source(monkeypatch, tmp_path):
     """The output path mirrors the source path under REGRID_ROOT/<dataset dir>/<res tag>."""
-    monkeypatch.setattr(ro, "REGRID_ROOT", tmp_path)
+    monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path)
     spec = lo.get_dataset("gleam")
     src = spec.root / "v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
-    assert ro.output_path(spec, "1deg", src) == tmp_path / "gleam-v4.3/1deg/v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
+    assert lo.output_path(spec, "1deg", src) == tmp_path / "gleam-v4.3/1deg/v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
 
 
 def test_regrid_file_multi_year(monkeypatch, tmp_path):
     """SiTH-like file spanning 2000-2002 is regridded block by block into one output file."""
-    monkeypatch.setattr(ro, "REGRID_ROOT", tmp_path / "out")
     monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path / "out")
     spec = lo.ObsDataset("per", tmp_path / "per", "{freq_dir}/{var}.P{version}.A{year_start}_{year_end}.{freq_tag}.nc",
                          ("v2",), {"monthly": "M"}, freq_dirs={"monthly": "Monthly"}, preprocess=lo._decode_sith)
@@ -135,22 +134,21 @@ def test_regrid_file_multi_year(monkeypatch, tmp_path):
 
     ((src, years),) = lo.list_files(spec, "ET", "v2", "monthly").items()
     assert years == (2000, 2002)
-    assert ro.regrid_file(spec, "ET", src, years, "v2", "monthly") is not None
-    with xr.open_dataset(ro.output_path(spec, "1deg", src)) as out:
+    assert lo.regrid_file(spec, "ET", src, years, "v2", "monthly") is not None
+    with xr.open_dataset(lo.output_path(spec, "1deg", src)) as out:
         assert out.ET.sizes == {"time": 36, "lat": 180, "lon": 360}
         np.testing.assert_array_equal(out.time, ds.time)
         np.testing.assert_allclose(out.ET.sel(lat=10.5, lon=20.5), np.repeat([2000.0, 2001.0, 2002.0], 12))
         assert np.isnan(out.ET.sel(lat=0.5, lon=0.5)).all()
         assert tuple(out.ET.attrs["src_shape"]) == (36, 10, 10)
-    assert ro.output_path(spec, "0.5deg", src).exists()
+    assert lo.output_path(spec, "0.5deg", src).exists()
 
     # Read back with the load functions
     back = lo.load_obs(spec, "ET", slice("2001", "2001"), res="1")
     assert back.sizes == {"time": 12, "lat": 180, "lon": 360}
     np.testing.assert_allclose(back.sel(lat=10.5, lon=20.5), 2001.0)
-    assert lo.list_files(spec, "ET", "v2", "monthly", res="0.5") == {ro.output_path(spec, "0.5deg", src): (2000, 2002)}
-    monkeypatch.setattr(ro, "OVERWRITE", False)
-    assert ro.regrid_file(spec, "ET", src, years, "v2", "monthly") is None  # existing output skipped
+    assert lo.list_files(spec, "ET", "v2", "monthly", res="0.5") == {lo.output_path(spec, "0.5deg", src): (2000, 2002)}
+    assert lo.regrid_file(spec, "ET", src, years, "v2", "monthly", overwrite=False) is None  # existing output skipped
 
 
 # ------------------------------------------------------------------
@@ -183,7 +181,7 @@ def test_global_area_weighted_mean_real_month(dataset, version, var, month, res)
     """
     da = lo.load_obs(dataset, var, slice(month, month), version=version, chunks=None).load()
     assert da.sizes["time"] == 1
-    out = ro.regrid(da, rg.conservative_regridder(da, res))
+    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, res))
 
     src, tgt = rg.source_grid(da), rg.target_grid(res)
     native = area_mean(da.values[0], cell_area(src.lat_b.values, src.lon_b.values))
