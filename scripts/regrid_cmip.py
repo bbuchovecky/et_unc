@@ -1,5 +1,10 @@
 """
-Regrid files within the CMIP ESGF catalog.
+regrid_cmip.py
+==============
+Conservatively regrid CMIP6 fields listed in the ESGF cache catalog
+(config.ESGF_CACHE_CATALOG) onto the common grid (TARGET_RES) with
+`cmip.regrid_to_target`, one file per (model, variable) under
+config.CMIP_REGRID_ROOT. (Was regrid_cmip_esgf.py.)
 """
 from __future__ import annotations
 
@@ -7,17 +12,17 @@ import gc
 import os
 import time
 from datetime import datetime as dt
-from pathlib import Path
 import xarray as xr
 
+import etunc.config as config
 import etunc.grid as rg
 import etunc.temporal as temporal
 import etunc.load.cmip as cmip
 from etunc.load.cmip import CMIPESGFLoader
 
 
-CATALOG_PATH = Path("/glade/derecho/scratch/bbuchovecky/cmip_intake_esgf_fetch/manifests/esgf_cache_catalog.csv")
-REGRID_ROOT = Path("/glade/campaign/univ/uwas0155/cmip6/regridded")
+CATALOG_PATH = config.ESGF_CACHE_CATALOG
+REGRID_ROOT = config.CMIP_REGRID_ROOT
 
 VARIABLES = ["evspsbl", "tran", "evspsblsoi", "evspsblveg", "lai", "gpp"]
 EXPERIMENT_ID = "historical"

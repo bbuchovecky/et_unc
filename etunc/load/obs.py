@@ -76,10 +76,11 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+import etunc.config as config
 from etunc.grid import NA_THRES, RESOLUTIONS, approx_resolution, conservative_regridder, regrid_with_na_thres
 
-OBS_ROOT = Path("/glade/campaign/univ/uwas0155/obs")
-REGRID_ROOT = OBS_ROOT / "regridded"
+OBS_ROOT = config.OBS_ROOT
+REGRID_ROOT = config.OBS_REGRID_ROOT
 RES_DIRS = {"0.5": "0.5deg", "1": "1deg"}  # res -> directory under REGRID_ROOT/<dataset dir>
 
 

@@ -26,7 +26,7 @@ from etunc.load.cmip import CMIPESGFLoader
 # Member IDs and member selection
 # ------------------------------------------------------------------
 
-# Settings of cmip_binned_et, passed explicitly
+# Settings of scripts/bin_cmip.py (formerly cmip_binned_et.py), passed explicitly
 VARIABLES = ["evspsbl", "lai", "pr", "rsds", "rsus", "rlds", "rlus"]
 EXPERIMENT_ID = "historical"
 TIME_SLICE = slice("1995-01", "2014-12")

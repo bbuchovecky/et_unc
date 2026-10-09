@@ -10,7 +10,7 @@ drivers:
 - annual means on the common grid for binning: `load_native` (native grid,
   sftlf mask) then `regrid_annual` (conservative), or both via `load_model`;
 - `regrid_to_target`, the whole-field conservative regrid of
-  regrid_cmip_esgf.py (with the EC-Earth (j, i) grid fix).
+  scripts/regrid_cmip.py (with the EC-Earth (j, i) grid fix).
 """
 
 from __future__ import annotations
@@ -565,7 +565,7 @@ class CMIPESGFLoader:
 
 
 # ------------------------------------------------------------------
-# Model and member selection, land fraction (cmip_binned_et.py)
+# Model and member selection, land fraction (scripts/bin_cmip.py)
 # ------------------------------------------------------------------
 
 def available_members(
@@ -637,7 +637,7 @@ def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
 
 
 # ------------------------------------------------------------------
-# Annual means on the common grid (cmip_binned_et.py)
+# Annual means on the common grid (scripts/bin_cmip.py)
 # ------------------------------------------------------------------
 
 def load_native(
@@ -747,7 +747,7 @@ def load_model(
 
 
 # ------------------------------------------------------------------
-# Regridding whole fields (regrid_cmip_esgf.py)
+# Regridding whole fields (scripts/regrid_cmip.py)
 # ------------------------------------------------------------------
 
 def _format_lat_lon(da: xr.DataArray) -> xr.DataArray:
@@ -768,7 +768,7 @@ def _format_lat_lon(da: xr.DataArray) -> xr.DataArray:
 def regrid_to_target(da: xr.DataArray, res: float | str = 1.0, verbose: bool = False) -> xr.DataArray:
     """
     Conservative (area-weighted) xESMF regridding onto `etunc.grid.target_grid(res)`, as written
-    by regrid_cmip_esgf.py. EC-Earth's (j, i) grids are first given 1-D lat/lon
+    by scripts/regrid_cmip.py. EC-Earth's (j, i) grids are first given 1-D lat/lon
     (`_format_lat_lon`).
 
     The source grid keeps its original lat/lon dims (1-D or 2-D); xESMF infers

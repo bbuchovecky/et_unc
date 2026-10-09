@@ -11,14 +11,10 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import cmip_binned_et as cb
 import etunc.config as config
-import ilamb_binned_et as ib
 import etunc.load.obs as lo
 import etunc.grid as rg
-import regrid_cmip_esgf as rce
 import etunc.load.cmip as cmip
-import regrid_obs as ro
 
 
 def field(lat, lon, value=1.0):
@@ -76,14 +72,10 @@ def test_grid_tag_only_standard_grids(res):
         rg.grid_tag(res)
 
 
-def test_scripts_use_target_grids():
-    """Every script regrids onto the same `target_grid`, and load_obs reads the same tags."""
-    xr.testing.assert_identical(ib.TARGET_GRID, rg.target_grid(0.5))
-    xr.testing.assert_identical(cb.TARGET_GRID, rg.target_grid(1.0))
-    assert cb.GRID_TAG == "1deg"
-    assert rce.TARGET_RES in rg.RESOLUTIONS.values()
-    assert ro.RESOLUTIONS == rg.RESOLUTIONS
+def test_load_obs_reads_the_standard_grid_tags():
+    """load_obs reads (and regrid_file writes) regridded files under the same tags as grid.RESOLUTIONS."""
     assert set(lo.RES_DIRS.values()) == set(rg.RESOLUTIONS)
+    assert {float(r) for r in lo.RES_DIRS} == set(rg.RESOLUTIONS.values())
 
 
 # ------------------------------------------------------------------
@@ -288,7 +280,7 @@ def test_cell_area_irregular_lat_extrapolates_and_clips():
 
 
 # ------------------------------------------------------------------
-# Valid-month product masks (mask.py)
+# Valid-month product masks (make_mask.py)
 # ------------------------------------------------------------------
 
 def test_product_mask_counts_only_the_products_valid_months():

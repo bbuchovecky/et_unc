@@ -1,6 +1,6 @@
 """
-mask.py
-=======
+make_mask.py
+============
 Build one static lat/lon mask shared by every data product listed in
 ILAMB_PRODUCTS and GRIDDED_PRODUCTS: the land gridcells where each product is
 valid in (enough of) its own valid months over TIME_SLICE.
@@ -13,7 +13,7 @@ Usage
 -----
 Edit the settings below (period, grid, product list, thresholds), then run
 
-    $PY mask.py
+    $PY scripts/make_mask.py
 
 Steps
 -----
@@ -72,7 +72,6 @@ import xarray as xr
 import etunc.config as config
 import etunc.temporal as temporal
 import etunc.plotting as plotting
-import ilamb_binned_et as ib  # output roots
 import etunc.load.ilamb as il  # ILAMB product table and loader
 import etunc.load.obs as lo        # loader for PML / GLEAM / SiTH files
 import etunc.grid as rg          # common target grids and regridders
@@ -113,8 +112,8 @@ GRIDDED_PRODUCTS = {
 # valid, per variable. 1.0 = every month; e.g. 0.9 tolerates 10% missing months.
 MIN_VALID_FRAC = {"et": 1.0, "lai": 1.0, "pr": 1.0, "rns": 1.0}
 
-PROC_ROOT = ib.PROC_ROOT                  # NetCDF output directory
-FIG_ROOT = ib.FIG_ROOT / "obs" / "mask"   # figure output directory
+PROC_ROOT = config.PROC_ROOT / "obs"            # NetCDF output directory
+FIG_ROOT = config.FIG_ROOT / "obs" / "mask"      # figure output directory
 
 NCOLS = 4  # panels per row in plot_product_masks
 

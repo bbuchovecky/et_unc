@@ -1,10 +1,9 @@
 """
-cmip_binned_et.py
-=================
+bin_cmip.py
+===========
 Bin evapotranspiration (ET) in a 2-D space of climatological leaf area index
 (LAI, y-axis) and aridity index (AI = Rn / L*P, x-axis), and plot intermediate
-diagnostics, for CMIP6 historical simulations. Follows ilamb_binned_et.py and
-obs_binned_et.py.
+diagnostics, for CMIP6 historical simulations. Follows bin_obs.py.
 
 Steps
 -----
@@ -75,12 +74,11 @@ warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will
 # Paths
 # ------------------------------------------------------------------
 
-CATALOG_ROOT = Path("/glade/derecho/scratch/bbuchovecky/cmip_intake_esgf_fetch/catalogs")
-CATALOG = CATALOG_ROOT / "cmip_evap.csv"          # evspsbl, lai, pr, radiative fluxes
-FX_CATALOG = CATALOG_ROOT / "cmip6_fx_glade.csv"  # one sftlf file per model, from any experiment
-PROC_ROOT = Path("/glade/work/bbuchovecky/et_unc/proc/cmip6")
-BIN_EDGES_ROOT = Path("/glade/work/bbuchovecky/et_unc/proc/qbin_edges")
-FIG_ROOT = Path("/glade/work/bbuchovecky/et_unc/fig")
+CATALOG = config.CMIP_CATALOG        # evspsbl, lai, pr, radiative fluxes (on purgeable scratch)
+FX_CATALOG = config.CMIP_FX_CATALOG  # one sftlf file per model, from any experiment
+PROC_ROOT = config.PROC_ROOT / "cmip6"
+BIN_EDGES_ROOT = config.BIN_EDGES_ROOT
+FIG_ROOT = config.FIG_ROOT
 
 
 # ------------------------------------------------------------------

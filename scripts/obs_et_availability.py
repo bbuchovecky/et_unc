@@ -3,7 +3,7 @@ obs_et_availability.py
 ======================
 Compare the data availability of every observational ET product (ILAMB
 products, PML-V2.2, GLEAM v4.3, and SiTHv2 once it is regridded) over one
-period, with the masking and processing of `ilamb_binned_et.py`.
+period, with the masking and processing of `bin_obs.py`.
 
 Processing
 ----------
@@ -58,7 +58,6 @@ import etunc.units as units
 import etunc.temporal as temporal
 import etunc.grid as rg
 import etunc.plotting as plotting
-import ilamb_binned_et as ib
 import etunc.load.ilamb as il
 import etunc.load.obs as lo
 
@@ -81,10 +80,13 @@ GRIDDED_PRODUCTS = {
     "GLEAM-v4.3b":     ("gleam", "v4.3b", "E"),
     "SiTHv2":          ("sith", "v2", "ET"),
 }
-GRIDDED_RES = "0.5"  # load_obs `res` of the regridded files; must match ib.TARGET_RES
+# Common 0.5 deg grid, as in bin_obs.py; 1 deg ILAMB products are interpolated onto it
+TARGET_RES = 0.5
+TARGET_GRID = rg.target_grid(TARGET_RES)
+GRIDDED_RES = "0.5"  # load_obs `res` of the regridded files; must match TARGET_RES
 
-PROC_ROOT = ib.PROC_ROOT
-FIG_DIR = ib.FIG_ROOT / "obs" / "availability"
+PROC_ROOT = config.PROC_ROOT / "obs"
+FIG_DIR = config.FIG_ROOT / "obs" / "availability"
 
 NCOLS = 4  # panels per row in the per-product figures
 BOX_WHIS = (5, 95)  # whisker percentiles in box_annual_et
@@ -95,12 +97,12 @@ BOX_WHIS = (5, 95)  # whisker percentiles in box_annual_et
 # ------------------------------------------------------------------
 
 MONTHS = pd.date_range(TIME_SLICE.start, TIME_SLICE.stop, freq="MS")
-GRID = ib.TARGET_GRID.sel(lat=config.LAT_BNDS)
+GRID = TARGET_GRID.sel(lat=config.LAT_BNDS)
 
 
 def load_ilamb(product: str) -> xr.DataArray:
     """Monthly ET [W/m2] of an ILAMB product (converted before regridding) on the MONTHS axis."""
-    return temporal.on_month_axis(il.load_ilamb("et", product, TIME_SLICE, ib.TARGET_RES, wm2=True), MONTHS)
+    return temporal.on_month_axis(il.load_ilamb("et", product, TIME_SLICE, TARGET_RES, wm2=True), MONTHS)
 
 
 def load_gridded(label: str) -> xr.DataArray:
@@ -111,7 +113,7 @@ def load_gridded(label: str) -> xr.DataArray:
         raise FileNotFoundError(f"{label}: no {GRIDDED_RES} deg files under {root} (run regrid_obs.py)")
     da = lo.load_obs(dataset, var, TIME_SLICE, version=version, freq="monthly", res=GRIDDED_RES).load()
     da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
-    return temporal.on_month_axis(rg.on_grid(da, ib.TARGET_RES, label), MONTHS)
+    return temporal.on_month_axis(rg.on_grid(da, TARGET_RES, label), MONTHS)
 
 
 # ------------------------------------------------------------------
@@ -325,7 +327,7 @@ def plot_box_annual_et(ann: xr.DataArray, common: xr.DataArray, title: str, fout
 
 def main():
     period = temporal.format_time_period(TIME_SLICE)
-    land = (rg.land_mask(ib.TARGET_GRID).sel(lat=config.LAT_BNDS) == 1).rename("land")
+    land = (rg.land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS) == 1).rename("land")
     n_land = int(land.sum())
     print(f"{period}: {len(MONTHS)} months, {n_land} land gridcells\n")
 

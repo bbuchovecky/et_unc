@@ -1,23 +1,23 @@
 #!/bin/bash
-#PBS -N regrid_cmip_esgf
+#PBS -N regrid_cmip
 #PBS -A UWAS0155
 #PBS -q casper
 #PBS -l walltime=06:00:00
 #PBS -l select=1:ncpus=4:mem=48GB
 #PBS -j oe
 
-SCRIPT_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
+REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
 
 set -euo pipefail
 
 export OMP_NUM_THREADS="${PBS_NCPUS:-4}"
 
-cd "${SCRIPT_DIR}"
+cd "${REPO_DIR}"
 
 echo "Job ${PBS_JOBID} started on $(hostname) at $(date)"
 echo "OMP_NUM_THREADS=${OMP_NUM_THREADS}"
 
 # Use the -u flag to run the script with unbuffered output
-/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python3 -u regrid_cmip_esgf.py
+/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python3 -u scripts/regrid_cmip.py
 
 echo "Job ${PBS_JOBID} finished at $(date)"

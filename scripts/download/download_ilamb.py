@@ -1,5 +1,6 @@
 """
-Download formatted datasets from ILAMB
+Download formatted datasets from ILAMB into OUTPUT_ROOT (run as a script:
+`python scripts/download/download_ilamb.py`; importing it downloads nothing).
 """
 
 from __future__ import annotations
@@ -51,20 +52,25 @@ ILAMB_DATASETS = {
 OUTPUT_ROOT = Path("/glade/campaign/univ/uwas0155/obs")
 
 
-for variable, dataset_dict in ILAMB_DATASETS.items():
-    output_path = OUTPUT_ROOT / variable
-    output_path.mkdir(parents=True, exist_ok=True)
+def main():
+    for variable, dataset_dict in ILAMB_DATASETS.items():
+        output_path = OUTPUT_ROOT / variable
+        output_path.mkdir(parents=True, exist_ok=True)
 
-    for name, (subdir, file, var) in dataset_dict.items():
-        data_url = f"{ILAMB_ROOT_URL}/{subdir}/{name}/{file}"
-        tmp = output_path / f"{variable}_{name}_tmp.nc"
+        for name, (subdir, file, var) in dataset_dict.items():
+            data_url = f"{ILAMB_ROOT_URL}/{subdir}/{name}/{file}"
+            tmp = output_path / f"{variable}_{name}_tmp.nc"
 
-        print(f"\n\n{name}: {data_url} -> {tmp}")
-        subprocess.run(["wget", "-O", tmp, data_url ])
+            print(f"\n\n{name}: {data_url} -> {tmp}")
+            subprocess.run(["wget", "-O", tmp, data_url ])
 
-        ds = xr.open_dataset(tmp, decode_timedelta=False)
-        ds = ds.rename({var: variable})
-        print(f"units: {ds[variable].attrs.get('units', 'no units')}")
+            ds = xr.open_dataset(tmp, decode_timedelta=False)
+            ds = ds.rename({var: variable})
+            print(f"units: {ds[variable].attrs.get('units', 'no units')}")
+
+
+if __name__ == "__main__":
+    main()
 
 
 # ds_dict = {}

@@ -43,7 +43,7 @@ PR_FILL = (-20.5, 200.5, "2002-03")
 JULY_WEIGHT = 31 / 365  # weight of July in the days-in-month weighted annual mean of 2001
 
 # Settings the old drivers used, now passed explicitly
-RES = 0.5                                           # ilamb_binned_et.TARGET_RES
+RES = 0.5                                           # bin_obs.TARGET_RES (was ilamb_binned_et)
 GRID = rg.target_grid(RES)
 MASK_TIME_SLICE = slice("1982-01", "2025-12")      # mask.TIME_SLICE
 AV_TIME_SLICE = slice("2000-01", "2014-12")        # obs_et_availability.TIME_SLICE
@@ -208,7 +208,7 @@ def test_load_product_off_grid_raises(ilamb_root):
 
 def test_mask_load_ilamb_regrids_each_month_in_native_units(ilamb_root):
     """
-    load_ilamb (as in mask.py) keeps every month in TIME_SLICE (partial years too) in native units, and regrids each month,
+    load_ilamb (as in make_mask.py) keeps every month in TIME_SLICE (partial years too) in native units, and regrids each month,
     so a missing month is NaN around that cell.
     """
     da = il.load_ilamb("lai", "FAKE", MASK_TIME_SLICE, RES)
