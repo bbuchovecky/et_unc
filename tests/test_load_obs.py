@@ -2,7 +2,7 @@
 Tests for load_obs.py on small synthetic per-year NetCDF files. Run from the
 project root with:
 
-    python -m pytest test_load_obs.py
+    python -m pytest tests/test_load_obs.py
 """
 
 import numpy as np

@@ -1,7 +1,7 @@
 """
 Tests for etunc/grid.py. Run from the project root with:
 
-    python -m pytest test_regrid.py
+    python -m pytest tests/test_grid.py
 
 Synthetic data only; takes a few seconds.
 """

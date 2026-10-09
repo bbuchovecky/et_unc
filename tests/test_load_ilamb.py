@@ -5,7 +5,7 @@ Tests that pin the behavior of the ILAMB product loaders in `etunc.load.ilamb`:
 `obs_et_availability.load_ilamb`). The expected values were written against
 the old driver functions and are unchanged. Run from the project root with:
 
-    python -m pytest test_load_ilamb.py
+    python -m pytest tests/test_load_ilamb.py
 
 Small synthetic ILAMB-style NetCDF files only; takes a few seconds.
 """

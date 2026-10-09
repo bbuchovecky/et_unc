@@ -3,7 +3,7 @@ Tests for the code split out of binned_et.py: etunc.units, etunc.temporal,
 etunc.binning, etunc.plotting, the coordinate checks in etunc.grid and
 etunc.legacy. Run from the project root with:
 
-    python -m pytest test_binned_et.py
+    python -m pytest tests/test_binning.py
 
 The data loaders (load_cmip, load_cesm_*, load_ilamb_obs) and compute_cell_area
 need external data/libraries and are not tested here.

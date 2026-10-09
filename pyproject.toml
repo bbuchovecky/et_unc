@@ -26,3 +26,6 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 include = ["etunc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

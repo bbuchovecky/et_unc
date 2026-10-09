@@ -1,8 +1,8 @@
 """
 Tests for the obs regridding of regrid_obs.py: grid.regrid_with_na_thres and
-load.obs.output_path / regrid_file (the shared grids are tested in test_regrid.py). Run from the project root with:
+load.obs.output_path / regrid_file (the shared grids are tested in test_grid.py). Run from the project root with:
 
-    python -m pytest test_regrid_obs.py
+    python -m pytest tests/test_regrid_obs.py
 
 The synthetic tests take a few seconds. The real-data tests compare global
 area-weighted means of native and regridded GLEAM and PML months; they need

@@ -2,7 +2,7 @@
 Tests for etunc/temporal.py helpers used by the drivers. Run from the project
 root with:
 
-    python -m pytest test_temporal.py
+    python -m pytest tests/test_temporal.py
 
 Synthetic data only; takes a few seconds.
 """

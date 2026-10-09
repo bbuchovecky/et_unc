@@ -6,7 +6,7 @@ and `regrid_to_target` (from `regrid_cmip_esgf.py`). The expected values were
 written against the old driver functions and are unchanged. Run from the
 project root with:
 
-    python -m pytest test_load_cmip.py
+    python -m pytest tests/test_load_cmip.py
 
 Synthetic catalogs and a stub loader on a small native grid; takes a few seconds.
 """

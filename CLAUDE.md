@@ -16,9 +16,9 @@ The Python env is `etunc` (`/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/py
 
 ```bash
 PY=/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python
-$PY -m pytest                                        # full suite (~7 min, no external data needed)
-$PY -m pytest test_binned_et.py                      # binning tests only (~70 s)
-$PY -m pytest test_binned_et.py::test_bin_stats_mask # single test
+$PY -m pytest                                        # full suite in tests/ (~7 min, no external data needed)
+$PY -m pytest tests/test_binning.py                  # binning tests only (~70 s)
+$PY -m pytest tests/test_binning.py::test_bin_stats_mask  # single test
 $PY scripts/bin_obs.py                               # obs pipeline (ILAMB + gridded ET products)
 $PY scripts/bin_cmip.py                              # CMIP6 pipeline
 $PY scripts/make_mask.py                             # common valid-data mask of the obs products
@@ -47,7 +47,7 @@ The dataset-agnostic core library is the `etunc` package (split out of the forme
 
 **`etunc/grid.py`** (imported as `rg`) holds the shared regridding utilities. `rg.target_grid(res)` is the only source of target grids: the two standard ones, 0.5° and 1° (`rg.RESOLUTIONS`, named by `rg.grid_tag`), and any other spacing that divides 180. All are global, lon in [-180, 180], lat ascending, with `lat_b`/`lon_b` edges. Never build a target grid by hand. The module also provides the xESMF regridders onto those grids: `conservative_regridder` (cached, for regular 1-D sources), `bounded_conservative_regridder` (any 1-D source such as Gaussian grids, with edges from CF bounds or midpoints), `bilinear_regridder` (periodic) and `make_regridder` (any method or source grid), plus `approx_resolution`. Every script and loader that regrids uses it.
 
-**`etunc/load/obs.py`** (imported as `lo`) loads per-year gridded obs products (GLEAM v4.3, PML-V2.2 in `/glade/campaign/univ/uwas0155/obs/`) into one lazy DataArray with `load_obs(dataset, var, time_slice, version=, freq=)` (or `load_gleam`/`load_pml`). Each product is an `ObsDataset` entry (path template, versions, frequencies, coord names), so a new product is added with `register_dataset`. Monthly and yearly files hold totals (mm/month, mm/year); `etunc.units.accumulation_to_flux` converts them to kg m-2 s-1. Tested in `test_load_obs.py`.
+**`etunc/load/obs.py`** (imported as `lo`) loads per-year gridded obs products (GLEAM v4.3, PML-V2.2 in `/glade/campaign/univ/uwas0155/obs/`) into one lazy DataArray with `load_obs(dataset, var, time_slice, version=, freq=)` (or `load_gleam`/`load_pml`). Each product is an `ObsDataset` entry (path template, versions, frequencies, coord names), so a new product is added with `register_dataset`. Monthly and yearly files hold totals (mm/month, mm/year); `etunc.units.accumulation_to_flux` converts them to kg m-2 s-1. Tested in `tests/test_load_obs.py`.
 
 **`etunc/load/cesm.py`** (imported as `lc`) loads the CESM2 ensembles from the tseries archives on glade: `load_fhist_ppe` (FHIST PPE, members in parallel threads), `load_goga2`, `load_cesm2le`, plus `load_grid("fppe"|"goga"|"lens")` and `ppe_member_name`. Callers give each variable's `gcomp` ("lnd"/"atm") and `stream` explicitly; there is no variable lookup table. `load_cesm_grid` / `load_cesm_variable` in the same module wrap it. **`etunc/load/era5.py`** (`le`) loads ERA5 monthly means from GDEX and the ERA5 grid file. **`etunc/dask_cluster.py`** (`dc`) starts and stops a PBS dask cluster on Casper or Derecho for the notebooks. All three were ported from the user's former `xclimate` package.
 
@@ -62,7 +62,7 @@ The dataset-agnostic core library is the `etunc` package (split out of the forme
 - **Units:** there are two conversion paths. `convert_units` keys on the variable name (CMIP, CESM, ERA5), and `latent_heat_to_wm2` keys on the `units` attr (ILAMB). Both use L = 2.45e6 J/kg.
 - **Net radiation sign conventions** differ by source. Use the matching `net_radiation_cmip`, `net_radiation_cesm` or `net_radiation_era5`.
 - **Domain:** `LAT_BNDS = slice(-58, 90)` excludes Antarctica, and the land fraction threshold is `LF_THRESH = 0.5`.
-- **Tests:** all tests use synthetic data. `test_binned_et.py` covers `units`, `temporal`, `binning`, `plotting`, the grid checks and `legacy`, `test_regrid.py` covers `etunc/grid.py` (including `cell_area`), `test_load_obs.py` and `test_regrid_obs.py` cover the obs loader and regridder, and `test_load_ilamb.py` and `test_load_cmip.py` pin the loaders moved out of the drivers (`etunc.load.ilamb`, and the CMIP member selection and `load_model` in `etunc.load.cmip`). Not tested, because they need glade data or PBS: `load_cmip`, `load_cesm_*`, `load_ilamb_obs`, `etunc/load/cesm.py`, `etunc/load/era5.py`, `etunc/dask_cluster.py`, and `compute_cell_area` (its land mask downloads Natural Earth shapes).
+- **Tests:** all tests (in `tests/`) use synthetic data. `tests/test_temporal.py` covers the `temporal` helpers, `tests/test_binning.py` covers `units`, `temporal`, `binning`, `plotting`, the grid checks and `legacy`, `tests/test_grid.py` covers `etunc/grid.py` (including `cell_area`), `tests/test_load_obs.py` and `tests/test_regrid_obs.py` cover the obs loader and regridder, and `tests/test_load_ilamb.py` and `tests/test_load_cmip.py` pin the loaders moved out of the drivers (`etunc.load.ilamb`, and the CMIP member selection and `load_model` in `etunc.load.cmip`). Not tested, because they need glade data or PBS: `load_cmip`, `load_cesm_*`, `load_ilamb_obs`, `etunc/load/cesm.py`, `etunc/load/era5.py`, `etunc/dask_cluster.py`, and `compute_cell_area` (its land mask downloads Natural Earth shapes).
 
 ## Refactoring guidelines
 - Prefer incremental changes over large rewrites
