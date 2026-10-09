@@ -122,7 +122,7 @@ def net_radiation_cmip(
 
 
 def net_radiation_cesm(fsns: xr.DataArray, flns: xr.DataArray) -> xr.DataArray:
-    """CESM net surface radiation [W/m2]; FSNS is net SW down, FLNS is net LW *up*."""
+    """CESM net surface radiation [W/m2]; FSNS is net SW *down*, FLNS is net LW *up*."""
     rn = fsns - flns
     rn.attrs = {"units": "W/m2", "long_name": "net surface radiation"}
     return rn.rename("rn")
