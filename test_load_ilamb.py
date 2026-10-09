@@ -1,8 +1,9 @@
 """
-Tests that pin the behavior of the ILAMB product loaders before the refactor
-merges them into `etunc.load.ilamb`: `ilamb_binned_et.load_product` (annual
-means), `mask.load_ilamb` and `obs_et_availability.load_ilamb` (monthly). Run
-from the project root with:
+Tests that pin the behavior of the ILAMB product loaders in `etunc.load.ilamb`:
+`load_ilamb_annual` (annual means; was `ilamb_binned_et.load_product`) and
+`load_ilamb` (monthly; was `mask.load_ilamb` and, with `wm2=True`,
+`obs_et_availability.load_ilamb`). The expected values were written against
+the old driver functions and are unchanged. Run from the project root with:
 
     python -m pytest test_load_ilamb.py
 
@@ -15,10 +16,9 @@ import pytest
 import xarray as xr
 
 import etunc.config as config
-import ilamb_binned_et as ib
-import mask as mk
-import obs_et_availability as oa
 import etunc.grid as rg
+import etunc.load.ilamb as il
+import etunc.temporal as temporal
 
 
 # ------------------------------------------------------------------
@@ -42,6 +42,18 @@ PR_FILL = (-20.5, 200.5, "2002-03")
 
 JULY_WEIGHT = 31 / 365  # weight of July in the days-in-month weighted annual mean of 2001
 
+# Settings the old drivers used, now passed explicitly
+RES = 0.5                                           # ilamb_binned_et.TARGET_RES
+GRID = rg.target_grid(RES)
+MASK_TIME_SLICE = slice("1982-01", "2025-12")      # mask.TIME_SLICE
+AV_TIME_SLICE = slice("2000-01", "2014-12")        # obs_et_availability.TIME_SLICE
+AV_MONTHS = pd.date_range(AV_TIME_SLICE.start, AV_TIME_SLICE.stop, freq="MS")
+
+
+def availability_ilamb(product):
+    """obs_et_availability.load_ilamb: monthly ET in W/m2 on the AV_MONTHS axis."""
+    return temporal.on_month_axis(il.load_ilamb("et", product, AV_TIME_SLICE, RES, wm2=True), AV_MONTHS)
+
 
 def field(value, gaps=(), dtype="float64"):
     """(time, lat, lon) constant field on the 1 deg grid, with `gaps` = [(lat, lon, month, fill)]."""
@@ -56,19 +68,19 @@ def field(value, gaps=(), dtype="float64"):
 
 
 def write_product(root, variable, product, name, da, units):
-    """Write `da` as an ILAMB file and register it in ib.PRODUCTS[variable][product]."""
+    """Write `da` as an ILAMB file and register it in il.PRODUCTS[variable][product]."""
     relpath = f"{variable}/{product}/{name}.nc"
     (root / variable / product).mkdir(parents=True, exist_ok=True)
     da.rename(name).assign_attrs(units=units).to_dataset().to_netcdf(root / relpath)
-    ib.PRODUCTS[variable][product] = (relpath, name)
+    il.PRODUCTS[variable][product] = (relpath, name)
 
 
 @pytest.fixture
 def ilamb_root(tmp_path, monkeypatch):
     """ILAMB_DATA_ROOT in tmp_path, with fake 1 deg "FAKE" lai, pr and et products."""
-    monkeypatch.setattr(ib, "ILAMB_DATA_ROOT", tmp_path)
-    for variable in ib.PRODUCTS:
-        monkeypatch.setitem(ib.PRODUCTS, variable, dict(ib.PRODUCTS[variable]))
+    monkeypatch.setattr(il, "ILAMB_DATA_ROOT", tmp_path)
+    for variable in il.PRODUCTS:
+        monkeypatch.setitem(il.PRODUCTS, variable, dict(il.PRODUCTS[variable]))
     write_product(tmp_path, "lai", "FAKE", "lai", field(LAI, [(*LAI_GAP, np.nan)]), "1")
     write_product(tmp_path, "pr", "FAKE", "pr", field(PR, [(*PR_GAP, np.nan), (*PR_FILL, FILL)]), "mm/day")
     write_product(tmp_path, "et", "FAKE", "et", field(ET, [(*PR_GAP, np.nan)]), "kg m-2 s-1")
@@ -76,7 +88,7 @@ def ilamb_root(tmp_path, monkeypatch):
 
 
 def target_lat_lon():
-    grid = ib.TARGET_GRID.sel(lat=config.LAT_BNDS)
+    grid = GRID.sel(lat=config.LAT_BNDS)
     return grid.lat.values, grid.lon.values
 
 
@@ -89,7 +101,7 @@ def near(lat, lon):
 
 def bilinear(da):
     """Bilinear regrid of `da` (on the formatted 1 deg grid) onto the 0.5 deg target grid within LAT_BNDS."""
-    return rg.bilinear_regridder(da, ib.TARGET_RES)(da).sel(lat=config.LAT_BNDS)
+    return rg.bilinear_regridder(da, RES)(da).sel(lat=config.LAT_BNDS)
 
 
 def formatted(da):
@@ -98,7 +110,7 @@ def formatted(da):
 
 
 # ------------------------------------------------------------------
-# ib.load_product: annual means on the 0.5 deg grid
+# load_ilamb_annual (was ib.load_product): annual means on the 0.5 deg grid
 # ------------------------------------------------------------------
 
 def test_load_product_grid_years_and_units(ilamb_root):
@@ -106,7 +118,7 @@ def test_load_product_grid_years_and_units(ilamb_root):
     Annual means have dims (year, lat, lon) on the exact 0.5 deg grid within LAT_BNDS, the incomplete final year
     is dropped, and LAI units are set to m2/m2.
     """
-    ann = ib.load_product("lai", "FAKE")
+    ann = il.load_ilamb_annual("lai", "FAKE", RES)
     assert ann.name == "lai"
     assert ann.dims == ("year", "lat", "lon")
     assert ann.year.values.tolist() == [2001, 2002]  # incomplete 2003 dropped
@@ -118,7 +130,7 @@ def test_load_product_grid_years_and_units(ilamb_root):
 
 def test_load_product_averages_before_regridding(ilamb_root):
     """Annual mean first, then bilinear regrid. Regridding each month first gives different values."""
-    ann = ib.load_product("lai", "FAKE")
+    ann = il.load_ilamb_annual("lai", "FAKE", RES)
 
     # A missing LAI month counts as 0, so the source cell's 2001 mean is LAI * (1 - July weight)
     src = formatted(field(LAI))
@@ -142,7 +154,7 @@ def test_load_product_flux_needs_all_months_and_masks_fill(ilamb_root):
     A pr year with a missing month or a fill value is NaN around that cell; elsewhere mm/day is converted to
     W/m2.
     """
-    ann = ib.load_product("pr", "FAKE")
+    ann = il.load_ilamb_annual("pr", "FAKE", RES)
     assert ann.attrs["units"] == "W/m2"
     assert ann.year.values.tolist() == [2001, 2002]
 
@@ -158,7 +170,7 @@ def test_load_product_flux_needs_all_months_and_masks_fill(ilamb_root):
 
 def test_load_product_snaps_near_grid_without_regridding(ilamb_root):
     """A 0.5 deg product off by float round-off is not regridded, only given the exact target coords."""
-    grid = ib.TARGET_GRID
+    grid = GRID
     rng = np.random.default_rng(0)
     time = pd.date_range("2001-01-01", periods=12, freq="MS")
     data = rng.uniform(0, 5, (time.size, grid.sizes["lat"], grid.sizes["lon"]))
@@ -167,7 +179,7 @@ def test_load_product_snaps_near_grid_without_regridding(ilamb_root):
         coords={"time": time, "lat": grid.lat.values + 1e-5, "lon": grid.lon.values - 1e-5},
     )
     write_product(ilamb_root, "lai", "FAKE05", "lai", da, "1")
-    ann = ib.load_product("lai", "FAKE05")
+    ann = il.load_ilamb_annual("lai", "FAKE05", RES)
 
     tlat, tlon = target_lat_lon()
     np.testing.assert_array_equal(ann.lat, tlat)
@@ -179,7 +191,7 @@ def test_load_product_snaps_near_grid_without_regridding(ilamb_root):
 
 def test_load_product_off_grid_raises(ilamb_root):
     """A product whose grid is off by more than the tolerance raises."""
-    grid = ib.TARGET_GRID
+    grid = GRID
     time = pd.date_range("2001-01-01", periods=12, freq="MS")
     da = xr.DataArray(
         np.ones((time.size, grid.sizes["lat"], grid.sizes["lon"])), dims=("time", "lat", "lon"),
@@ -187,19 +199,19 @@ def test_load_product_off_grid_raises(ilamb_root):
     )
     write_product(ilamb_root, "lai", "OFFGRID", "lai", da, "1")
     with pytest.raises(ValueError, match="differ from the reference grid"):
-        ib.load_product("lai", "OFFGRID")
+        il.load_ilamb_annual("lai", "OFFGRID", RES)
 
 
 # ------------------------------------------------------------------
-# Monthly loaders: mask.load_ilamb and obs_et_availability.load_ilamb
+# load_ilamb (was mask.load_ilamb and obs_et_availability.load_ilamb): monthly
 # ------------------------------------------------------------------
 
 def test_mask_load_ilamb_regrids_each_month_in_native_units(ilamb_root):
     """
-    mask.load_ilamb keeps every month in TIME_SLICE (partial years too) in native units, and regrids each month,
+    load_ilamb (as in mask.py) keeps every month in TIME_SLICE (partial years too) in native units, and regrids each month,
     so a missing month is NaN around that cell.
     """
-    da = mk.load_ilamb("lai", "FAKE")
+    da = il.load_ilamb("lai", "FAKE", MASK_TIME_SLICE, RES)
     assert da.dims == ("time", "lat", "lon")
     np.testing.assert_array_equal(da.time.values, TIME.values)  # partial 2003 kept (TIME_SLICE only)
     assert da.attrs["units"] == "1"                             # native units
@@ -217,9 +229,9 @@ def test_mask_load_ilamb_regrids_each_month_in_native_units(ilamb_root):
 
 def test_mask_load_ilamb_masks_fill_values(ilamb_root):
     """
-    mask.load_ilamb sets fill values to NaN before regridding, so they do not spread into neighboring cells.
+    load_ilamb sets fill values to NaN before regridding, so they do not spread into neighboring cells.
     """
-    da = mk.load_ilamb("pr", "FAKE")
+    da = il.load_ilamb("pr", "FAKE", MASK_TIME_SLICE, RES)
     assert da.attrs["units"] == "mm/day"
     lat, lon, month = PR_FILL
     hit = near(lat, lon)
@@ -231,13 +243,13 @@ def test_mask_load_ilamb_masks_fill_values(ilamb_root):
 
 def test_availability_load_ilamb_wm2_on_month_axis(ilamb_root):
     """
-    obs_et_availability.load_ilamb converts ET to W/m2, reindexes it to MONTHS (NaN outside the data), and
+    load_ilamb with wm2=True (as in obs_et_availability.py) converts ET to W/m2, reindexes it to MONTHS (NaN outside the data), and
     regrids each month.
     """
-    da = oa.load_ilamb("FAKE")
-    np.testing.assert_array_equal(da.time.values, oa.MONTHS.values)  # reindexed to 2000-2014
+    da = availability_ilamb("FAKE")
+    np.testing.assert_array_equal(da.time.values, AV_MONTHS.values)  # reindexed to 2000-2014
     assert da.attrs["units"] == "W/m2"
-    present = (oa.MONTHS >= TIME[0]) & (oa.MONTHS <= TIME[-1])
+    present = (AV_MONTHS >= TIME[0]) & (AV_MONTHS <= TIME[-1])
     assert da.isel(time=~present).isnull().all()
 
     lat, lon, month = PR_GAP
@@ -252,4 +264,4 @@ def test_availability_load_ilamb_no_data_raises(ilamb_root):
     old = field(ET).assign_coords(time=pd.date_range("1990-01-01", periods=TIME.size, freq="MS"))
     write_product(ilamb_root, "et", "OLD", "et", old, "kg m-2 s-1")
     with pytest.raises(FileNotFoundError, match="no data"):
-        oa.load_ilamb("OLD")
+        availability_ilamb("OLD")

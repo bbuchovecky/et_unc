@@ -60,18 +60,17 @@ import numpy as np
 import xarray as xr
 
 import etunc.config as config
-import etunc.units as units
 import etunc.temporal as temporal
 import etunc.binning as binning
 import etunc.plotting as plotting
 import etunc.grid as rg
+import etunc.load.ilamb as il
 
 
 # ------------------------------------------------------------------
 # Paths
 # ------------------------------------------------------------------
 
-ILAMB_DATA_ROOT = config.ILAMB_ROOT / "ILAMB-Data"
 PROC_ROOT = Path("/glade/work/bbuchovecky/et_unc/proc/obs")
 BIN_EDGES_ROOT = Path("/glade/work/bbuchovecky/et_unc/proc/qbin_edges")
 FIG_ROOT = Path("/glade/work/bbuchovecky/et_unc/fig")
@@ -86,46 +85,13 @@ N_YBINS = 15    # LAI
 MIN_YEARS = 3   # minimum number of complete years shared by a combination
 SIGNIF_ALPHA = 0.05  # t-test of bin mean ET against 0 (95% confidence)
 SIGNIF_N_MIN = 10    # bins with <= this many samples are never significant
-FILL_THRESH = 1e30  # GPCCv2018 stores undecoded ~9.97e36 fill values
-
 # Common 0.5 deg grid; 1 deg products (WECANN, CERESed4.2) are interpolated onto it
 TARGET_RES = 0.5
 TARGET_GRID = rg.target_grid(TARGET_RES)
 
-# {variable: {product: (file relative to ILAMB_DATA_ROOT, variable name in file)}}
-# ET products come from both evspsbl and hfls. Not used: FLUXNET2015 and
-# WRMC.BSRN (site data), CARDAMOM (4x5 deg), FLUXCOM le.nc (hfls.nc used).
-PRODUCTS = {
-    "et": {
-        "CLASS":      ("hfls/CLASS/hfls.nc", "hfls"),
-        "DOLCE":      ("evspsbl/DOLCE/DOLCE.nc", "hfls"),
-        "FLUXCOM":    ("hfls/FLUXCOM/hfls.nc", "hfls"),
-        "GLEAMv3.3a": ("evspsbl/GLEAMv3.3a/et.nc", "et"),
-        "MOD16A2":    ("evspsbl/MOD16A2/et.nc", "et"),
-        "MODIS":      ("evspsbl/MODIS/et_0.5x0.5.nc", "et"),
-        "WECANN":     ("hfls/WECANN/hfls.nc", "hfls"),
-    },
-    "lai": {
-        "AVH15C1":     ("lai/AVH15C1/lai.nc", "lai"),
-        "AVHRR":       ("lai/AVHRR/lai_0.5x0.5.nc", "lai"),
-        "GIMMS_LAI4g": ("lai/GIMMS_LAI4g/cao2023_lai.nc", "lai"),
-        "MODIS":       ("lai/MODIS/lai_0.5x0.5.nc", "lai"),
-    },
-    "pr": {
-        "CLASS":     ("pr/CLASS/pr.nc", "pr"),
-        "CMAPv1904": ("pr/CMAPv1904/pr.nc", "pr"),
-        "GPCCv2018": ("pr/GPCCv2018/pr.nc", "pr"),
-        "GPCPv2.3":  ("pr/GPCPv2.3/pr.nc", "pr"),
-    },
-    "rns": {
-        "CERESed4.2": ("rns/CERESed4.2/rns.nc", "rns"),
-        "CLASS":      ("rns/CLASS/rns.nc", "rns"),
-        "GEWEX.SRB":  ("rns/GEWEX.SRB/rns_0.5x0.5.nc", "rns"),
-    },
-}
-FACTORS = tuple(PRODUCTS)  # order of products in a combination
+FACTORS = tuple(il.PRODUCTS)  # order of products in a combination
 
-# Products used in this run; a variable missing here (or None) uses all of its PRODUCTS
+# Products used in this run; a variable missing here (or None) uses all of its il.PRODUCTS
 RUN_PRODUCTS = {
     "et":  [
         "CLASS",
@@ -144,39 +110,6 @@ RUN_PRODUCTS = {
 # ------------------------------------------------------------------
 # Loading and formatting
 # ------------------------------------------------------------------
-
-def regrid_to_target(da: xr.DataArray) -> xr.DataArray:
-    """Bilinear interpolation onto TARGET_GRID; target points outside the source grid are NaN."""
-    return rg.bilinear_regridder(da, TARGET_RES)(da, keep_attrs=True)
-
-
-def load_product(variable: str, product: str) -> xr.DataArray:
-    """Annual means (year, lat, lon) of one product on TARGET_GRID within LAT_BNDS."""
-    relpath, name = PRODUCTS[variable][product]
-    ds = xr.open_dataset(ILAMB_DATA_ROOT / relpath)
-    da = rg.format_grid(ds[name])
-    da = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da))).load()
-    with xr.set_options(keep_attrs=True):
-        da = da.where(np.abs(da) < FILL_THRESH)
-
-    if variable == "lai":
-        da.attrs["units"] = "m2/m2"
-    else:
-        da = units.flux_to_wm2(da)
-    ann = temporal.annual_mean(da, require_all_months=(variable != "lai"))
-
-    if ann.sizes["lat"] != TARGET_GRID.sizes["lat"] or ann.sizes["lon"] != TARGET_GRID.sizes["lon"]:
-        print(f"{variable}/{product}: regridding {ann.sizes['lat']}x{ann.sizes['lon']} -> 0.5 deg")
-        ann = regrid_to_target(ann)
-    # Exact coordinate values so that fields from different products align
-    ann = rg.on_grid(ann, TARGET_RES, f"{variable}/{product}").rename(variable)
-
-    print(
-        f"{variable:3} {product:12}: {ann.dims} {ann.shape} {temporal.period_str(ann.year.values)} "
-        f"[{float(ann.min()):0.3g}, {float(ann.max()):0.3g}] {ann.attrs['units']}"
-    )
-    return ann
-
 
 # ------------------------------------------------------------------
 # Combinations
@@ -312,8 +245,8 @@ def main():
     # ------------------------------------------------------------------
     print("=== Load ILAMB products ===")
     ann = {
-        v: {p: load_product(v, p) for p in (RUN_PRODUCTS.get(v) or products)}
-        for v, products in PRODUCTS.items()
+        v: {p: il.load_ilamb_annual(v, p, TARGET_RES) for p in (RUN_PRODUCTS.get(v) or products)}
+        for v, products in il.PRODUCTS.items()
     }
     run(ann, mask)
 

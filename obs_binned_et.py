@@ -9,7 +9,7 @@ from ILAMB (MODIS, GPCPv2.3, CERESed4.2).
 
 Processing
 ----------
-- ILAMB products are loaded with `ilamb_binned_et.load_product`.
+- ILAMB products are loaded with `etunc.load.ilamb.load_ilamb_annual`.
 - PML, GLEAM and SiTHv2 are read from the 0.5 deg files written by
   `regrid_obs.py` (conservative regridding) and converted from mm/month or
   mm/year to W/m2. Only the years shared by the LAI, pr and rns products are
@@ -37,6 +37,7 @@ import etunc.units as units
 import etunc.temporal as temporal
 import etunc.grid as rg
 import ilamb_binned_et as ib
+import etunc.load.ilamb as il
 import etunc.load.obs as lo
 
 
@@ -44,9 +45,9 @@ import etunc.load.obs as lo
 # Settings
 # ------------------------------------------------------------------
 
-# ILAMB products, by variable (keys of ib.PRODUCTS[variable])
+# ILAMB products, by variable (keys of il.PRODUCTS[variable])
 ILAMB_PRODUCTS = {
-    "et":  list(ib.PRODUCTS["et"]),  # every ILAMB ET product
+    "et":  list(il.PRODUCTS["et"]),  # every ILAMB ET product
     "lai": ["MODIS"],
     "pr":  ["GPCPv2.3"],
     "rns": ["CERESed4.2"],
@@ -94,7 +95,7 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
         with xr.set_options(keep_attrs=True):
             ann = ann.where(~outlier)
 
-    # Same grid checks and LAT_BNDS selection as ib.load_product
+    # Same grid checks and LAT_BNDS selection as il.load_ilamb_annual
     ann = rg.on_grid(ann, ib.TARGET_RES, f"et/{label}").rename("et")
 
     print(
@@ -114,7 +115,7 @@ def main():
     mask = rg.land_mask(ib.TARGET_GRID).sel(lat=config.LAT_BNDS)
 
     print("=== Load ILAMB products ===")
-    ann = {v: {p: ib.load_product(v, p) for p in products} for v, products in ILAMB_PRODUCTS.items()}
+    ann = {v: {p: il.load_ilamb_annual(v, p, ib.TARGET_RES) for p in products} for v, products in ILAMB_PRODUCTS.items()}
 
     # Gridded ET only over the years that some (lai, pr, rns) product set shares
     years = set().union(*(

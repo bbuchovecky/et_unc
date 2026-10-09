@@ -20,7 +20,7 @@ Steps
 1. Load the monthly field of each product over TIME_SLICE on the common RES
    grid (`rg.target_grid`), restricted to `config.LAT_BNDS` and the land mask
    (Natural Earth without Greenland/Iceland, `rg.land_mask`).
-   - ILAMB products are read as in `ib.load_product` (lon in [-180, 180], lat
+   - ILAMB products are read with `il.load_ilamb` (lon in [-180, 180], lat
      ascending, undecoded fill values removed) and bilinearly interpolated
      when their grid is not RES.
    - PML, GLEAM and SiTHv2 are read from the RES files written by
@@ -72,7 +72,8 @@ import xarray as xr
 import etunc.config as config
 import etunc.temporal as temporal
 import etunc.plotting as plotting
-import ilamb_binned_et as ib  # ILAMB product table, land mask, output roots
+import ilamb_binned_et as ib  # output roots
+import etunc.load.ilamb as il  # ILAMB product table and loader
 import etunc.load.obs as lo        # loader for PML / GLEAM / SiTH files
 import etunc.grid as rg          # common target grids and regridders
 
@@ -88,7 +89,7 @@ RES = "0.5deg"     # common grid, a key of rg.RESOLUTIONS
 MASK_NAME = "obs"  # file name prefix; change it when changing the product set
 
 # ILAMB products to include, per variable: {variable: [product, ...]}.
-# Names must be keys of ib.PRODUCTS[variable].
+# Names must be keys of il.PRODUCTS[variable].
 ILAMB_PRODUCTS = {
     "et":  ["CLASS", "DOLCE", "FLUXCOM", "GLEAMv3.3a", "MOD16A2", "MODIS", "WECANN"],
     "lai": ["MODIS"],
@@ -132,25 +133,6 @@ LO_RES = {tag: res for res, tag in lo.RES_DIRS.items()}[RES]  # "0.5deg" -> "0.5
 # Each loader returns a monthly (time, lat, lon) DataArray over TIME_SLICE on
 # GRID. Values stay in their native units, since only NaN vs. not NaN is used.
 
-def load_ilamb(variable: str, product: str) -> xr.DataArray:
-    """Monthly field of an ILAMB product over TIME_SLICE on GRID, in its native units."""
-    label = f"{variable}/{product}"
-    relpath, name = ib.PRODUCTS[variable][product]
-    ds = xr.open_dataset(ib.ILAMB_DATA_ROOT / relpath)
-    # lon in [-180, 180] and lat ascending, then keep only TIME_SLICE
-    da = rg.format_grid(ds[name]).sel(time=TIME_SLICE).load()
-    # Some files (e.g. GPCCv2018) store huge fill values that xarray does not
-    # decode to NaN; set them to NaN so they count as missing.
-    with xr.set_options(keep_attrs=True):
-        da = da.where(np.abs(da) < ib.FILL_THRESH)
-    # Products on another grid (e.g. 1 deg WECANN and CERESed4.2) are
-    # interpolated onto RES. A target cell next to a NaN source cell becomes NaN.
-    if da.sizes["lat"] != FULL_GRID.sizes["lat"] or da.sizes["lon"] != FULL_GRID.sizes["lon"]:
-        print(f"{label}: regridding {da.sizes['lat']}x{da.sizes['lon']} -> {RES}")
-        da = rg.bilinear_regridder(da, RES)(da, keep_attrs=True)
-    return rg.on_grid(da, RES, label)
-
-
 def load_gridded(variable: str, label: str) -> xr.DataArray:
     """Monthly field of a PML/GLEAM/SiTH product over TIME_SLICE from its RES files."""
     dataset, version, var = GRIDDED_PRODUCTS[variable][label]
@@ -168,7 +150,7 @@ def product_loaders() -> dict[str, tuple[str, partial]]:
     loaders = {}
     for variable, products in ILAMB_PRODUCTS.items():
         for p in products:
-            loaders[f"{variable}/{p}"] = (variable, partial(load_ilamb, variable, p))
+            loaders[f"{variable}/{p}"] = (variable, partial(il.load_ilamb, variable, p, TIME_SLICE, RES))
     for variable, products in GRIDDED_PRODUCTS.items():
         for p in products:
             loaders[f"{variable}/{p}"] = (variable, partial(load_gridded, variable, p))

@@ -7,7 +7,7 @@ period, with the masking and processing of `ilamb_binned_et.py`.
 
 Processing
 ----------
-- ILAMB products are read as in `ilamb_binned_et.load_product`: lon in
+- ILAMB products are read with `il.load_ilamb`: lon in
   [-180, 180], lat ascending, undecoded fill values removed, converted to W/m2,
   and 1 deg products (WECANN) bilinearly interpolated to the 0.5 deg grid.
 - PML (ET = Ec + Es + Ei) and GLEAM (E) are read from the 0.5 deg files written
@@ -60,6 +60,7 @@ import etunc.temporal as temporal
 import etunc.grid as rg
 import etunc.plotting as plotting
 import ilamb_binned_et as ib
+import etunc.load.ilamb as il
 import etunc.load.obs as lo
 import regrid_obs as ro
 
@@ -70,7 +71,7 @@ import regrid_obs as ro
 
 TIME_SLICE = slice("2000-01", "2014-12")
 
-ILAMB_PRODUCTS = list(ib.PRODUCTS["et"])  # every ILAMB ET product
+ILAMB_PRODUCTS = list(il.PRODUCTS["et"])  # every ILAMB ET product
 
 # {label: (load_obs dataset, version, variable)}, read from the 0.5 deg regridded files.
 # Products without regridded files (e.g. SiTHv2 before regrid_obs.py has run) are skipped.
@@ -100,19 +101,8 @@ GRID = ib.TARGET_GRID.sel(lat=config.LAT_BNDS)
 
 
 def load_ilamb(product: str) -> xr.DataArray:
-    """Monthly ET [W/m2] of an ILAMB product, processed as in `ib.load_product` but not annually averaged."""
-    relpath, name = ib.PRODUCTS["et"][product]
-    ds = xr.open_dataset(ib.ILAMB_DATA_ROOT / relpath)
-    da = rg.format_grid(ds[name]).sel(time=TIME_SLICE).load()
-    if da.sizes["time"] == 0:
-        raise FileNotFoundError(f"{product}: no data in {TIME_SLICE}")
-    with xr.set_options(keep_attrs=True):
-        da = da.where(np.abs(da) < ib.FILL_THRESH)
-    da = units.flux_to_wm2(da)
-    if da.sizes["lat"] != ib.TARGET_GRID.sizes["lat"] or da.sizes["lon"] != ib.TARGET_GRID.sizes["lon"]:
-        print(f"{product}: regridding {da.sizes['lat']}x{da.sizes['lon']} -> 0.5 deg")
-        da = ib.regrid_to_target(da)
-    return temporal.on_month_axis(rg.on_grid(da, ib.TARGET_RES, product), MONTHS)
+    """Monthly ET [W/m2] of an ILAMB product (converted before regridding) on the MONTHS axis."""
+    return temporal.on_month_axis(il.load_ilamb("et", product, TIME_SLICE, ib.TARGET_RES, wm2=True), MONTHS)
 
 
 def regridded_dataset(dataset: str) -> lo.ObsDataset:
