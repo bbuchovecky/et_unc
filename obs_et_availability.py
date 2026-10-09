@@ -43,7 +43,6 @@ FIG_ROOT/obs/availability/obs.et.<diag>.<period>.png, with <diag>:
 from __future__ import annotations
 
 import dataclasses
-import math
 from pathlib import Path
 
 import matplotlib
@@ -182,20 +181,6 @@ def summary_table(av: xr.Dataset, n_land: int) -> pd.DataFrame:
 # Plotting
 # ------------------------------------------------------------------
 
-def facets(n: int, *, maps: bool = False, panel_size: tuple[float, float] = (4.2, 3.0), **kwargs):
-    """Figure with `n` panels in rows of NCOLS (unused panels removed); returns (fig, list of axes)."""
-    ncols = min(n, NCOLS)
-    nrows = math.ceil(n / ncols)
-    subplot_kw = {"projection": config.PROJECTION} if maps else None
-    fig, axs = plt.subplots(
-        nrows, ncols, figsize=(panel_size[0] * ncols, panel_size[1] * nrows), squeeze=False,
-        layout="constrained", subplot_kw=subplot_kw, **kwargs,
-    )
-    for ax in axs.flat[n:]:
-        ax.remove()
-    return fig, list(axs.flat[:n])
-
-
 def _clean(ax):
     ax.spines[["top", "right"]].set_visible(False)
     ax.grid(color="0.92", lw=0.6)
@@ -205,7 +190,7 @@ def _clean(ax):
 def plot_hist_valid_months(av: xr.Dataset, title: str, fout: Path):
     n_months = len(MONTHS)
     bins = np.arange(-0.5, n_months + 1.5, 1)
-    fig, axs = facets(av.sizes["product"], sharex=True, sharey=True)
+    fig, axs = plotting.facets(av.sizes["product"], ncols=NCOLS, sharex=True, sharey=True)
     for ax, p in zip(axs, av["product"].values):
         n = av["n_valid_months"].sel(product=p).values.ravel()
         n = n[np.isfinite(n)]
@@ -227,7 +212,7 @@ def plot_map_valid_months(av: xr.Dataset, title: str, fout: Path):
     n_months = len(MONTHS)
     cmap = plt.get_cmap("Blues").copy()
     cmap.set_under("0.55")
-    fig, axs = facets(av.sizes["product"], maps=True, panel_size=(4.6, 2.3))
+    fig, axs = plotting.facets(av.sizes["product"], ncols=NCOLS, maps=True, panel_size=(4.6, 2.3))
     for ax, p in zip(axs, av["product"].values):
         pm = av["n_valid_months"].sel(product=p).plot.pcolormesh(
             ax=ax, transform=config.PROJECTION, cmap=cmap, vmin=0.5, vmax=n_months, add_colorbar=False,
@@ -242,7 +227,7 @@ def plot_map_valid_months(av: xr.Dataset, title: str, fout: Path):
 
 def plot_line_calendar_month(av: xr.Dataset, n_land: int, title: str, fout: Path):
     n_years = av.sizes["year"]
-    fig, axs = facets(av.sizes["product"], sharex=True, sharey=True, panel_size=(4.2, 2.8))
+    fig, axs = plotting.facets(av.sizes["product"], ncols=NCOLS, sharex=True, sharey=True, panel_size=(4.2, 2.8))
     for ax, p in zip(axs, av["product"].values):
         a = av.sel(product=p)
         ax.plot(a["month"], a["valid_by_calendar_month"], "-o", color="C0", lw=2, ms=4,
@@ -268,7 +253,7 @@ MASK_COLORS = {"land, no valid year": "#f0b67f", "bin mask": "#2b6a99"}
 
 def plot_map_bin_mask(av: xr.Dataset, land: xr.DataArray, title: str, fout: Path):
     cmap = mcolors.ListedColormap(list(MASK_COLORS.values()))
-    fig, axs = facets(av.sizes["product"], maps=True, panel_size=(4.6, 2.3))
+    fig, axs = plotting.facets(av.sizes["product"], ncols=NCOLS, maps=True, panel_size=(4.6, 2.3))
     for ax, p in zip(axs, av["product"].values):
         m = av["bin_mask"].sel(product=p)
         m.astype(float).where(land).plot.pcolormesh(

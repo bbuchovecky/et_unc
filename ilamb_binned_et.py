@@ -56,7 +56,6 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import numpy as np
 import xarray as xr
 
@@ -140,14 +139,6 @@ RUN_PRODUCTS = {
     "lai": ["MODIS"],
     "pr":  ["GPCPv2.3"],
     "rns": ["CERESed4.2"],
-}
-
-MAP_KWARGS = {
-    "et":  {"cmap": "YlGnBu"},
-    "lai": {"cmap": "Greens"},
-    "pr":  {"cmap": "Blues"},
-    "rns": {"cmap": "YlOrRd", "vmin": None},
-    "ai":  {"cmap": "BrBG_r"},
 }
 
 # ------------------------------------------------------------------
@@ -256,7 +247,7 @@ def save_map(da: xr.DataArray, variable: str, label: str, period: str, mask: xr.
     fout = FIG_ROOT / "obs" / variable / f"obs.{label}.{variable}.map.{period}.png"
     plotting.quick_map(
         da.where(mask), fout, title=f"{label}, {period}",
-        cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **MAP_KWARGS[variable],
+        cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **plotting.MAP_KWARGS[variable],
     )
     print(fout)
 
@@ -286,16 +277,6 @@ def plot_combo_edges(combo_edges: xr.DataArray, pooled: xr.DataArray, title: str
     return plotting.finish(fig, fout)
 
 
-def hatch_bins(ax, hatch: xr.DataArray):
-    """Hatch the cells of a (y_bin, x_bin) heatmap where `hatch` is True."""
-    hatch = hatch.transpose("y_bin", "x_bin")
-    yb, xb = hatch["y_bin"].values, hatch["x_bin"].values
-    for j, i in zip(*np.nonzero(hatch.fillna(False).astype(bool).values)):
-        ax.add_patch(Rectangle(
-            (xb[i] - 0.5, yb[j] - 0.5), 1, 1, fill=False, hatch="///", lw=0, edgecolor="0.3",
-        ))
-
-
 def plot_combo_bin_means(
     bs_all: xr.DataArray,
     title: str = "",
@@ -322,7 +303,7 @@ def plot_combo_bin_means(
         panel = bs_all.sel(**name_dict)
         ax.set_title(f"{name_dict['combo']}\n{panel.time_period.item()}", fontsize=8)
         if hatch is not None:
-            hatch_bins(ax, hatch.sel(**name_dict))
+            plotting.hatch_bins(ax, hatch.sel(**name_dict))
     if shared_edges:
         plotting.set_edge_ticks(fg.axs.flat[0], bs_all, "{:.2g}")
     else:

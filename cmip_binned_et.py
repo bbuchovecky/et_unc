@@ -59,7 +59,6 @@ import warnings
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -119,14 +118,6 @@ TARGET_RES = 1.0
 GRID_TAG = rg.grid_tag(TARGET_RES)
 TARGET_GRID = rg.target_grid(TARGET_RES)
 NA_THRES = 0.5  # target cells with more than this fraction of area outside the native land mask are NaN
-
-MAP_KWARGS = {
-    "evspsbl": {"cmap": "YlGnBu"},
-    "lai":     {"cmap": "Greens"},
-    "pr":      {"cmap": "Blues"},
-    "rn":      {"cmap": "YlOrRd", "vmin": None},
-    "ai":      {"cmap": "BrBG_r"},
-}
 
 # ------------------------------------------------------------------
 # Model and member selection
@@ -265,7 +256,7 @@ def save_map(da: xr.DataArray, variable: str, sid: str, period: str, mtag: str):
     title = f"{sid}, {period}" + (f", mean of {da.attrs['n_members']} members" if da.attrs.get("n_members", 1) > 1 else "")
     plotting.quick_map(
         da, fout, title=title,
-        cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **MAP_KWARGS[variable],
+        cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **plotting.MAP_KWARGS[variable],
     )
     print(fout)
 
@@ -286,16 +277,6 @@ def plot_model_edges(
     ax.legend(fontsize=6, ncols=2, loc="center left", bbox_to_anchor=(1.01, 0.5))
     ax.set_title(title)
     return plotting.finish(fig, fout)
-
-
-def hatch_bins(ax, hatch: xr.DataArray):
-    """Hatch the cells of a (y_bin, x_bin) heatmap where `hatch` is True."""
-    hatch = hatch.transpose("y_bin", "x_bin")
-    yb, xb = hatch["y_bin"].values, hatch["x_bin"].values
-    for j, i in zip(*np.nonzero(hatch.fillna(False).astype(bool).values)):
-        ax.add_patch(Rectangle(
-            (xb[i] - 0.5, yb[j] - 0.5), 1, 1, fill=False, hatch="///", lw=0, edgecolor="0.3",
-        ))
 
 
 def plot_model_bin_means(
@@ -322,7 +303,7 @@ def plot_model_bin_means(
             continue
         ax.set_title(name_dict["source_id"], fontsize=8)
         if hatch is not None:
-            hatch_bins(ax, hatch.sel(**name_dict))
+            plotting.hatch_bins(ax, hatch.sel(**name_dict))
     if "source_id" not in bs_all["y_bin_lower"].dims and "source_id" not in bs_all["x_bin_lower"].dims:
         plotting.set_edge_ticks(fg.axs.flat[0], bs_all, "{:.2g}")
     else:

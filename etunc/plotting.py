@@ -8,6 +8,7 @@ when given `fout`. No module calls matplotlib.use; scripts set the backend.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Mapping
 
@@ -20,6 +21,18 @@ import cartopy.crs as ccrs
 
 from etunc.binning import as_field_dict, edges_and_attrs, ensemble_spread, ensure_bin_coords, finite_flat
 from etunc.config import DPI, LAT_BNDS, PROJECTION
+
+
+# quick_map style of each variable's climatology map (obs and CMIP6 names)
+MAP_KWARGS = {
+    "et":      {"cmap": "YlGnBu"},
+    "evspsbl": {"cmap": "YlGnBu"},
+    "lai":     {"cmap": "Greens"},
+    "pr":      {"cmap": "Blues"},
+    "rns":     {"cmap": "YlOrRd", "vmin": None},
+    "rn":      {"cmap": "YlOrRd", "vmin": None},
+    "ai":      {"cmap": "BrBG_r"},
+}
 
 
 def finish(fig, fout: str | Path | None):
@@ -56,6 +69,25 @@ def map_ax(ax, lat_bnds: slice):
 def _spatial_mean_over_other_dims(da: xr.DataArray) -> xr.DataArray:
     other = [d for d in da.dims if d not in ("lat", "lon")]
     return da.mean(other) if other else da
+
+
+def facets(
+    n: int, *, ncols: int = 4, maps: bool = False, panel_size: tuple[float, float] = (4.2, 3.0), **kwargs,
+):
+    """
+    Figure with `n` panels in rows of `ncols` (unused panels removed), map
+    panels if `maps`; returns (fig, list of the n axes).
+    """
+    ncols = min(n, ncols)
+    nrows = math.ceil(n / ncols)
+    subplot_kw = {"projection": PROJECTION} if maps else None
+    fig, axs = plt.subplots(
+        nrows, ncols, figsize=(panel_size[0] * ncols, panel_size[1] * nrows), squeeze=False,
+        layout="constrained", subplot_kw=subplot_kw, **kwargs,
+    )
+    for ax in axs.flat[n:]:
+        ax.remove()
+    return fig, list(axs.flat[:n])
 
 
 # ------------------------------------------------------------------
@@ -198,6 +230,16 @@ def set_edge_ticks(ax, da: xr.DataArray, fmt: str):
         set_ticks(pos, [fmt.format(v) for v in vals], fontsize=7, rotation=90 if ax_name == "x" else 0)
 
 
+def hatch_bins(ax, hatch: xr.DataArray):
+    """Hatch the cells of a (y_bin, x_bin) heatmap where `hatch` is True."""
+    hatch = hatch.transpose("y_bin", "x_bin")
+    yb, xb = hatch["y_bin"].values, hatch["x_bin"].values
+    for j, i in zip(*np.nonzero(hatch.fillna(False).astype(bool).values)):
+        ax.add_patch(Rectangle(
+            (xb[i] - 0.5, yb[j] - 0.5), 1, 1, fill=False, hatch="///", lw=0, edgecolor="0.3",
+        ))
+
+
 def plot_bin_field(
     da: xr.DataArray,
     *,
@@ -226,12 +268,7 @@ def plot_bin_field(
     da.plot.pcolormesh(ax=ax, x="x_bin", y="y_bin", **kwargs)
 
     if hatch is not None:
-        hatch = ensure_bin_coords(hatch).transpose("y_bin", "x_bin")
-        yb, xb = hatch["y_bin"].values, hatch["x_bin"].values
-        for j, i in zip(*np.nonzero(hatch.fillna(False).astype(bool).values)):
-            ax.add_patch(Rectangle(
-                (xb[i] - 0.5, yb[j] - 0.5), 1, 1, fill=False, hatch="///", lw=0, edgecolor="0.3",
-            ))
+        hatch_bins(ax, ensure_bin_coords(hatch))
 
     if edge_ticks:
         set_edge_ticks(ax, da, fmt)

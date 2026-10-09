@@ -59,7 +59,6 @@ FIG_ROOT/<MASK_NAME>.product_masks_any_month.<res>.<period>.png
 
 from __future__ import annotations
 
-import math
 from functools import partial
 from pathlib import Path
 
@@ -239,22 +238,14 @@ def plot_product_masks(ds: xr.Dataset, title: str, fout: Path):
     month of the product's record within TIME_SLICE (`n_valid_months > 0`).
     This is looser than `product_mask`, which needs MIN_VALID_FRAC of the months.
     """
-    # Grid of map panels, NCOLS per row; remove the unused panels of the last row
-    n = ds.sizes["product"]
-    ncols = min(n, NCOLS)
-    nrows = math.ceil(n / ncols)
-    fig, axs = plt.subplots(
-        nrows, ncols, figsize=(4.6 * ncols, 2.5 * nrows), squeeze=False, layout="constrained",
-        subplot_kw={"projection": config.PROJECTION},
-    )
-    for ax in axs.flat[n:]:
-        ax.remove()
+    # Grid of map panels, NCOLS per row (unused panels of the last row removed)
+    fig, axs = plotting.facets(ds.sizes["product"], ncols=NCOLS, maps=True, panel_size=(4.6, 2.5))
 
     land = ds["land"] == 1
     n_land = int(land.sum())
     # Two colors: 0 = land without data (orange), 1 = land with data (blue)
     cmap = mcolors.ListedColormap(list(ANY_MONTH_COLORS.values()))
-    for ax, p in zip(axs.flat, ds["product"].values):
+    for ax, p in zip(axs, ds["product"].values):
         valid = (ds["n_valid_months"].sel(product=p) > 0) & land
         # Cast to float and blank out the ocean, so only land is colored
         valid.astype(float).where(land).plot.pcolormesh(

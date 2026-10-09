@@ -738,3 +738,25 @@ def test_map_plots(tmp_path, inputs):
     fig = plotting.plot_input_maps(inputs, title="inputs")
     assert len([ax for ax in fig.axes if hasattr(ax, "projection")]) == 3
     assert (tmp_path / "map.png").exists()
+
+
+def test_facets_removes_unused_panels():
+    """facets returns exactly n axes, in rows of ncols, with the unused panels of the last row removed."""
+    fig, axs = plotting.facets(5, ncols=3, sharex=True)
+    assert len(axs) == 5 and len(fig.axes) == 5
+    assert axs[0].get_subplotspec().get_gridspec().get_geometry() == (2, 3)
+    fig, axs = plotting.facets(2, ncols=4, maps=True)
+    assert len(axs) == 2 and all(hasattr(ax, "coastlines") for ax in axs)
+    plt.close("all")
+
+
+def test_hatch_bins_one_patch_per_true_bin():
+    """hatch_bins draws one hatched rectangle centred on each True (y_bin, x_bin) cell; NaN counts as False."""
+    hatch = xr.DataArray([[True, False, np.nan], [False, True, True]], dims=("y_bin", "x_bin"),
+                         coords={"y_bin": [0, 1], "x_bin": [0, 1, 2]})
+    fig, ax = plt.subplots()
+    plotting.hatch_bins(ax, hatch.T)  # any dim order
+    corners = sorted(p.get_xy() for p in ax.patches)
+    assert corners == [(-0.5, -0.5), (0.5, 0.5), (1.5, 0.5)]
+    assert all(p.get_hatch() == "///" for p in ax.patches)
+    plt.close(fig)
