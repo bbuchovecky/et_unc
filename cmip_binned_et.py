@@ -251,14 +251,11 @@ def concat_models(das: list[xr.DataArray], sids: list[str]) -> xr.DataArray:
 # Plotting
 # ------------------------------------------------------------------
 
-def save_map(da: xr.DataArray, variable: str, sid: str, period: str, mtag: str):
+def save_clim_map(da: xr.DataArray, variable: str, sid: str, period: str, mtag: str):
+    """Map of the (member-mean) climatology `da` of one model."""
     fout = FIG_ROOT / "cmip6" / variable / f"cmip6.{sid}.{variable}.{GRID_TAG}.map.{period}.{mtag}.png"
     title = f"{sid}, {period}" + (f", mean of {da.attrs['n_members']} members" if da.attrs.get("n_members", 1) > 1 else "")
-    plotting.quick_map(
-        da, fout, title=title,
-        cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **plotting.MAP_KWARGS[variable],
-    )
-    print(fout)
+    plotting.save_map(da, variable, fout, title=title)
 
 
 def plot_model_edges(
@@ -372,7 +369,7 @@ def main():
         }
         for v, da in clim.items():
             da = da.mean("member", keep_attrs=True).assign_attrs(n_members=len(mids))
-            save_map(da, v, sid, period, mtag)
+            save_clim_map(da, v, sid, period, mtag)
         del ann
 
     sids = list(inputs)

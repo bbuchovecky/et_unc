@@ -114,6 +114,18 @@ def quick_map(
     return finish(fig, fout)
 
 
+def save_map(da: xr.DataArray, variable: str, fout: str | Path, title: str = ""):
+    """
+    `quick_map` of a climatology of `variable` with its MAP_KWARGS style and a
+    "<variable> [<units>]" colorbar label, saved to `fout` (printed).
+    """
+    quick_map(
+        da, fout, title=title,
+        cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **MAP_KWARGS[variable],
+    )
+    print(fout)
+
+
 def plot_input_maps(
     inputs: Mapping[str, xr.DataArray],
     title: str = "",

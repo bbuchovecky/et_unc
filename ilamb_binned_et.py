@@ -243,13 +243,10 @@ def et_product_spread(bs_all: xr.DataArray) -> xr.Dataset:
 # Plotting
 # ------------------------------------------------------------------
 
-def save_map(da: xr.DataArray, variable: str, label: str, period: str, mask: xr.DataArray):
+def save_clim_map(da: xr.DataArray, variable: str, label: str, period: str, mask: xr.DataArray):
+    """Map of the climatology `da` of one product (`label`) on land (`mask`)."""
     fout = FIG_ROOT / "obs" / variable / f"obs.{label}.{variable}.map.{period}.png"
-    plotting.quick_map(
-        da.where(mask), fout, title=f"{label}, {period}",
-        cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **plotting.MAP_KWARGS[variable],
-    )
-    print(fout)
+    plotting.save_map(da.where(mask), variable, fout, title=f"{label}, {period}")
 
 
 def plot_combo_edges(combo_edges: xr.DataArray, pooled: xr.DataArray, title: str = "", fout: Path | None = None):
@@ -374,7 +371,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
     print("\n=== Maps of climatological means ===")
     for v, products in ann.items():
         for p, da in products.items():
-            save_map(temporal.aggregate(da, "clim"), v, p, temporal.period_str(da.year.values), mask)
+            save_clim_map(temporal.aggregate(da, "clim"), v, p, temporal.period_str(da.year.values), mask)
 
     for pr_p, rns_p in itertools.product(ann["pr"], ann["rns"]):
         years = temporal.shared_years(ann["pr"][pr_p], ann["rns"][rns_p])
@@ -385,7 +382,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
             temporal.aggregate(ann["pr"][pr_p].sel(year=years), "clim"),
             temporal.aggregate(ann["rns"][rns_p].sel(year=years), "clim"),
         )
-        save_map(ai, "ai", f"{pr_p}-{rns_p}", temporal.period_str(years), mask)
+        save_clim_map(ai, "ai", f"{pr_p}-{rns_p}", temporal.period_str(years), mask)
 
     # ------------------------------------------------------------------
     # Combinations and their shared years

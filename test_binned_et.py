@@ -760,3 +760,14 @@ def test_hatch_bins_one_patch_per_true_bin():
     assert corners == [(-0.5, -0.5), (0.5, 0.5), (1.5, 0.5)]
     assert all(p.get_hatch() == "///" for p in ax.patches)
     plt.close(fig)
+
+
+def test_save_map_writes_styled_map(tmp_path, inputs, capsys):
+    """save_map writes the map to fout (creating its directory), labels the colorbar with variable and units."""
+    fout = tmp_path / "maps" / "lai.png"
+    da = inputs["lai"].assign_attrs(units="m2/m2")
+    plotting.save_map(da, "lai", fout, title="LAI")
+    assert fout.exists() and str(fout) in capsys.readouterr().out
+    with pytest.raises(KeyError):
+        plotting.save_map(da, "not_a_variable", tmp_path / "x.png")
+    plt.close("all")
