@@ -19,7 +19,7 @@ Processing
 - A gridcell-year is valid when all 12 months are valid (`temporal.annual_mean` with
   `require_all_months=True`), as for ET in the binning. The bin mask of a
   product is the land gridcells with at least one valid gridcell-year (the ET
-  part of `ib.valid_area`; LAI and AI are not used).
+  part of `binning.valid_area`; LAI and AI are not used).
 
 Counts are numbers of 0.5 deg gridcells, not areas.
 

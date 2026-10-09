@@ -128,12 +128,6 @@ MAP_KWARGS = {
     "ai":      {"cmap": "BrBG_r"},
 }
 
-EDGE_ATTRS = {
-    "lai": {"long_name": "leaf area index bin edges", "units": "m2/m2", "variable": "leaf area index"},
-    "ai":  {"long_name": "aridity index bin edges", "units": "1", "variable": "aridity index (Rn/L*P)"},
-}
-
-
 # ------------------------------------------------------------------
 # Model and member selection
 # ------------------------------------------------------------------
@@ -255,44 +249,6 @@ def load_model(
 # ------------------------------------------------------------------
 # Binning helpers
 # ------------------------------------------------------------------
-
-def valid_area(inputs: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Gridcells where ET (in any year), LAI and AI are valid in every member of one model."""
-    valid = inputs["et"].notnull().any("year") & inputs["lai"].notnull() & np.isfinite(inputs["ai"])
-    return valid.all("member")
-
-
-def common_area(inputs: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray) -> xr.DataArray:
-    """
-    Land gridcells valid (`valid_area`) in every model, so that all models
-    cover the same area. The mask is static: ET years that are NaN inside this
-    area stay NaN.
-    """
-    area = mask == 1
-    for sid, inp in inputs.items():
-        valid = valid_area(inp)
-        print(f"{sid:16}: {int(valid.sum()):.4e} valid gridcells")
-        area = area & valid
-    print(f"common area: {int(area.sum()):.4e} of {int((mask == 1).sum()):.4e} land gridcells")
-    return area.rename("area_mask")
-
-
-def pool_members(bs: xr.DataArray) -> xr.DataArray:
-    """Combine per-member bin statistics into the statistics of all members' samples pooled."""
-    mean, var_pop, count, count_pos = (bs.sel(stats=s, drop=True) for s in ("mean", "var_pop", "count", "count_pos"))
-    n = count.sum("member")
-    with np.errstate(invalid="ignore", divide="ignore"):
-        pooled_mean = (mean * count).sum("member") / n
-        pooled_var = ((var_pop + mean**2) * count).sum("member") / n - pooled_mean**2
-        pooled_var = pooled_var.clip(min=0)
-        var_samp = xr.where(n > 1, pooled_var * n / (n - 1), np.nan)
-    out = xr.concat(
-        [pooled_mean.where(n > 0), pooled_var.where(n > 0), var_samp, n, count_pos.sum("member")], dim="stats",
-    ).assign_coords(stats=list(binning.STATS)).transpose("stats", "y_bin", "x_bin")
-    out = out.drop_vars([c for c in out.coords if "member" in out[c].dims or c == "member_id"], errors="ignore")
-    out.attrs = {**bs.attrs, "members": list(bs["member_id"].values)}
-    return out.rename(bs.name)
-
 
 def concat_models(das: list[xr.DataArray], sids: list[str]) -> xr.DataArray:
     return xr.concat(
@@ -448,7 +404,7 @@ def main():
     # Binning inputs, restricted to the area valid in every model
     # ------------------------------------------------------------------
     print("\n=== Common area mask ===")
-    area = common_area(inputs, mask)
+    area = binning.common_area(inputs, mask, member_dim="member")
     with xr.set_options(keep_attrs=True):
         inputs = {sid: {k: da.where(area) for k, da in inp.items()} for sid, inp in inputs.items()}
     fout = PROC_ROOT / f"cmip6.area_mask.all{nsid}.{GRID_TAG}.{period}.{runtag}.nc"
@@ -470,7 +426,7 @@ def main():
         print(f"\n{v}")
         pooled_edges[v] = binning.pooled_bin_edges(
             {sid: inputs[sid][v].mean("member") for sid in sids}, n_bins[v], name=v,
-            attrs={**EDGE_ATTRS[v], "time_period": period, "grid": GRID_TAG,
+            attrs={**binning.EDGE_ATTRS[v], "time_period": period, "grid": GRID_TAG,
                    "members": [f"{sid}.{m}" for sid in sids for m in members[sid]]},
         )
         fstem = f"cmip6.{v}_clim.{n_bins[v]}_quantiles_pooled.{GRID_TAG}.all{nsid}.{period}"
@@ -497,7 +453,7 @@ def main():
         for v in ("lai", "ai"):
             edges[v] = binning.pooled_bin_edges(
                 inputs[sid][v], n_bins[v], name=v, verbose=False,
-                attrs={**EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [sid], "members": mids},
+                attrs={**binning.EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [sid], "members": mids},
             )
             model_edges[v][sid] = edges[v]
 
@@ -519,7 +475,7 @@ def main():
             fout = PROC_ROOT / "qbin" / f"cmip6.{sid}.evspsbl.{GRID_TAG}.qbin_clim_{kind}.{period}.{mtag}.nc"
             fout.parent.mkdir(exist_ok=True, parents=True)
             bs_m.to_netcdf(fout)
-            bs[kind].append(pool_members(bs_m))
+            bs[kind].append(binning.pool_members(bs_m))
 
         print(f"{sid:16}: {len(mids)} member(s), {int(bs['model'][-1].sel(stats='count').sum()):.3e} samples binned")
 

@@ -56,6 +56,12 @@ STATS = ("mean", "var_pop", "var_samp", "count", "count_pos")
 
 BinStrategy = Literal["quantile", "linear"]
 
+# Attributes of the LAI and AI bin edges written by the drivers
+EDGE_ATTRS = {
+    "lai": {"long_name": "leaf area index bin edges", "units": "m2/m2", "variable": "leaf area index"},
+    "ai":  {"long_name": "aridity index bin edges", "units": "1", "variable": "aridity index (Rn/L*P)"},
+}
+
 
 # ------------------------------------------------------------------
 # Binning inputs
@@ -137,6 +143,37 @@ def prepare_inputs(
     if mask is not None:
         out = {k: v.where(mask == 1) for k, v in out.items()}
     return out
+
+
+def valid_area(inputs: Mapping[str, xr.DataArray], member_dim: str | None = None) -> xr.DataArray:
+    """
+    Gridcells where ET (in any year), LAI and AI are all valid; with
+    `member_dim`, valid in every member along it.
+    """
+    valid = inputs["et"].notnull().any("year") & inputs["lai"].notnull() & np.isfinite(inputs["ai"])
+    return valid.all(member_dim) if member_dim is not None else valid
+
+
+def common_area(
+    inputs: Mapping[str, Mapping[str, xr.DataArray]],
+    mask: xr.DataArray,
+    member_dim: str | None = None,
+    label_width: int = 16,
+) -> xr.DataArray:
+    """
+    Land gridcells (`mask` == 1) valid (`valid_area`) in every dataset of
+    `inputs` ({label: {"et", "lai", "ai"}}, e.g. every combination or model),
+    so that all datasets cover the same area. The mask is static: ET years
+    that are NaN inside this area stay NaN, so per-year data availability is
+    kept. Prints each dataset's valid gridcells, labels padded to `label_width`.
+    """
+    area = mask == 1
+    for label, inp in inputs.items():
+        valid = valid_area(inp, member_dim)
+        print(f"{label:{label_width}}: {int(valid.sum()):.4e} valid gridcells")
+        area = area & valid
+    print(f"common area: {int(area.sum()):.4e} of {int((mask == 1).sum()):.4e} land gridcells")
+    return area.rename("area_mask")
 
 
 # ------------------------------------------------------------------
@@ -502,6 +539,23 @@ def bin_stats_by_source(
         results.append(bs)
     out = xr.concat(results, dim=dim, combine_attrs="drop_conflicts")
     return out.assign_coords({dim: list(inputs.keys())})
+
+
+def pool_members(bs: xr.DataArray) -> xr.DataArray:
+    """Combine per-member bin statistics into the statistics of all members' samples pooled."""
+    mean, var_pop, count, count_pos = (bs.sel(stats=s, drop=True) for s in ("mean", "var_pop", "count", "count_pos"))
+    n = count.sum("member")
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pooled_mean = (mean * count).sum("member") / n
+        pooled_var = ((var_pop + mean**2) * count).sum("member") / n - pooled_mean**2
+        pooled_var = pooled_var.clip(min=0)
+        var_samp = xr.where(n > 1, pooled_var * n / (n - 1), np.nan)
+    out = xr.concat(
+        [pooled_mean.where(n > 0), pooled_var.where(n > 0), var_samp, n, count_pos.sum("member")], dim="stats",
+    ).assign_coords(stats=list(STATS)).transpose("stats", "y_bin", "x_bin")
+    out = out.drop_vars([c for c in out.coords if "member" in out[c].dims or c == "member_id"], errors="ignore")
+    out.attrs = {**bs.attrs, "members": list(bs["member_id"].values)}
+    return out.rename(bs.name)
 
 
 def ensure_bin_coords(bs: xr.DataArray) -> xr.DataArray:

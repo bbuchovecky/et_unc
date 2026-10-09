@@ -150,12 +150,6 @@ MAP_KWARGS = {
     "ai":  {"cmap": "BrBG_r"},
 }
 
-EDGE_ATTRS = {
-    "lai": {"long_name": "leaf area index bin edges", "units": "m2/m2", "variable": "leaf area index"},
-    "ai":  {"long_name": "aridity index bin edges", "units": "1", "variable": "aridity index (Rn/L*P)"},
-}
-
-
 # ------------------------------------------------------------------
 # Loading and formatting
 # ------------------------------------------------------------------
@@ -217,26 +211,6 @@ def combo_inputs(
     return binning.prepare_inputs(
         et=fields["et"], lai=fields["lai"], precip=fields["pr"], rn=fields["rns"], mask=mask,
     )
-
-
-def valid_area(inputs: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Gridcells where ET (in any year), LAI and AI are all valid."""
-    return inputs["et"].notnull().any("year") & inputs["lai"].notnull() & np.isfinite(inputs["ai"])
-
-
-def common_area(inputs: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray) -> xr.DataArray:
-    """
-    Land gridcells valid (`valid_area`) in every combination, so that all ET
-    products cover the same area. The mask is static: ET years that are NaN
-    inside this area stay NaN, so per-year data availability is kept.
-    """
-    area = mask == 1
-    for cid, inp in inputs.items():
-        valid = valid_area(inp)
-        print(f"{cid:50}: {int(valid.sum()):.4e} valid gridcells")
-        area = area & valid
-    print(f"common area: {int(area.sum()):.4e} of {int((mask == 1).sum()):.4e} land gridcells")
-    return area.rename("area_mask")
 
 
 def concat_combos(das: list[xr.DataArray], combos: dict[str, tuple]) -> xr.DataArray:
@@ -455,7 +429,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
     # ------------------------------------------------------------------
     print("\n=== Common area mask ===")
     inputs = {cid: combo_inputs(ann, combo, years, mask) for cid, (combo, years) in combos.items()}
-    area = common_area(inputs, mask)
+    area = binning.common_area(inputs, mask, label_width=50)
     with xr.set_options(keep_attrs=True):
         inputs = {cid: {k: da.where(area) for k, da in inp.items()} for cid, inp in inputs.items()}
     fout = PROC_ROOT / f"obs.area_mask.all{ncombo}.{span}.nc"
@@ -476,7 +450,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
         print(f"\n{v}")
         pooled_edges[v] = binning.pooled_bin_edges(
             {cid: inp[v] for cid, inp in inputs.items()}, n_bins[v], name=v,
-            attrs={**EDGE_ATTRS[v], "time_period": span},
+            attrs={**binning.EDGE_ATTRS[v], "time_period": span},
         )
         fstem = f"obs.{v}_clim.{n_bins[v]}_quantiles_pooled.all{ncombo}.{span}"
         fout = BIN_EDGES_ROOT / f"{fstem}.nc"
@@ -501,7 +475,7 @@ def run(ann: dict[str, dict[str, xr.DataArray]], mask: xr.DataArray):
         for v in ("lai", "ai"):
             edges[v] = binning.pooled_bin_edges(
                 inp[v], n_bins[v], name=v, verbose=False,
-                attrs={**EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [cid]},
+                attrs={**binning.EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [cid]},
             )
             combo_edges[v].append(edges[v])
 

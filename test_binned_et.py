@@ -504,6 +504,23 @@ def test_bin_stats_per_member(rng, mask, edges):
     np.testing.assert_allclose(pooled.sel(stats="count"), bs.sel(stats="count").sum("member"))
 
 
+def test_pool_members_matches_binning_pooled_samples(rng, mask, edges):
+    """Pooling per-member statistics gives the statistics of all members' samples binned together."""
+    y_edges, x_edges = edges
+    inp = binning.prepare_inputs(
+        monthly(rng, 20, members=3), monthly(rng, 1, members=3),
+        monthly(rng, 40, members=3), monthly(rng, 30, members=3), mask=mask,
+    )
+    bs = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, member_dim="member", name="et")
+    pooled = binning.pool_members(bs)
+    direct = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, name="et")
+    assert pooled.dims == ("stats", "y_bin", "x_bin") and pooled.name == "et"
+    assert list(pooled.stats.values) == list(binning.STATS)
+    assert pooled.attrs["members"] == ["r1i1p1f1", "r2i1p1f1", "r3i1p1f1"]
+    assert "member_id" not in pooled.coords
+    np.testing.assert_allclose(pooled.values, direct.values, rtol=1e-9, atol=1e-9, equal_nan=True)
+
+
 def test_bin_stats_rejects_mismatched_grids(inputs, edges):
     """Inputs whose lat/lon values differ raise instead of being aligned."""
     y_edges, x_edges = edges
@@ -521,6 +538,37 @@ def test_bin_stats_by_source(inputs, edges):
     assert list(bs.sid.values) == ["A", "B"]
     single = binning.bin_stats(inputs["et"], inputs["lai"], inputs["ai"], y_edges, x_edges)
     np.testing.assert_allclose(bs.sel(sid="A").values, single.values, equal_nan=True)
+
+
+def test_valid_and_common_area(capsys):
+    """
+    valid_area needs ET in some year plus LAI and a finite AI (in every member with member_dim); common_area
+    is the land cells valid in every dataset, and prints one line per dataset.
+    """
+    coords = {"lat": [0.0, 1.0], "lon": [0.0, 1.0, 2.0]}
+    et = xr.DataArray(np.ones((2, 2, 2, 3)), dims=("member", "year", "lat", "lon"), coords=coords)
+    lai = xr.DataArray(np.ones((2, 2, 3)), dims=("member", "lat", "lon"), coords=coords)
+    ai = lai.copy()
+    et[:, :, 0, 0] = np.nan                 # no ET in any year
+    et[0, 0, 0, 1] = np.nan                 # one missing year only: still valid
+    lai[1, 0, 2] = np.nan                   # LAI missing in member 1 only
+    ai[:, 1, 0] = np.inf                    # AI not finite
+    inp = {"et": et, "lai": lai, "ai": ai}
+
+    per_member = binning.valid_area(inp)
+    assert per_member.dims == ("member", "lat", "lon")
+    np.testing.assert_array_equal(per_member.sel(member=0), [[False, True, True], [False, True, True]])
+    np.testing.assert_array_equal(per_member.sel(member=1), [[False, True, False], [False, True, True]])
+    all_members = binning.valid_area(inp, member_dim="member")
+    np.testing.assert_array_equal(all_members, [[False, True, False], [False, True, True]])
+
+    land = xr.DataArray([[1, 1, 1], [1, 0, 1]], dims=("lat", "lon"), coords=coords)
+    no_lai_at_lat1 = {**inp, "lai": inp["lai"].where(inp["lai"].lat == 0)}
+    area = binning.common_area({"A": inp, "B": no_lai_at_lat1}, land, member_dim="member")
+    assert area.name == "area_mask"
+    np.testing.assert_array_equal(area, [[False, True, False], [False, False, False]])
+    out = capsys.readouterr().out
+    assert out.count("valid gridcells") == 2 and "common area: 1.0000e+00 of 5.0000e+00" in out
 
 
 def test_open_bin_stats_roundtrip(tmp_path, inputs, edges):
