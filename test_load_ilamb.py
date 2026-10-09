@@ -93,7 +93,7 @@ def bilinear(da):
 
 
 def formatted(da):
-    """`da` with lon in [-180, 180] and lat ascending, written out independently of ib.format_grid."""
+    """`da` with lon in [-180, 180] and lat ascending, written out independently of rg.format_grid."""
     return da.assign_coords(lon=((da.lon + 180) % 360) - 180).sortby("lon").sortby("lat")
 
 

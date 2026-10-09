@@ -95,9 +95,7 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
             ann = ann.where(~outlier)
 
     # Same grid checks and LAT_BNDS selection as ib.load_product
-    rg.check_same_grid(ann, ib.TARGET_GRID, f"et/{label}")
-    ann = ann.assign_coords(lat=ib.TARGET_GRID.lat, lon=ib.TARGET_GRID.lon)
-    ann = ann.sel(lat=config.LAT_BNDS).rename("et")
+    ann = rg.on_grid(ann, ib.TARGET_RES, f"et/{label}").rename("et")
 
     print(
         f"et  {label:12}: {ann.dims} {ann.shape} {temporal.period_str(ann.year.values)} "
@@ -113,7 +111,7 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
 def main():
     if float(GRIDDED_RES) != ib.TARGET_RES:
         raise ValueError(f"GRIDDED_RES {GRIDDED_RES} does not match ib.TARGET_RES {ib.TARGET_RES}")
-    mask = ib.land_mask(ib.TARGET_GRID).sel(lat=config.LAT_BNDS)
+    mask = rg.land_mask(ib.TARGET_GRID).sel(lat=config.LAT_BNDS)
 
     print("=== Load ILAMB products ===")
     ann = {v: {p: ib.load_product(v, p) for p in products} for v, products in ILAMB_PRODUCTS.items()}

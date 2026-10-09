@@ -1,15 +1,17 @@
 """
 etunc.grid
 ==========
-Core regridding utilities shared by every script that puts a dataset on a
-common grid (`regrid_obs.py`, `regrid_cmip_esgf.py`, `ilamb_binned_et.py`,
-`cmip_binned_et.py`).
+Target grids and regridders shared by every script that puts a dataset on a
+common grid, plus grid helpers: coordinate checks and snapping (`on_grid`),
+land masks, and cell areas.
 
 Target grids
 ------------
-There are two common grids. Both are global and regular, with lon in
-[-180, 180], lat ascending, and cell edges at multiples of the spacing from
--90 and -180:
+There are two standard grids (`RESOLUTIONS`, named by `grid_tag`), used for
+every saved output. `target_grid` also builds the same kind of grid at any
+spacing that divides 180 (e.g. for resolution-sensitivity tests). All are
+global and regular, with lon in [-180, 180], lat ascending, and cell edges at
+multiples of the spacing from -90 and -180:
 
     "0.5deg": 360 x 720, centers lat -89.75 ... 89.75, lon -179.75 ... 179.75
     "1deg":   180 x 360, centers lat -89.5 ... 89.5,   lon -179.5 ... 179.5
@@ -47,7 +49,7 @@ import regionmask as regmask
 import xarray as xr
 import xesmf as xe
 
-from etunc.config import EARTH_RADIUS, LF_THRESH
+from etunc.config import EARTH_RADIUS, LAT_BNDS, LF_THRESH
 
 
 RESOLUTIONS = {"0.5deg": 0.5, "1deg": 1.0}  # grid tag (output directory name) -> spacing [deg]
@@ -76,9 +78,25 @@ def grid_tag(res: float | str) -> str:
     return next(tag for tag, r in RESOLUTIONS.items() if r == spacing)
 
 
+def _any_spacing(res: float | str) -> float:
+    """Grid spacing [deg] given as a tag of RESOLUTIONS or as any positive number that divides 180."""
+    if isinstance(res, str):
+        if res not in RESOLUTIONS:
+            raise ValueError(f"unsupported resolution {res!r}; use a tag of {RESOLUTIONS} or a spacing")
+        return float(RESOLUTIONS[res])
+    spacing = float(res)
+    n = 180 / spacing if spacing > 0 else 0.5
+    if abs(n - round(n)) > 1e-9:
+        raise ValueError(f"unsupported resolution {res!r}; the spacing must divide 180")
+    return spacing
+
+
 def target_grid(res: float | str) -> xr.Dataset:
-    """Common global grid at spacing `res` (0.5 / 1.0, or "0.5deg" / "1deg"), with cell edges."""
-    res = _spacing(res)
+    """
+    Global grid at spacing `res` with cell edges: a standard tag ("0.5deg",
+    "1deg") or any spacing that divides 180 (e.g. 0.25, 2.0).
+    """
+    res = _any_spacing(res)
     nlat, nlon = round(180 / res), round(360 / res)
     return xr.Dataset(coords={
         "lat": ("lat", np.arange(-90 + res / 2, 90, res), LAT_ATTRS),
@@ -157,7 +175,7 @@ def make_regridder(src: xr.Dataset | xr.DataArray, res: float | str, method: str
 
 def conservative_regridder(da: xr.DataArray, res: float | str) -> xe.Regridder:
     """Conservative regridder from the regular grid of `da` onto `target_grid(res)`, cached per grid."""
-    key = (_spacing(res), da["lat"].values.tobytes(), da["lon"].values.tobytes())
+    key = (_any_spacing(res), da["lat"].values.tobytes(), da["lon"].values.tobytes())
     if key not in _CONSERVATIVE:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -266,10 +284,36 @@ def check_same_grid(
         raise ValueError(f"{label}: lat/lon values differ from the reference grid by more than {atol}.")
 
 
+def on_grid(da: xr.DataArray, res: float | str, label: str) -> xr.DataArray:
+    """
+    `da` with the exact lat/lon of `target_grid(res)`, cut to LAT_BNDS, after
+    checking that it is on that grid (`check_same_grid`). Products whose
+    coordinates differ only by float round-off then line up cell for cell.
+    """
+    grid = target_grid(res)
+    check_same_grid(da, grid, label)
+    da = da.assign_coords(lat=grid.lat, lon=grid.lon)
+    return da.sel(lat=LAT_BNDS)
+
+
+def format_grid(da: xr.DataArray) -> xr.DataArray:
+    """Longitude in [-180, 180] and latitude ascending."""
+    return da.assign_coords(lon=((da.lon + 180) % 360) - 180).sortby("lon").sortby("lat")
+
+
 def mask_greenland(landfrac: xr.DataArray, lf_thresh: float = LF_THRESH) -> xr.DataArray:
     """Land mask: True where landfrac > lf_thresh, excluding Greenland/Iceland (AR6 region 0)."""
     mask = regmask.defined_regions.ar6.land.mask(landfrac.lon, landfrac.lat)
     return xr.where((mask == 0) & (landfrac > lf_thresh), False, landfrac > lf_thresh)
+
+
+def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
+    """
+    Natural Earth land mask without Greenland/Iceland. (Same land mask as
+    `etunc.legacy.compute_cell_area`.)
+    """
+    land = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask(grid.lon, grid.lat)
+    return mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
 
 
 # ------------------------------------------------------------------

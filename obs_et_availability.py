@@ -100,18 +100,11 @@ MONTHS = pd.date_range(TIME_SLICE.start, TIME_SLICE.stop, freq="MS")
 GRID = ib.TARGET_GRID.sel(lat=config.LAT_BNDS)
 
 
-def on_grid(da: xr.DataArray, label: str) -> xr.DataArray:
-    """Exact GRID coordinates (lat within LAT_BNDS), after checking the grid matches."""
-    rg.check_same_grid(da, ib.TARGET_GRID, label)
-    da = da.assign_coords(lat=ib.TARGET_GRID.lat, lon=ib.TARGET_GRID.lon)
-    return da.sel(lat=config.LAT_BNDS)
-
-
 def load_ilamb(product: str) -> xr.DataArray:
     """Monthly ET [W/m2] of an ILAMB product, processed as in `ib.load_product` but not annually averaged."""
     relpath, name = ib.PRODUCTS["et"][product]
     ds = xr.open_dataset(ib.ILAMB_DATA_ROOT / relpath)
-    da = ib.format_grid(ds[name]).sel(time=TIME_SLICE).load()
+    da = rg.format_grid(ds[name]).sel(time=TIME_SLICE).load()
     if da.sizes["time"] == 0:
         raise FileNotFoundError(f"{product}: no data in {TIME_SLICE}")
     with xr.set_options(keep_attrs=True):
@@ -120,7 +113,7 @@ def load_ilamb(product: str) -> xr.DataArray:
     if da.sizes["lat"] != ib.TARGET_GRID.sizes["lat"] or da.sizes["lon"] != ib.TARGET_GRID.sizes["lon"]:
         print(f"{product}: regridding {da.sizes['lat']}x{da.sizes['lon']} -> 0.5 deg")
         da = ib.regrid_to_target(da)
-    return temporal.on_month_axis(on_grid(da, product), MONTHS)
+    return temporal.on_month_axis(rg.on_grid(da, ib.TARGET_RES, product), MONTHS)
 
 
 def regridded_dataset(dataset: str) -> lo.ObsDataset:
@@ -140,7 +133,7 @@ def load_gridded(label: str) -> xr.DataArray:
         raise FileNotFoundError(f"{label}: no {REGRID_TAG} files under {spec.root} (run regrid_obs.py)")
     da = lo.load_obs(spec, var, TIME_SLICE, version=version, freq="monthly").load()
     da = units.latent_heat_to_wm2(lo.accumulation_to_flux(da))
-    return temporal.on_month_axis(on_grid(da, label), MONTHS)
+    return temporal.on_month_axis(rg.on_grid(da, ib.TARGET_RES, label), MONTHS)
 
 
 # ------------------------------------------------------------------
@@ -381,7 +374,7 @@ def plot_box_annual_et(ann: xr.DataArray, common: xr.DataArray, title: str, fout
 
 def main():
     period = temporal.format_time_period(TIME_SLICE)
-    land = (ib.land_mask(ib.TARGET_GRID).sel(lat=config.LAT_BNDS) == 1).rename("land")
+    land = (rg.land_mask(ib.TARGET_GRID).sel(lat=config.LAT_BNDS) == 1).rename("land")
     n_land = int(land.sum())
     print(f"{period}: {len(MONTHS)} months, {n_land} land gridcells\n")
 

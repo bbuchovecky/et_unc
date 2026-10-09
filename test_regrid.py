@@ -49,11 +49,29 @@ def test_target_grid_by_tag_or_spacing(res, tag):
     assert rg.grid_tag(res) == rg.grid_tag(tag) == tag
 
 
-@pytest.mark.parametrize("res", [0.25, 2.0, "2deg", "0.5"])
+@pytest.mark.parametrize("res", ["2deg", "0.5", 0.7, 0.0, -1.0])
 def test_unsupported_resolution_raises(res):
-    """Spacings or tags other than 0.5 and 1 deg raise."""
+    """Unknown tags, and spacings that do not divide 180, raise."""
     with pytest.raises(ValueError, match="unsupported resolution"):
         rg.target_grid(res)
+
+
+@pytest.mark.parametrize("res, nlat, nlon", [(0.25, 720, 1440), (2.0, 90, 180)])
+def test_target_grid_any_spacing(res, nlat, nlon):
+    """Any spacing that divides 180 gives a global grid with centers midway between edges at multiples of res."""
+    g = rg.target_grid(res)
+    assert (g.sizes["lat"], g.sizes["lon"]) == (nlat, nlon)
+    np.testing.assert_allclose(g.lat_b, np.linspace(-90, 90, nlat + 1))
+    np.testing.assert_allclose(g.lon_b, np.linspace(-180, 180, nlon + 1))
+    np.testing.assert_allclose(g.lat, 0.5 * (g.lat_b.values[:-1] + g.lat_b.values[1:]))
+    np.testing.assert_allclose(g.lon, 0.5 * (g.lon_b.values[:-1] + g.lon_b.values[1:]))
+
+
+@pytest.mark.parametrize("res", [0.25, 2.0, "2deg", "0.5"])
+def test_grid_tag_only_standard_grids(res):
+    """grid_tag (output directory names) only knows the standard 0.5 and 1 deg grids."""
+    with pytest.raises(ValueError, match="unsupported resolution"):
+        rg.grid_tag(res)
 
 
 def test_scripts_use_target_grids():
@@ -181,6 +199,39 @@ def test_approx_resolution():
                       coords={"latitude": ("y", [0.0, 2.0, 4.0]), "longitude": ("x", [0.0, 3.0, 6.0, 9.0])})
     assert rg.approx_resolution(da) == (2.0, 3.0)
     assert rg.approx_resolution(xr.DataArray([1.0], dims="t")) == (None, None)
+
+
+# ------------------------------------------------------------------
+# Grid formatting and snapping
+# ------------------------------------------------------------------
+
+def test_format_grid():
+    """Lon in [0, 360] becomes [-180, 180] and both lon and lat end up ascending, values following their cells."""
+    lat, lon = np.array([45.0, -45.0]), np.array([0.0, 90.0, 180.0, 270.0])
+    da = xr.DataArray(np.arange(8.0).reshape(2, 4), dims=("lat", "lon"), coords={"lat": lat, "lon": lon})
+    out = rg.format_grid(da)
+    np.testing.assert_array_equal(out.lat, [-45.0, 45.0])
+    np.testing.assert_array_equal(out.lon, [-180.0, -90.0, 0.0, 90.0])
+    assert float(out.sel(lat=45.0, lon=-90.0)) == float(da.sel(lat=45.0, lon=270.0))
+    assert float(out.sel(lat=-45.0, lon=-180.0)) == float(da.sel(lat=-45.0, lon=180.0))
+
+
+def test_on_grid_snaps_and_cuts_to_lat_bnds():
+    """A field within round-off of the target grid gets its exact coords and is cut to LAT_BNDS."""
+    g = rg.target_grid(1.0)
+    da = field(g.lat.values + 1e-6, g.lon.values - 1e-6)
+    out = rg.on_grid(da, 1.0, "test")
+    xr.testing.assert_identical(out.lat, g.lat.sel(lat=config.LAT_BNDS))
+    xr.testing.assert_identical(out.lon, g.lon)
+
+
+def test_on_grid_off_grid_raises():
+    """A field off the target grid by more than the tolerance, or of another shape, raises."""
+    g = rg.target_grid(1.0)
+    with pytest.raises(ValueError, match="differ from the reference grid"):
+        rg.on_grid(field(g.lat.values + 0.01, g.lon.values), 1.0, "shifted")
+    with pytest.raises(ValueError, match="does not match"):
+        rg.on_grid(field(g.lat.values, g.lon.values), 0.5, "coarse")
 
 
 # ------------------------------------------------------------------

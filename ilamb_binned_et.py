@@ -58,7 +58,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
-import regionmask as regmask
 import xarray as xr
 
 import etunc.config as config
@@ -161,11 +160,6 @@ EDGE_ATTRS = {
 # Loading and formatting
 # ------------------------------------------------------------------
 
-def format_grid(da: xr.DataArray) -> xr.DataArray:
-    """Longitude in [-180, 180] and latitude ascending."""
-    return da.assign_coords(lon=((da.lon + 180) % 360) - 180).sortby("lon").sortby("lat")
-
-
 def to_wm2(da: xr.DataArray) -> xr.DataArray:
     """Convert an ET, precipitation or net radiation flux to W/m2."""
     key = " ".join(str(da.attrs.get("units", "")).lower().split())
@@ -183,7 +177,7 @@ def load_product(variable: str, product: str) -> xr.DataArray:
     """Annual means (year, lat, lon) of one product on TARGET_GRID within LAT_BNDS."""
     relpath, name = PRODUCTS[variable][product]
     ds = xr.open_dataset(ILAMB_DATA_ROOT / relpath)
-    da = format_grid(ds[name])
+    da = rg.format_grid(ds[name])
     da = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da))).load()
     with xr.set_options(keep_attrs=True):
         da = da.where(np.abs(da) < FILL_THRESH)
@@ -197,25 +191,14 @@ def load_product(variable: str, product: str) -> xr.DataArray:
     if ann.sizes["lat"] != TARGET_GRID.sizes["lat"] or ann.sizes["lon"] != TARGET_GRID.sizes["lon"]:
         print(f"{variable}/{product}: regridding {ann.sizes['lat']}x{ann.sizes['lon']} -> 0.5 deg")
         ann = regrid_to_target(ann)
-    rg.check_same_grid(ann, TARGET_GRID, f"{variable}/{product}")
     # Exact coordinate values so that fields from different products align
-    ann = ann.assign_coords(lat=TARGET_GRID.lat, lon=TARGET_GRID.lon)
-    ann = ann.sel(lat=config.LAT_BNDS).rename(variable)
+    ann = rg.on_grid(ann, TARGET_RES, f"{variable}/{product}").rename(variable)
 
     print(
         f"{variable:3} {product:12}: {ann.dims} {ann.shape} {temporal.period_str(ann.year.values)} "
         f"[{float(ann.min()):0.3g}, {float(ann.max()):0.3g}] {ann.attrs['units']}"
     )
     return ann
-
-
-def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
-    """
-    Natural Earth land mask without Greenland/Iceland. (Same land mask as
-    `etunc.legacy.compute_cell_area`.)
-    """
-    land = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask(grid.lon, grid.lat)
-    return rg.mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
 
 
 # ------------------------------------------------------------------
@@ -419,7 +402,7 @@ def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | Non
 # ------------------------------------------------------------------
 
 def main():
-    mask = land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
+    mask = rg.land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
 
     # ------------------------------------------------------------------
     # Load annual means of every product

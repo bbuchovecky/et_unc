@@ -62,7 +62,6 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
 import pandas as pd
-import regionmask as regmask
 import xarray as xr
 
 import etunc.config as config
@@ -184,15 +183,6 @@ def member_tag(members: list[str]) -> str:
 # ------------------------------------------------------------------
 # Loading and regridding
 # ------------------------------------------------------------------
-
-def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
-    """
-    Natural Earth land mask without Greenland/Iceland. (Same land mask as
-    `etunc.legacy.compute_cell_area`.)
-    """
-    land = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask(grid.lon, grid.lat)
-    return rg.mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
-
 
 def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
     """Land fraction [0-1] on a model's native grid, and that grid with cell edges for regridding."""
@@ -397,7 +387,7 @@ def plot_model_bin_means(
 
 def main():
     period = temporal.format_time_period(TIME_SLICE)
-    mask = land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
+    mask = rg.land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
     loader = CMIPESGFLoader(CATALOG)
 
     # ------------------------------------------------------------------
