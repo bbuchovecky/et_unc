@@ -34,13 +34,13 @@ Example
 >>> et = lo.load_gleam("E", slice("1995", "2014"), res="1")             # regridded to 1 deg
 >>> lo.list_variables("gleam"), lo.list_years("pml", "ET", version="V2.2b")
 >>> lo.list_files("sith", "ET")   # {path: (1982, 2022)}
->>> et_wm2 = units.latent_heat_to_wm2(lo.accumulation_to_flux(et))  # import etunc.units as units
+>>> et_wm2 = units.latent_heat_to_wm2(units.accumulation_to_flux(et))  # import etunc.units as units
 
 Notes
 -----
 - Monthly and yearly files of all products hold period *totals* (mm/month,
   mm/year). PML 8-day and half-month files hold daily rates (mm/day).
-  ``accumulation_to_flux`` converts any of these to kg m-2 s-1.
+  ``etunc.units.accumulation_to_flux`` converts any of these to kg m-2 s-1.
 - PML files from the AVHRR era (V2.2b, and V2.2c before 2001) have
   coordinates offset by up to ~1e-5 deg from the MODIS-era files. Coordinates
   are rounded to ``ObsDataset.coord_decimals`` so every year shares one grid
@@ -483,33 +483,3 @@ def load_pml(var: str, time_slice: slice = slice(None, None), **kwargs) -> xr.Da
 def load_sith(var: str, time_slice: slice = slice(None, None), **kwargs) -> xr.DataArray:
     """SiTHv2 variable (ET, Tr, Es, Ei, En); see `load_obs` for kwargs."""
     return load_obs("sith", var, time_slice, **kwargs)
-
-
-# ------------------------------------------------------------------
-# Units
-# ------------------------------------------------------------------
-
-_ACCUMULATION_PERIODS = {"d": "day", "day": "day", "month": "month", "mon": "month", "year": "year", "yr": "year"}
-
-
-def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
-    """
-    Convert a water depth per day, month or year (mm/day, mm.month-1, mm/year, ...)
-    to a mass flux [kg m-2 s-1], using each time step's days in month or year.
-    The result can go straight into ``etunc.units.latent_heat_to_wm2``.
-    """
-    units = str(da.attrs.get("units", ""))
-    m = re.fullmatch(r"mm\s*[./ ]\s*([a-z]+)(?:-1)?", units.strip().lower())
-    period = _ACCUMULATION_PERIODS.get(m.group(1)) if m else None
-    if period is None:
-        raise ValueError(f"Cannot convert units {units!r} of {da.name!r} to kg m-2 s-1")
-
-    if period == "day":
-        days = 1
-    elif period == "month":
-        days = da.time.dt.days_in_month
-    else:
-        days = xr.where(da.time.dt.is_leap_year, 366, 365)
-    out = da / (days * 86400)  # 1 mm of liquid water = 1 kg m-2
-    out.attrs = {**da.attrs, "units": "kg m-2 s-1"}
-    return out

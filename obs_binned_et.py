@@ -77,7 +77,7 @@ def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
     da = lo.load_obs(
         dataset, var, slice(str(years[0]), str(years[1])), version=version, freq=freq, res=GRIDDED_RES,
     ).load()
-    da = units.latent_heat_to_wm2(lo.accumulation_to_flux(da))
+    da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
 
     if freq == "monthly":
         da = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))

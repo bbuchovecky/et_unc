@@ -11,6 +11,7 @@ import pytest
 import xarray as xr
 
 import etunc.load.obs as lo
+from etunc.units import accumulation_to_flux
 
 
 # ------------------------------------------------------------------
@@ -276,7 +277,7 @@ def test_accumulation_to_flux(units, time, days):
     """Totals in mm per month, year or day are divided by the length of each time step's period in seconds."""
     da = xr.DataArray(np.ones(len(time)), dims="time", coords={"time": pd.DatetimeIndex(time)},
                       attrs={"units": units, "long_name": "x"})
-    out = lo.accumulation_to_flux(da)
+    out = accumulation_to_flux(da)
     np.testing.assert_allclose(out, 1 / (np.array(days) * 86400))
     assert out.attrs == {"units": "kg m-2 s-1", "long_name": "x"}
 
@@ -286,4 +287,4 @@ def test_accumulation_to_flux_bad_units():
     da = xr.DataArray([1.0], dims="time", coords={"time": pd.DatetimeIndex(["2000-01-01"])},
                       attrs={"units": "gC/m2/month"})
     with pytest.raises(ValueError, match="Cannot convert"):
-        lo.accumulation_to_flux(da)
+        accumulation_to_flux(da)

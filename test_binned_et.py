@@ -170,6 +170,20 @@ def test_latent_heat_to_wm2(unit, factor):
     assert da.attrs["units"] == unit
 
 
+@pytest.mark.parametrize("unit, factor", [
+    ("mm/day", config.LATENT_HEAT_VAPORIZATION / 86400),
+    ("mm d-1", config.LATENT_HEAT_VAPORIZATION / 86400),
+    ("kg m-2 s-1", config.LATENT_HEAT_VAPORIZATION),
+    ("W m-2", 1.0),
+])
+def test_flux_to_wm2(unit, factor):
+    """flux_to_wm2 adds mm/day (1 mm of water = 1 kg/m2 per 86400 s) to the units of latent_heat_to_wm2."""
+    da = xr.DataArray([1.0, 2.0], attrs={"units": unit, "long_name": "x"})
+    out = units.flux_to_wm2(da)
+    np.testing.assert_allclose(out, da * factor, rtol=1e-12)
+    assert out.attrs == {"units": "W/m2", "long_name": "x"}
+
+
 def test_latent_heat_to_wm2_unknown_units():
     """An unsupported unit raises a ValueError that names it."""
     with pytest.raises(ValueError, match="mm d-1"):

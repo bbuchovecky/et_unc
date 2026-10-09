@@ -109,7 +109,7 @@ def load_ilamb(product: str) -> xr.DataArray:
         raise FileNotFoundError(f"{product}: no data in {TIME_SLICE}")
     with xr.set_options(keep_attrs=True):
         da = da.where(np.abs(da) < ib.FILL_THRESH)
-    da = ib.to_wm2(da)
+    da = units.flux_to_wm2(da)
     if da.sizes["lat"] != ib.TARGET_GRID.sizes["lat"] or da.sizes["lon"] != ib.TARGET_GRID.sizes["lon"]:
         print(f"{product}: regridding {da.sizes['lat']}x{da.sizes['lon']} -> 0.5 deg")
         da = ib.regrid_to_target(da)
@@ -132,7 +132,7 @@ def load_gridded(label: str) -> xr.DataArray:
     if not lo.list_years(spec, var, version, "monthly"):
         raise FileNotFoundError(f"{label}: no {REGRID_TAG} files under {spec.root} (run regrid_obs.py)")
     da = lo.load_obs(spec, var, TIME_SLICE, version=version, freq="monthly").load()
-    da = units.latent_heat_to_wm2(lo.accumulation_to_flux(da))
+    da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
     return temporal.on_month_axis(rg.on_grid(da, ib.TARGET_RES, label), MONTHS)
 
 

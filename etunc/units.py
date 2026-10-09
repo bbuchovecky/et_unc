@@ -4,11 +4,15 @@ etunc.units
 Unit conversions and net radiation. Water fluxes become their energy
 equivalent [W/m2] with L = LATENT_HEAT_VAPORIZATION. There are two conversion
 paths: `convert_units` keys on the variable name (CMIP, CESM, ERA5) and
-`latent_heat_to_wm2` on the `units` attr (ILAMB). Net radiation sign
+`latent_heat_to_wm2` on the `units` attr (ILAMB; `flux_to_wm2` also takes
+mm/day). `accumulation_to_flux` turns water depths per day, month or year
+(the gridded obs products) into kg m-2 s-1. Net radiation sign
 conventions differ by source, so each has its own `net_radiation_*`.
 """
 
 from __future__ import annotations
+
+import re
 
 import xarray as xr
 
@@ -61,6 +65,43 @@ def latent_heat_to_wm2(da: xr.DataArray) -> xr.DataArray:
         raise ValueError(f"Cannot convert units {units!r} of {da.name!r} to W/m2")
     out = da * _UNITS_TO_WM2[key]
     out.attrs = {**da.attrs, "units": "W/m2"}
+    return out
+
+
+def flux_to_wm2(da: xr.DataArray) -> xr.DataArray:
+    """
+    Convert an ET, precipitation or net radiation flux to W/m2: like
+    `latent_heat_to_wm2`, plus water fluxes in mm/day (mm d-1).
+    """
+    key = " ".join(str(da.attrs.get("units", "")).lower().split())
+    if key in ("mm d-1", "mm/day"):  # GPCCv2018; 1 mm of water = 1 kg/m2
+        da = (da / 86400).assign_attrs({**da.attrs, "units": "kg m-2 s-1"})
+    return latent_heat_to_wm2(da)
+
+
+_ACCUMULATION_PERIODS = {"d": "day", "day": "day", "month": "month", "mon": "month", "year": "year", "yr": "year"}
+
+
+def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
+    """
+    Convert a water depth per day, month or year (mm/day, mm.month-1, mm/year, ...)
+    to a mass flux [kg m-2 s-1], using each time step's days in month or year.
+    The result can go straight into ``latent_heat_to_wm2``.
+    """
+    units = str(da.attrs.get("units", ""))
+    m = re.fullmatch(r"mm\s*[./ ]\s*([a-z]+)(?:-1)?", units.strip().lower())
+    period = _ACCUMULATION_PERIODS.get(m.group(1)) if m else None
+    if period is None:
+        raise ValueError(f"Cannot convert units {units!r} of {da.name!r} to kg m-2 s-1")
+
+    if period == "day":
+        days = 1
+    elif period == "month":
+        days = da.time.dt.days_in_month
+    else:
+        days = xr.where(da.time.dt.is_leap_year, 366, 365)
+    out = da / (days * 86400)  # 1 mm of liquid water = 1 kg m-2
+    out.attrs = {**da.attrs, "units": "kg m-2 s-1"}
     return out
 
 

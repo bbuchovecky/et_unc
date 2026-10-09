@@ -160,14 +160,6 @@ EDGE_ATTRS = {
 # Loading and formatting
 # ------------------------------------------------------------------
 
-def to_wm2(da: xr.DataArray) -> xr.DataArray:
-    """Convert an ET, precipitation or net radiation flux to W/m2."""
-    key = " ".join(str(da.attrs.get("units", "")).lower().split())
-    if key in ("mm d-1", "mm/day"):  # GPCCv2018; 1 mm of water = 1 kg/m2
-        da = (da / 86400).assign_attrs({**da.attrs, "units": "kg m-2 s-1"})
-    return units.latent_heat_to_wm2(da)
-
-
 def regrid_to_target(da: xr.DataArray) -> xr.DataArray:
     """Bilinear interpolation onto TARGET_GRID; target points outside the source grid are NaN."""
     return rg.bilinear_regridder(da, TARGET_RES)(da, keep_attrs=True)
@@ -185,7 +177,7 @@ def load_product(variable: str, product: str) -> xr.DataArray:
     if variable == "lai":
         da.attrs["units"] = "m2/m2"
     else:
-        da = to_wm2(da)
+        da = units.flux_to_wm2(da)
     ann = temporal.annual_mean(da, require_all_months=(variable != "lai"))
 
     if ann.sizes["lat"] != TARGET_GRID.sizes["lat"] or ann.sizes["lon"] != TARGET_GRID.sizes["lon"]:
