@@ -62,7 +62,6 @@ import matplotlib.pyplot as plt
 import xarray as xr
 
 import etunc.config as config
-import etunc.units as units
 import etunc.temporal as temporal
 import etunc.binning as binning
 import etunc.plotting as plotting
@@ -117,67 +116,6 @@ TARGET_RES = 1.0
 GRID_TAG = rg.grid_tag(TARGET_RES)
 TARGET_GRID = rg.target_grid(TARGET_RES)
 NA_THRES = 0.5  # target cells with more than this fraction of area outside the native land mask are NaN
-
-# ------------------------------------------------------------------
-# Loading and regridding
-# ------------------------------------------------------------------
-
-def load_model(
-    loader: CMIPESGFLoader,
-    sid: str,
-    members: list[str],
-    sftlf_path: str,
-    mask: xr.DataArray,
-) -> dict[str, xr.DataArray]:
-    """
-    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
-    for one model, conservatively regridded onto TARGET_GRID within LAT_BNDS
-    and masked with `mask`.
-    """
-    lf, src_grid = cmip.load_land_fraction(sftlf_path)
-    native_mask = rg.mask_greenland(lf, config.LF_THRESH)
-
-    data = loader.load_data(
-        VARIABLES, EXPERIMENT_ID, source_id=sid, member_id=members, time_slice=TIME_SLICE, verbose=False,
-    )[sid]
-    missing = set(VARIABLES) - set(data)
-    if missing:
-        raise ValueError(f"{sid}: could not load {sorted(missing)}")
-
-    fields = {}
-    for v in VARIABLES:
-        da = data[v].reset_coords(drop=True)  # member_id is re-added after regridding
-        # sftlf comes from another experiment, so check that it is on the same grid
-        rg.check_same_grid(da, lf, f"{sid}/{v}")
-        da = da.assign_coords(lat=lf.lat, lon=lf.lon)
-        fields[v] = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))
-
-    monthly = {
-        "et": units.convert_units("evspsbl", fields["evspsbl"]),
-        "lai": fields["lai"].assign_attrs(units="m2/m2"),
-        "pr": units.convert_units("pr", fields["pr"]),
-        "rn": units.net_radiation_cmip(fields["rsds"], fields["rsus"], fields["rlds"], fields["rlus"]),
-    }
-
-    regridder = rg.bounded_conservative_regridder(src_grid, TARGET_RES)
-
-    ann = {}
-    for k, da in monthly.items():
-        with xr.set_options(keep_attrs=True):
-            da = da.where(native_mask).load()
-        a = temporal.annual_mean(da, require_all_months=(k != "lai")).transpose(..., "lat", "lon")
-        # Area-weighted mean of the native land cells in each target cell (ocean is NaN and skipped)
-        a = regridder(a, skipna=True, na_thres=NA_THRES, keep_attrs=True)
-        a = a.assign_coords(lat=TARGET_GRID.lat, lon=TARGET_GRID.lon, member_id=("member", members))
-        with xr.set_options(keep_attrs=True):
-            ann[k] = a.sel(lat=config.LAT_BNDS).where(mask).rename(k)
-
-    print(
-        f"{sid:16}: {len(members)} member(s), native {lf.sizes['lat']}x{lf.sizes['lon']} "
-        f"-> {ann['et'].dims} {ann['et'].shape}, years {temporal.period_str(ann['et'].year.values)}"
-    )
-    return ann
-
 
 # ------------------------------------------------------------------
 # Binning helpers
@@ -255,7 +193,10 @@ def main():
     inputs = {}
     for sid, mids in members.items():
         try:
-            ann = load_model(loader, sid, mids, sftlf[sid], mask)
+            ann = cmip.load_model(
+                loader, sid, mids, sftlf[sid], mask, variables=VARIABLES, experiment_id=EXPERIMENT_ID,
+                time_slice=TIME_SLICE, res=TARGET_RES, na_thres=NA_THRES,
+            )
         except ValueError as err:  # e.g. sftlf on a different grid than the data
             print(f"{sid}: {err}, skipping")
             continue

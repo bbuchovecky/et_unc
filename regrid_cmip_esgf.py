@@ -7,12 +7,12 @@ import gc
 import os
 import time
 from datetime import datetime as dt
-import warnings
 from pathlib import Path
 import xarray as xr
 
 import etunc.grid as rg
 import etunc.temporal as temporal
+import etunc.load.cmip as cmip
 from etunc.load.cmip import CMIPESGFLoader
 
 
@@ -26,51 +26,6 @@ MEMBER_IDS = None
 TIME_SLICE = slice("1950-01", "2014-12")
 
 TARGET_RES = 1.0  # spacing [deg] of the common grid, see regrid.target_grid
-
-
-def _format_lat_lon(da: xr.DataArray) -> xr.DataArray:
-    """Clean and format lat/lon coords (primarily for EC-Earth)."""
-    if ("i" in da.dims) and ("j" in da.dims):
-        if ("longitude" in da.coords) and ("latitude" in da.coords):
-            da = da.rename(i="lon")
-            da = da.rename(j="lat")
-
-            latitude = da["latitude"]
-            longitude = da["longitude"]
-
-            da = da.assign_coords(lat=latitude.isel(lon=0), lon=longitude.isel(lat=0))
-            return da.drop_vars(["latitude", "longitude"])
-    return da
-
-
-def regrid_to_target(da: xr.DataArray, res: float | str = TARGET_RES, verbose: bool = False) -> xr.DataArray:
-    """
-    Conservative (area-weighted) xESMF regridding onto `regrid.target_grid(res)`.
-
-    The source grid keeps its original lat/lon dims (1-D or 2-D); xESMF infers
-    its cell edges. Raises RuntimeError if the regridding fails.
-    """
-    da = _format_lat_lon(da)
-
-    try:
-        src = xr.Dataset(
-            {
-                "lon": (da["lon"].dims, da["lon"].values),
-                "lat": (da["lat"].dims, da["lat"].values),
-            }
-        )
-        if verbose:
-            print(f"Source: lon={len(src.lon)}, lat={len(src.lat)}")
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            regridder = rg.make_regridder(src, res, "conservative")
-            if verbose:
-                print(f"Target: lon={regridder.shape_out[1]}, lat={regridder.shape_out[0]}")
-            return regridder(da, keep_attrs=True)
-
-    except Exception as exc:  # pragma: no cover - environment specific
-        raise RuntimeError(f"xESMF regridding failed - da: {da.dims} {da.shape}") from exc
 
 
 def main() -> None:
@@ -106,7 +61,7 @@ def main() -> None:
             # Regrid
             print(f"  {var}: IN {da.dims} {da.shape} Regridding...", end="", flush=True)
             regrid_t0 = time.perf_counter()
-            da_regridded = regrid_to_target(da, TARGET_RES)
+            da_regridded = cmip.regrid_to_target(da, TARGET_RES)
             regrid_elapsed = time.perf_counter() - regrid_t0
             print(
                 f"done in {regrid_elapsed:.2f}s. OUT "

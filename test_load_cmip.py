@@ -1,8 +1,10 @@
 """
 Tests that pin the behavior of the CMIP6 member selection and model loading in
-`cmip_binned_et.py` (and the member-ID helpers of `CMIPESGFLoader`) before the
-refactor moves them into `etunc.load.cmip` and splits `load_model` into
-`load_native` and `regrid_annual`. Run from the project root with:
+`etunc.load.cmip` (moved from `cmip_binned_et.py`, with `load_model` split into
+`load_native` and `regrid_annual`), the member-ID helpers of `CMIPESGFLoader`,
+and `regrid_to_target` (from `regrid_cmip_esgf.py`). The expected values were
+written against the old driver functions and are unchanged. Run from the
+project root with:
 
     python -m pytest test_load_cmip.py
 
@@ -16,7 +18,6 @@ import xarray as xr
 
 import etunc.config as config
 import etunc.grid as rg
-import cmip_binned_et as cb
 import etunc.load.cmip as cmip
 from etunc.load.cmip import CMIPESGFLoader
 
@@ -25,8 +26,14 @@ from etunc.load.cmip import CMIPESGFLoader
 # Member IDs and member selection
 # ------------------------------------------------------------------
 
-# cmip_binned_et.VARIABLES, passed explicitly
+# Settings of cmip_binned_et, passed explicitly
 VARIABLES = ["evspsbl", "lai", "pr", "rsds", "rsus", "rlds", "rlus"]
+EXPERIMENT_ID = "historical"
+TIME_SLICE = slice("1995-01", "2014-12")
+TARGET_RES = 1.0
+TARGET_GRID = rg.target_grid(TARGET_RES)
+NA_THRES = 0.5
+SETTINGS = dict(variables=VARIABLES, experiment_id=EXPERIMENT_ID, time_slice=TIME_SLICE, res=TARGET_RES, na_thres=NA_THRES)
 
 def test_sort_member_ids_numeric():
     """Member IDs sort numerically by r, i, p, f (r10 after r2), and invalid IDs raise."""
@@ -212,7 +219,7 @@ class StubLoader:
 
 
 def target_mask():
-    grid = cb.TARGET_GRID.sel(lat=config.LAT_BNDS)
+    grid = TARGET_GRID.sel(lat=config.LAT_BNDS)
     mask = xr.DataArray(
         np.ones((grid.sizes["lat"], grid.sizes["lon"])), dims=("lat", "lon"),
         coords={"lat": grid.lat, "lon": grid.lon},
@@ -223,7 +230,7 @@ def target_mask():
 
 def expected_field(k, member, year):
     """Expected (lat, lon) values of `k` away from the LAI gap, which is checked separately."""
-    grid = cb.TARGET_GRID.sel(lat=config.LAT_BNDS)
+    grid = TARGET_GRID.sel(lat=config.LAT_BNDS)
     out = xr.DataArray(np.full((grid.sizes["lat"], grid.sizes["lon"]), np.nan), dims=("lat", "lon"),
                        coords={"lat": grid.lat, "lon": grid.lon})
     out.loc[{"lat": VALID_LAT, "lon": VALID_LON}] = EXPECTED[k]
@@ -239,16 +246,16 @@ def loaded(tmp_path_factory):
     """load_model output with a % sftlf file, plus the stub loader that it called."""
     path = write_sftlf(tmp_path_factory.mktemp("fx") / "sftlf.nc")
     loader = StubLoader(monthly_fields())
-    ann = cb.load_model(loader, "FAKE-ESM", MEMBERS, path, target_mask())
+    ann = cmip.load_model(loader, "FAKE-ESM", MEMBERS, path, target_mask(), **SETTINGS)
     return ann, loader
 
 
 def test_load_model_calls_loader(loaded):
-    """load_model asks the loader for VARIABLES, EXPERIMENT_ID, the model's members and TIME_SLICE."""
+    """load_model asks the loader for the variables, experiment, the model's members and the time slice."""
     _, loader = loaded
     assert loader.calls == [{
-        "variables": cb.VARIABLES, "experiment_id": cb.EXPERIMENT_ID, "source_id": "FAKE-ESM",
-        "member_id": MEMBERS, "time_slice": cb.TIME_SLICE,
+        "variables": VARIABLES, "experiment_id": EXPERIMENT_ID, "source_id": "FAKE-ESM",
+        "member_id": MEMBERS, "time_slice": TIME_SLICE,
     }]
 
 
@@ -259,7 +266,7 @@ def test_load_model_dims_coords_names_units(loaded):
     """
     ann, _ = loaded
     assert list(ann) == ["et", "lai", "pr", "rn"]
-    grid = cb.TARGET_GRID.sel(lat=config.LAT_BNDS)
+    grid = TARGET_GRID.sel(lat=config.LAT_BNDS)
     for k, da in ann.items():
         assert da.name == k
         assert da.dims == ("member", "year", "lat", "lon")
@@ -318,7 +325,7 @@ def test_load_model_fraction_sftlf_same_as_percent(loaded, tmp_path):
     """A sftlf file stored as a fraction gives the same output as one stored in %."""
     ann, _ = loaded
     path = write_sftlf(tmp_path / "sftlf_frac.nc", scale=1.0)  # fraction labelled "%" (as E3SM-1-0)
-    ann_frac = cb.load_model(StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, target_mask())
+    ann_frac = cmip.load_model(StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, target_mask(), **SETTINGS)
     for k in ann:
         xr.testing.assert_identical(ann_frac[k], ann[k])
 
@@ -327,7 +334,7 @@ def test_load_model_sftlf_on_other_grid_raises(tmp_path):
     """A sftlf file on a different grid from the data raises."""
     path = write_sftlf(tmp_path / "sftlf_shifted.nc", lat_shift=0.5)
     with pytest.raises(ValueError, match="differ from the reference grid"):
-        cb.load_model(StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, target_mask())
+        cmip.load_model(StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, target_mask(), **SETTINGS)
 
 
 def test_load_model_missing_variable_raises(tmp_path):
@@ -336,4 +343,58 @@ def test_load_model_missing_variable_raises(tmp_path):
     data = monthly_fields()
     del data["rlus"]
     with pytest.raises(ValueError, match=r"could not load \['rlus'\]"):
-        cb.load_model(StubLoader(data), "FAKE-ESM", MEMBERS, path, target_mask())
+        cmip.load_model(StubLoader(data), "FAKE-ESM", MEMBERS, path, target_mask(), **SETTINGS)
+
+
+def test_load_model_is_regrid_annual_of_load_native(loaded, tmp_path):
+    """load_model is regrid_annual(*load_native(...)): native annual means, then the conservative regrid."""
+    ann, _ = loaded
+    path = write_sftlf(tmp_path / "sftlf.nc")
+    native, native_mask, src_grid = cmip.load_native(
+        StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, VARIABLES, EXPERIMENT_ID, TIME_SLICE,
+    )
+    assert native["et"].dims == ("member", "year", "lat", "lon") and native["et"].sizes["lat"] == LAT_N.size
+    assert native_mask.dtype == bool and src_grid.sizes["lat_b"] == LAT_N.size + 1
+    out = cmip.regrid_annual(native, src_grid, TARGET_RES, target_mask(), NA_THRES, members=MEMBERS)
+    for k in ann:
+        xr.testing.assert_identical(out[k], ann[k])
+
+
+def test_regrid_annual_na_thres_and_any_spacing(tmp_path):
+    """
+    A higher na_thres keeps target cells that are only 25% land (with the land value); any spacing that divides
+    180 gives that grid's exact coords within LAT_BNDS.
+    """
+    path = write_sftlf(tmp_path / "sftlf.nc")
+    native, _, src_grid = cmip.load_native(
+        StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, VARIABLES, EXPERIMENT_ID, TIME_SLICE,
+    )
+    loose = cmip.regrid_annual(native, src_grid, TARGET_RES, target_mask(), na_thres=0.8)
+    edge = loose["pr"].isel(member=1).sel(year=1995, lat=11.5, lon=VALID_LON[1:])  # 25% land (lon 92.5: 19%, NaN)
+    np.testing.assert_allclose(edge, EXPECTED["pr"], rtol=1e-10)
+    assert "member_id" not in loose["pr"].coords
+
+    g2 = rg.target_grid(2.0).sel(lat=config.LAT_BNDS)
+    mask2 = xr.ones_like(g2.lat * g2.lon)
+    coarse = cmip.regrid_annual(native, src_grid, 2.0, mask2, NA_THRES)
+    np.testing.assert_array_equal(coarse["et"].lat, g2.lat)
+    np.testing.assert_array_equal(coarse["et"].lon, g2.lon)
+
+
+def test_regrid_to_target_ec_earth_ij_grid():
+    """
+    A field on EC-Earth-style (j, i) dims with 2-D latitude/longitude coords is given 1-D lat/lon and
+    conservatively regridded onto the target grid; a constant field stays constant.
+    """
+    lat = np.arange(-89.0, 90.0, 2.0)
+    lon = np.arange(1.0, 360.0, 2.0)
+    da = xr.DataArray(
+        np.full((2, lat.size, lon.size), 3.0), dims=("time", "j", "i"),
+        coords={"latitude": (("j", "i"), np.repeat(lat[:, None], lon.size, axis=1)),
+                "longitude": (("j", "i"), np.repeat(lon[None, :], lat.size, axis=0))},
+        name="lai", attrs={"units": "1"},
+    )
+    out = cmip.regrid_to_target(da, 1.0)
+    assert out.dims == ("time", "lat", "lon") and out.attrs["units"] == "1"
+    np.testing.assert_array_equal(out.lat, rg.target_grid(1.0).lat)
+    np.testing.assert_allclose(out.sel(lat=slice(-87, 87)), 3.0, rtol=1e-10)

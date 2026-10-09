@@ -16,7 +16,13 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from etunc.grid import bounded_source_grid
+from etunc.config import LAT_BNDS, LF_THRESH
+from etunc.grid import (
+    NA_THRES, bounded_conservative_regridder, bounded_source_grid, check_same_grid, make_regridder, mask_greenland,
+    target_grid,
+)
+from etunc.temporal import annual_mean, complete_years, period_str
+from etunc.units import convert_units, net_radiation_cmip
 
 # -----------------------
 # Helpers
@@ -701,3 +707,164 @@ def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
     if float(lf.max()) > 1.5:
         lf = lf / 100
     return lf.assign_attrs(units="1"), bounded_source_grid(ds)
+
+
+# ------------------------------------------------------------------
+# Annual means on the common grid (cmip_binned_et.py)
+# ------------------------------------------------------------------
+
+def load_native(
+    loader: CMIPESGFLoader,
+    sid: str,
+    members: list[str],
+    sftlf_path: str,
+    variables: Sequence[str],
+    experiment_id: str,
+    time_slice: slice,
+) -> tuple[dict[str, xr.DataArray], xr.DataArray, xr.Dataset]:
+    """
+    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
+    for one model on its native grid, masked with its land fraction (sftlf >
+    LF_THRESH, no Greenland/Iceland). `variables` must include evspsbl, lai,
+    pr, rsds, rsus, rlds and rlus. Complete years only; a missing month
+    counts as LAI = 0, while ET, pr and Rn need all 12 months.
+
+    Returns (annual means, native land mask, native grid with cell edges for
+    `regrid_annual`).
+    """
+    lf, src_grid = load_land_fraction(sftlf_path)
+    native_mask = mask_greenland(lf, LF_THRESH)
+
+    data = loader.load_data(
+        variables, experiment_id, source_id=sid, member_id=members, time_slice=time_slice, verbose=False,
+    )[sid]
+    missing = set(variables) - set(data)
+    if missing:
+        raise ValueError(f"{sid}: could not load {sorted(missing)}")
+
+    fields = {}
+    for v in variables:
+        da = data[v].reset_coords(drop=True)  # member_id is re-added after regridding
+        # sftlf comes from another experiment, so check that it is on the same grid
+        check_same_grid(da, lf, f"{sid}/{v}")
+        da = da.assign_coords(lat=lf.lat, lon=lf.lon)
+        fields[v] = da.sel(time=da.time.dt.year.isin(complete_years(da)))
+
+    monthly = {
+        "et": convert_units("evspsbl", fields["evspsbl"]),
+        "lai": fields["lai"].assign_attrs(units="m2/m2"),
+        "pr": convert_units("pr", fields["pr"]),
+        "rn": net_radiation_cmip(fields["rsds"], fields["rsus"], fields["rlds"], fields["rlus"]),
+    }
+
+    ann = {}
+    for k, da in monthly.items():
+        with xr.set_options(keep_attrs=True):
+            da = da.where(native_mask).load()
+        ann[k] = annual_mean(da, require_all_months=(k != "lai")).transpose(..., "lat", "lon")
+    return ann, native_mask, src_grid
+
+
+def regrid_annual(
+    ann: dict[str, xr.DataArray],
+    src_grid: xr.Dataset,
+    res: float | str,
+    mask: xr.DataArray,
+    na_thres: float = NA_THRES,
+    members: list[str] | None = None,
+) -> dict[str, xr.DataArray]:
+    """
+    Conservatively regrid native annual means `ann` (from `load_native`) onto
+    `target_grid(res)` within LAT_BNDS, masked with `mask`. Each target cell is
+    the area-weighted mean of its valid (land) source cells, and NaN where more
+    than `na_thres` of its area is missing. `members` adds the member_id coord.
+    """
+    regridder = bounded_conservative_regridder(src_grid, res)
+    grid = target_grid(res)
+    member_coord = {} if members is None else {"member_id": ("member", members)}
+    out = {}
+    for k, a in ann.items():
+        # Area-weighted mean of the native land cells in each target cell (ocean is NaN and skipped)
+        a = regridder(a, skipna=True, na_thres=na_thres, keep_attrs=True)
+        a = a.assign_coords(lat=grid.lat, lon=grid.lon, **member_coord)
+        with xr.set_options(keep_attrs=True):
+            out[k] = a.sel(lat=LAT_BNDS).where(mask).rename(k)
+    return out
+
+
+def load_model(
+    loader: CMIPESGFLoader,
+    sid: str,
+    members: list[str],
+    sftlf_path: str,
+    mask: xr.DataArray,
+    *,
+    variables: Sequence[str],
+    experiment_id: str,
+    time_slice: slice,
+    res: float | str,
+    na_thres: float = NA_THRES,
+) -> dict[str, xr.DataArray]:
+    """
+    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
+    for one model, conservatively regridded onto `target_grid(res)` within
+    LAT_BNDS and masked with `mask`: `regrid_annual` of `load_native`.
+    """
+    ann, native_mask, src_grid = load_native(loader, sid, members, sftlf_path, variables, experiment_id, time_slice)
+    ann = regrid_annual(ann, src_grid, res, mask, na_thres, members=members)
+    print(
+        f"{sid:16}: {len(members)} member(s), native {native_mask.sizes['lat']}x{native_mask.sizes['lon']} "
+        f"-> {ann['et'].dims} {ann['et'].shape}, years {period_str(ann['et'].year.values)}"
+    )
+    return ann
+
+
+# ------------------------------------------------------------------
+# Regridding whole fields (regrid_cmip_esgf.py)
+# ------------------------------------------------------------------
+
+def _format_lat_lon(da: xr.DataArray) -> xr.DataArray:
+    """Clean and format lat/lon coords (primarily for EC-Earth)."""
+    if ("i" in da.dims) and ("j" in da.dims):
+        if ("longitude" in da.coords) and ("latitude" in da.coords):
+            da = da.rename(i="lon")
+            da = da.rename(j="lat")
+
+            latitude = da["latitude"]
+            longitude = da["longitude"]
+
+            da = da.assign_coords(lat=latitude.isel(lon=0), lon=longitude.isel(lat=0))
+            return da.drop_vars(["latitude", "longitude"])
+    return da
+
+
+def regrid_to_target(da: xr.DataArray, res: float | str = 1.0, verbose: bool = False) -> xr.DataArray:
+    """
+    Conservative (area-weighted) xESMF regridding onto `etunc.grid.target_grid(res)`, as written
+    by regrid_cmip_esgf.py. EC-Earth's (j, i) grids are first given 1-D lat/lon
+    (`_format_lat_lon`).
+
+    The source grid keeps its original lat/lon dims (1-D or 2-D); xESMF infers
+    its cell edges. Raises RuntimeError if the regridding fails.
+    """
+    da = _format_lat_lon(da)
+
+    try:
+        src = xr.Dataset(
+            {
+                "lon": (da["lon"].dims, da["lon"].values),
+                "lat": (da["lat"].dims, da["lat"].values),
+            }
+        )
+        if verbose:
+            print(f"Source: lon={len(src.lon)}, lat={len(src.lat)}")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            regridder = make_regridder(src, res, "conservative")
+            if verbose:
+                print(f"Target: lon={regridder.shape_out[1]}, lat={regridder.shape_out[0]}")
+            return regridder(da, keep_attrs=True)
+
+    except Exception as exc:  # pragma: no cover - environment specific
+        raise RuntimeError(f"xESMF regridding failed - da: {da.dims} {da.shape}") from exc

@@ -17,6 +17,7 @@ import ilamb_binned_et as ib
 import etunc.load.obs as lo
 import etunc.grid as rg
 import regrid_cmip_esgf as rce
+import etunc.load.cmip as cmip
 import regrid_obs as ro
 
 
@@ -159,7 +160,7 @@ def test_regridded_coords_are_target_grid(res):
     outs = [
         rg.conservative_regridder(fine, res)(fine),
         rg.bilinear_regridder(coarse, res)(coarse),
-        rce.regrid_to_target(coarse, res),
+        cmip.regrid_to_target(coarse, res),
     ]
     for out in outs:
         np.testing.assert_array_equal(out.lat, grid.lat)
