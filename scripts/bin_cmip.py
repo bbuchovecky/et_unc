@@ -159,6 +159,7 @@ def plot_model_edges(
 # ------------------------------------------------------------------
 
 def main():
+    config.summarize()
     period = temporal.format_time_period(TIME_SLICE)
     mask = rg.land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
     loader = CMIPESGFLoader(CATALOG)

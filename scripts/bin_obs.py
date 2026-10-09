@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import itertools
 from pathlib import Path
+import warnings
 
 import matplotlib
 matplotlib.use("Agg")
@@ -81,6 +82,7 @@ import etunc.load.ilamb as il
 import etunc.load.obs as lo
 import etunc.units as units
 
+warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
 
 # ------------------------------------------------------------------
 # Paths
@@ -293,6 +295,7 @@ def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | Non
 # ------------------------------------------------------------------
 
 def main():
+    config.summarize()
     mask = rg.land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
 
     # ------------------------------------------------------------------
