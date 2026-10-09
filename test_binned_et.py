@@ -808,3 +808,15 @@ def test_plot_mask_agreement_counts_common_mask(highlight_common, mask):
     assert f"common mask (all 3 products): {expected} of {int(land.sum())} land cells" in fig.axes[0].get_title()
     assert fig.axes[0].collections[0].cmap.N == 4
     plt.close(fig)
+
+
+def test_legacy_align_dicts():
+    """align_dicts drops models whose data and grid lat/lon differ (any grid variable, or only `grid_var`)."""
+    a = xr.DataArray(np.zeros((2, 3)), dims=("lat", "lon"), coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0, 2.0]})
+    b = a.assign_coords(lat=[0.0, 1.5])
+    data = {"A": {"x": a}, "B": {"x": a}, "C": {"x": a}}
+    grids = {"A": {"g": a, "h": a}, "B": {"g": a, "h": b}}
+    d, g = legacy.align_dicts(data, grids)
+    assert list(d) == ["A"] and list(g) == ["A"]          # B: h differs; C: no grid
+    d, _ = legacy.align_dicts(data, grids, grid_var="g")
+    assert list(d) == ["A", "B"]

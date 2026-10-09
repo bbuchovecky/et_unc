@@ -1,8 +1,16 @@
 """
 etunc.load.cmip
 ===============
-Module to load CMIP ESGF catalog data and selected datasets from a catalog CSV file.
-Primarily for data downloaded using `cmip-intake-esgf-fetch`.
+Load CMIP6 data listed in a catalog CSV from the external
+`cmip-intake-esgf-fetch` tool (`CMIPESGFLoader`), and the CMIP6 pieces of the
+drivers:
+
+- model and member selection (`available_members`, `select_members`,
+  `sftlf_files`, `member_tag`) and native land fraction (`load_land_fraction`);
+- annual means on the common grid for binning: `load_native` (native grid,
+  sftlf mask) then `regrid_annual` (conservative), or both via `load_model`;
+- `regrid_to_target`, the whole-field conservative regrid of
+  regrid_cmip_esgf.py (with the EC-Earth (j, i) grid fix).
 """
 
 from __future__ import annotations
@@ -18,82 +26,11 @@ import xarray as xr
 
 from etunc.config import LAT_BNDS, LF_THRESH
 from etunc.grid import (
-    NA_THRES, bounded_conservative_regridder, bounded_source_grid, check_same_grid, make_regridder, mask_greenland,
-    target_grid,
+    NA_THRES, bounded_conservative_regridder, bounded_source_grid, check_coords, check_same_grid, make_regridder,
+    mask_greenland, target_grid,
 )
 from etunc.temporal import annual_mean, complete_years, period_str
 from etunc.units import convert_units, net_radiation_cmip
-
-# -----------------------
-# Helpers
-# -----------------------
-
-def data_dict_nybtes(data_dict):
-    total_ngb = 0
-    sid_ngb = {}
-    for sid, vardict in data_dict.items():
-        sid_ngb[sid] = 0
-        for var, da in vardict.items():
-            sid_ngb[sid] += da.nbytes / 1024 / 1024 / 1024
-        total_ngb += sid_ngb[sid]
-    
-    print(f"total: {total_ngb:0.3f} GB")
-    for sid, ngb in sid_ngb.items():
-        print(f"{sid:20}: {ngb:0.3f} GB")
-
-
-# def clean_data_dict(data_dict):
-#     """Remove models without any output."""
-
-
-def check_coords(da: xr.DataArray) -> bool:
-    for coord in ("lat", "lon"):
-        if coord not in da.coords:
-            return False
-        if da[coord].ndim == 0:
-            continue  # scalar coord counts as present
-        if len(da[coord]) == 0:
-            return False
-    return True
-
-
-def equal_coords(a: xr.DataArray, b: xr.DataArray, atol: float = 1e-3) -> bool:
-    if not check_coords(a) or not check_coords(b):
-        return False
-    for coord in ("lat", "lon"):
-        if a[coord].shape != b[coord].shape:
-            return False
-        if not np.allclose(a[coord], b[coord], atol=atol):
-            return False
-    return True
-
-
-def align_dicts(
-        data_dict: dict,
-        grid_dict: dict,
-        grid_var: str | None = None,
-) -> tuple[dict, dict]:
-    """Remove models with mismatched or missing coordinates between data and grid."""
-    sids_to_remove: set = set()
-    for sid, vardict in data_dict.items():
-        if sid not in grid_dict:
-            sids_to_remove.add(sid)
-            continue
-        for var, da in vardict.items():
-            if grid_var is not None:
-                if grid_var not in grid_dict[sid] or not equal_coords(
-                    da, grid_dict[sid][grid_var]
-                ):
-                    sids_to_remove.add(sid)
-            else:
-                for gda in grid_dict[sid].values():
-                    if not equal_coords(da, gda):
-                        sids_to_remove.add(sid)
-
-    aligned_data = {k: v for k, v in data_dict.items() if k not in sids_to_remove}
-    aligned_grid = {k: v for k, v in grid_dict.items() if k not in sids_to_remove}
-
-    return aligned_data, aligned_grid
 
 
 class CMIPESGFLoader:
@@ -126,16 +63,6 @@ class CMIPESGFLoader:
         return list(value)
 
 
-    @staticmethod
-    def _check_coords(da: xr.DataArray) -> bool:
-        for coord in ("lat", "lon"):
-            if coord not in da.coords:
-                return False
-            if da[coord].ndim == 0:
-                continue  # scalar coord counts as present
-            if len(da[coord]) == 0:
-                return False
-        return True
 
 
     def _experiment_mask(self, experiment_id: str | None) -> pd.Series:
@@ -607,7 +534,7 @@ class CMIPESGFLoader:
                         da = xr.open_mfdataset(member_file_paths[mid], parallel=parallel)[var]
 
                     # Check that coordinates exist and look ok
-                    if self._check_coords(da):
+                    if check_coords(da, ("lat", "lon")):
                         if ("time" in da.dims) and (time_slice is not None):
                             da = da.sel(time=time_slice)
                         das.append(da)

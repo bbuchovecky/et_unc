@@ -214,3 +214,46 @@ def open_bin_stats(path: str | Path, var: str | None = None) -> xr.DataArray:
             raise ValueError(f"{path} has several variables {list(ds.data_vars)}; pass `var`.")
         var = next(iter(ds.data_vars))
     return ensure_bin_coords(ds[var])
+
+
+def data_dict_nybtes(data_dict):
+    """Print the size [GB] of each model's variables in {source_id: {variable: da}} and the total."""
+    total_ngb = 0
+    sid_ngb = {}
+    for sid, vardict in data_dict.items():
+        sid_ngb[sid] = 0
+        for var, da in vardict.items():
+            sid_ngb[sid] += da.nbytes / 1024 / 1024 / 1024
+        total_ngb += sid_ngb[sid]
+    
+    print(f"total: {total_ngb:0.3f} GB")
+    for sid, ngb in sid_ngb.items():
+        print(f"{sid:20}: {ngb:0.3f} GB")
+
+
+def align_dicts(
+        data_dict: dict,
+        grid_dict: dict,
+        grid_var: str | None = None,
+) -> tuple[dict, dict]:
+    """Remove models with mismatched or missing coordinates between data and grid."""
+    sids_to_remove: set = set()
+    for sid, vardict in data_dict.items():
+        if sid not in grid_dict:
+            sids_to_remove.add(sid)
+            continue
+        for var, da in vardict.items():
+            if grid_var is not None:
+                if grid_var not in grid_dict[sid] or not equal_coords(
+                    da, grid_dict[sid][grid_var], ("lat", "lon")
+                ):
+                    sids_to_remove.add(sid)
+            else:
+                for gda in grid_dict[sid].values():
+                    if not equal_coords(da, gda, ("lat", "lon")):
+                        sids_to_remove.add(sid)
+
+    aligned_data = {k: v for k, v in data_dict.items() if k not in sids_to_remove}
+    aligned_grid = {k: v for k, v in grid_dict.items() if k not in sids_to_remove}
+
+    return aligned_data, aligned_grid
