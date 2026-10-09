@@ -101,6 +101,9 @@ FHIST_PPE_MEMBERS = {
 def shift_time(ds: xr.Dataset) -> xr.Dataset:
     """Shifts time coordinate from [startyear-02, endyear-01] to [startyear-01, (endyear-1)-12]"""
     assert "time" in ds.dims
+    # CESM stamps each monthly mean at the end of its interval (January at Feb 1). Unshifted,
+    # time.year would group Feb-Jan and every annual mean would be off by one month.
+    # Any other first/last month is returned unshifted, without a warning
     if (ds.time[0].dt.month.item() == 2) and (ds.time[-1].dt.month.item() == 1):
         new_time = xr.date_range(
             start=str(ds.time[0].dt.year.item()) + "-01",
@@ -394,6 +397,7 @@ def load_goga2(
             if not member_datasets:
                 return xr.Dataset()
             combined_ds = xr.concat(member_datasets, dim="member", coords="minimal")
+            # Numbered 1..n by position: a missing member shifts the labels of the later ones
             combined_ds = combined_ds.assign_coords(member=range(1, len(member_datasets) + 1))
 
     return shift_time(_drop_cosp(combined_ds))
@@ -483,11 +487,13 @@ def load_cesm2le(
                     try:
                         members.append(_load_member(var_name, yr, mem_str))
                         tags.append(yr + "-" + mem_str)
-                    except OSError:
+                    except OSError:  # open_mfdataset raises OSError when no file matches
                         log("no files")
 
                 # Branch years before 1200 have one member each (macro
-                # perturbations), later ones have 10 (micro perturbations)
+                # perturbations), later ones have 10 (micro perturbations).
+                # LENS_BRANCH_YEARS and these member numbers are the cmip6 members;
+                # the smbb members use other names (1011.001, ..., 1231.011-020)
                 for im, yr in enumerate(LENS_BRANCH_YEARS):
                     log(yr)
                     if int(yr) < 1200:
@@ -498,6 +504,7 @@ def load_cesm2le(
                             _append(yr, str(i).zfill(3))
                         log()
 
+                # 10 macro + 4 x 10 micro = 50 members; assumes none was skipped above
                 member_datasets.append(
                     xr.concat(members, dim="member")
                     .assign_coords(member=np.arange(1, 51), ens_name=("member", tags))
@@ -540,6 +547,7 @@ def load_cesm_variable(
     """
     if verbose:
         print(f"{source.upper()}: Loading {variable}")
+    # The last two "_" parts are the frequency ("month_1")
     v = "_".join(variable.split("_")[:-2])
     frq = "_".join(variable.split("_")[-2:])
 
@@ -559,9 +567,13 @@ def load_cesm_variable(
     da = ds[v].sel(time=time_slice, lat=lat_bnds)
     if not equal_coords(da, grid, ("lat", "lon")):
         raise IndexError(f"{variable} and grid do not have the same 'lat', 'lon' coordinates")
+    # Only snaps round-off differences (checked above); it never silently regrids
     da = da.reindex_like(grid, method="nearest", tolerance=1e-3)
+    # A bool `mask` (the default True) means no masking
     if isinstance(mask, xr.DataArray):
         if not equal_coords(mask, grid, ("lat", "lon")):
             raise IndexError("mask and grid do not have the same 'lat', 'lon' coordinates")
         da = da.where(mask.reindex_like(grid, method="nearest", tolerance=1e-3))
+    # Keyed on the full name: only PRECT* is converted (m/s -> W/m2). EFLX_LH_TOT is
+    # already W/m2; any other water flux (e.g. mm/s) passes through unconverted
     return convert_units(variable, da, verbose=verbose)

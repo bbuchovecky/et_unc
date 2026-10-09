@@ -136,6 +136,8 @@ def register_dataset(spec: ObsDataset) -> ObsDataset:
 
 def _fix_gleam_units(ds: xr.Dataset, var: str, version: str, freq: str) -> xr.Dataset:
     """v4.3b labels monthly and yearly totals "mm.day-1"; relabel to match v4.3a."""
+    # `accumulation_to_flux` keys on this label: left as mm.day-1, a monthly total would
+    # be read as a daily rate and ET would come out ~30x (yearly ~365x) too large
     if ds[var].attrs.get("units") == "mm.day-1":
         ds[var].attrs["units"] = {"monthly": "mm.month-1", "yearly": "mm.year-1"}[freq]
     return ds
@@ -149,6 +151,7 @@ def _mask_gleam_like_v43a(ds: xr.Dataset, var: str, version: str, freq: str) -> 
     """
     if version != "v4.3b":
         return ds
+    # Unmasked, ocean zeros would count as valid ET = 0 and pull down coastal cells when regridded
     src = Path(ds[var].encoding.get("source") or ds.encoding.get("source", ""))
     # <root>/<version>/<freq>/<var>/<var>_<year>_GLEAM_<version>_<freq_tag>.nc
     if len(src.parents) < 4 or src.parents[2].name != version:
@@ -198,8 +201,10 @@ def _decode_sith(ds: xr.Dataset, var: str, version: str, freq: str) -> xr.Datase
     """Apply SiTHv2's non-CF "scale factor" and "Fill Value" and put dims in (time, lat, lon) order."""
     da = ds[var]
     attrs = dict(da.attrs)
+    # Unlike CF scale_factor, SiTHv2's "scale factor" is a divisor (stored = value x 100)
     scale = float(attrs.pop("scale factor", 1))
     fill = ds.attrs.get("Fill Value")
+    # Cast before masking: int32 cannot hold NaN
     da = da.astype("float32")
     if fill is not None:
         da = da.where(da != float(fill))
@@ -284,6 +289,7 @@ def _scan(spec: ObsDataset, **fields: str) -> list[tuple[dict[str, str], Path]]:
         else:
             glob_parts.append("*")
             if field in seen:
+                # A field used twice (e.g. {var}, {version}) must match the same text both times
                 regex_parts.append(f"(?P={field})")
             else:
                 regex_parts.append(rf"(?P<{field}>\d{{4}})" if field in _YEAR_FIELDS else rf"(?P<{field}>[^/]+)")
@@ -454,6 +460,7 @@ def load_obs(
             raise KeyError(f"{var!r} not in {ds.encoding.get('source')}; data vars: {list(ds.data_vars)}")
         return standardize_grid(ds[[var]], spec)
 
+    # Chunks apply when each file is opened, before `preprocess` renames the coords
     if isinstance(chunks, Mapping):
         native = {"lat": spec.lat_name, "lon": spec.lon_name}
         chunks = {native.get(k, k): v for k, v in chunks.items()}
@@ -467,9 +474,12 @@ def load_obs(
         data_vars="minimal",
         coords="minimal",
         compat="override",
+        # Files whose grids differ after rounding raise, instead of being outer-joined into a NaN-padded grid
         join="exact",
         parallel=parallel,
     )
+    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML) of each period, so
+    # slice with year or year-month strings rather than exact dates
     da = ds[var].sel(time=time_slice)
     if lat_bnds is not None:
         da = da.sel(lat=lat_bnds)
@@ -510,6 +520,7 @@ def _save(da: xr.DataArray, var: str, src: Path, outpath: Path, complevel: int) 
     outpath.parent.mkdir(parents=True, exist_ok=True)
     tmp = outpath.with_name(outpath.name + ".tmp")
     ds.to_netcdf(tmp, encoding={var: {"zlib": True, "complevel": complevel}})
+    # Atomic rename: a killed job leaves only a .tmp, never a truncated file that overwrite=False would skip
     os.replace(tmp, outpath)
 
 
@@ -550,6 +561,7 @@ def regrid_file(
         t["load"] += time.perf_counter() - t0
         t0 = time.perf_counter()
         for tag, res in resolutions.items():
+            # na_thres decides which coastal cells keep a value: NaN if more than na_thres of the area is missing
             pieces[tag].append(regrid_with_na_thres(da, conservative_regridder(da, res), na_thres))
         t["regrid"] += time.perf_counter() - t0
         if first != last:

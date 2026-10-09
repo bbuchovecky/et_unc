@@ -79,6 +79,7 @@ def load_era5(
 
     files = []
     for year in range(int(start[:4]), int(end[:4]) + 1):
+        # The first stream with a match wins, so pass `kind` for a code found in more than one stream
         for k in [kind] if kind is not None else GDEX_ROOTS:
             subdir = _root(k, year) / f"{year}"
             matches = sorted(subdir.glob(f"*_{var_code}.*.nc"))
@@ -98,6 +99,8 @@ def load_era5(
     ds = xr.open_mfdataset(files, combine="by_coords", parallel=True)
     ds = ds.chunk(chunks).rename({"latitude": "lat", "longitude": "lon"})
 
+    # Mean fluxes keep ERA5's sign (positive downward), so evaporation ("mer") is negative;
+    # `etunc.units.convert_units` flips it
     data_vars = list(ds.data_vars)
     if len(data_vars) == 1:
         return ds[data_vars[0]]

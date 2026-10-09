@@ -71,6 +71,8 @@ def _open(variable: str, product: str) -> xr.DataArray:
 
 
 def _off_grid(da: xr.DataArray, res: float | str) -> bool:
+    """True if `da` does not have the shape of `target_grid(res)` and needs regridding."""
+    # Shape only: a grid of the right shape but shifted coordinates is caught by `on_grid`
     grid = target_grid(res)
     return da.sizes["lat"] != grid.sizes["lat"] or da.sizes["lon"] != grid.sizes["lon"]
 
@@ -78,7 +80,9 @@ def _off_grid(da: xr.DataArray, res: float | str) -> bool:
 def load_ilamb_annual(variable: str, product: str, res: float | str = 0.5) -> xr.DataArray:
     """Annual means (year, lat, lon) of one product on `target_grid(res)` within LAT_BNDS."""
     da = _open(variable, product)
+    # Drop partial first/last years: they would bias annual means toward the months present
     da = da.sel(time=da.time.dt.year.isin(complete_years(da))).load()
+    # Fill values must be NaN before averaging, or a single ~1e37 month swamps the year
     with xr.set_options(keep_attrs=True):
         da = da.where(np.abs(da) < FILL_THRESH)
 
@@ -86,11 +90,15 @@ def load_ilamb_annual(variable: str, product: str, res: float | str = 0.5) -> xr
         da.attrs["units"] = "m2/m2"
     else:
         da = flux_to_wm2(da)
+    # Key rule for which gridcell-years are binned: a missing LAI month (winter
+    # gaps at high latitudes) counts as 0, while ET, pr and rns need all 12 months
     ann = annual_mean(da, require_all_months=(variable != "lai"))
 
     if _off_grid(ann, res):
         print(f"{variable}/{product}: regridding {ann.sizes['lat']}x{ann.sizes['lon']} -> {res} deg")
-        # Bilinear; target points outside the source grid are NaN
+        # Bilinear; target points outside the source grid are NaN. Regridding the
+        # annual mean (not each month) is deliberate: month-first would spread a
+        # NaN month to every neighboring target point (tests/test_load_ilamb.py)
         ann = bilinear_regridder(ann, res)(ann, keep_attrs=True)
     # Exact coordinate values so that fields from different products align
     ann = on_grid(ann, res, f"{variable}/{product}").rename(variable)

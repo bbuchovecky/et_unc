@@ -87,6 +87,7 @@ class CMIPESGFLoader:
 
     @classmethod
     def _member_sort_key(cls, member_id: str) -> tuple[int, int, int, int]:
+        # Numeric, r first (r10 sorts after r9): this order decides the "top" member and max_r tie-breaks
         match = cls.MEMBER_ID_RE.fullmatch(member_id)
         if match is None:
             raise ValueError(f"Invalid member_id format: {member_id!r}")
@@ -213,6 +214,8 @@ class CMIPESGFLoader:
 
             avail_variables[sid] = []
             num_avail_vars = 0
+            # Narrowed to the members that have every *available* variable. A missing
+            # variable leaves the set alone and instead drops `sid` from avail_source_id
             avail_mid = set(self.catalog["member_id"].unique())
 
             for var in variables:
@@ -340,6 +343,7 @@ class CMIPESGFLoader:
             top_mid = sort_avail_mid[0]
             nr = len(member_ids_by_source.keys())
 
+            # Strict ">": ties go to the first group, the one holding the lowest-sorting member
             max_r = -np.inf
             max_r_ipf: list[str] = []
             for _, member_group in member_ids_by_source.items():
@@ -396,6 +400,7 @@ class CMIPESGFLoader:
         member_ids_max_r: dict[str, list[str]],
         top_member_id: dict[str, str],
     ) -> list[str]:
+        """Members of `sid` to load: the max_r group for None, the top member for "top", else as given."""
         if member_id is None:
             return member_ids_max_r.get(sid, [])
         if isinstance(member_id, str) and member_id == "top":
@@ -533,7 +538,8 @@ class CMIPESGFLoader:
                         warnings.simplefilter("ignore")
                         da = xr.open_mfdataset(member_file_paths[mid], parallel=parallel)[var]
 
-                    # Check that coordinates exist and look ok
+                    # Check that coordinates exist and look ok. A member without
+                    # lat/lon coords (e.g. EC-Earth's (j, i) grid) is skipped
                     if check_coords(da, ("lat", "lon")):
                         if ("time" in da.dims) and (time_slice is not None):
                             da = da.sel(time=time_slice)
@@ -545,6 +551,8 @@ class CMIPESGFLoader:
 
 
                 if len(das) > 0:
+                    # Default outer join: members with different time spans are NaN-padded.
+                    # The coords below assume that every member in `mids` was loaded
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore")
                         concatenated = xr.concat(das, dim="member").assign_coords(
@@ -660,6 +668,9 @@ def load_native(
     `regrid_annual`).
     """
     lf, src_grid = load_land_fraction(sftlf_path)
+    # Sets the area each model contributes: native cells with sftlf > LF_THRESH, minus
+    # Greenland/Iceland. Masking on the native grid keeps ocean and ice-sheet values
+    # out of the area-weighted means of the regridding
     native_mask = mask_greenland(lf, LF_THRESH)
 
     data = loader.load_data(
@@ -674,10 +685,13 @@ def load_native(
         da = data[v].reset_coords(drop=True)  # member_id is re-added after regridding
         # sftlf comes from another experiment, so check that it is on the same grid
         check_same_grid(da, lf, f"{sid}/{v}")
+        # Exact sftlf coords, so `.where(native_mask)` cannot misalign on round-off
         da = da.assign_coords(lat=lf.lat, lon=lf.lon)
+        # Drop partial first/last years: they would bias annual means toward the months present
         fields[v] = da.sel(time=da.time.dt.year.isin(complete_years(da)))
 
     monthly = {
+        # ET is evspsbl (evaporation including sublimation and transpiration), x L to W/m2
         "et": convert_units("evspsbl", fields["evspsbl"]),
         "lai": fields["lai"].assign_attrs(units="m2/m2"),
         "pr": convert_units("pr", fields["pr"]),
@@ -688,6 +702,8 @@ def load_native(
     for k, da in monthly.items():
         with xr.set_options(keep_attrs=True):
             da = da.where(native_mask).load()
+        # Key rule for which gridcell-years are binned: a missing LAI month counts
+        # as 0, while ET, pr and Rn need all 12 months
         ann[k] = annual_mean(da, require_all_months=(k != "lai")).transpose(..., "lat", "lon")
     return ann, native_mask, src_grid
 
@@ -711,8 +727,10 @@ def regrid_annual(
     member_coord = {} if members is None else {"member_id": ("member", members)}
     out = {}
     for k, a in ann.items():
-        # Area-weighted mean of the native land cells in each target cell (ocean is NaN and skipped)
+        # Area-weighted mean of the native land cells in each target cell (ocean is NaN and skipped).
+        # na_thres decides which coastal cells survive: NaN if more than na_thres of the area is not land
         a = regridder(a, skipna=True, na_thres=na_thres, keep_attrs=True)
+        # Exact target coords, so models line up under the exact-join alignment of the binning
         a = a.assign_coords(lat=grid.lat, lon=grid.lon, **member_coord)
         with xr.set_options(keep_attrs=True):
             out[k] = a.sel(lat=LAT_BNDS).where(mask).rename(k)
@@ -760,6 +778,8 @@ def _format_lat_lon(da: xr.DataArray) -> xr.DataArray:
             latitude = da["latitude"]
             longitude = da["longitude"]
 
+            # Assumes a regular grid (lat varies only along j, lon only along i),
+            # so one column and one row give the 1-D coords
             da = da.assign_coords(lat=latitude.isel(lon=0), lon=longitude.isel(lat=0))
             return da.drop_vars(["latitude", "longitude"])
     return da
@@ -791,6 +811,8 @@ def regrid_to_target(da: xr.DataArray, res: float | str = 1.0, verbose: bool = F
             regridder = make_regridder(src, res, "conservative")
             if verbose:
                 print(f"Target: lon={regridder.shape_out[1]}, lat={regridder.shape_out[0]}")
+            # No skipna/na_thres, unlike `regrid_annual`: a target cell that overlaps any
+            # NaN source cell (e.g. ocean in land variables) is NaN
             return regridder(da, keep_attrs=True)
 
     except Exception as exc:  # pragma: no cover - environment specific
