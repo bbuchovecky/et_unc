@@ -33,6 +33,7 @@ def get_one_mid(da: xr.DataArray) -> str:
 
 
 def safe_squeeze(da: xr.DataArray, dim: str, drop: bool = True) -> xr.DataArray:
+    """Squeeze out `dim` if `da` has it, else return `da` unchanged."""
     if dim in da.dims:
         return da.squeeze(dim=dim, drop=drop)
     return da
@@ -67,6 +68,7 @@ def compute_cell_area(ds: xr.Dataset | xr.DataArray) -> tuple[xr.DataArray, xr.D
     area.attrs["long_name"] = "grid cell area"
     area.attrs["method"] = method
 
+    # Unlike `etunc.grid.land_mask`, Greenland and Iceland are kept
     mask = xr.where(np.isnan(land.mask(lon_or_obj=area.lon, lat=area.lat)), 0, 1)
     la = area * mask
     la.attrs["units"] = "m2"
@@ -103,6 +105,8 @@ def load_ilamb_obs(
             f"{product:11}: {obs.dims} {obs.shape} {to_yyyymm(obs.time[0])}-{to_yyyymm(obs.time[-1])} "
             f"(cell area from {area.attrs['method']})"
         )
+    # Keyed on the variable name, not the units attr (cf. `units.latent_heat_to_wm2`):
+    # only "et" and "pr" are converted, assuming kg m-2 s-1
     return (
         convert_units(variable, obs).sel(lat=lat_bnds),
         area.sel(lat=lat_bnds),
@@ -188,6 +192,7 @@ def load_cmip(
             lf.attrs["units"] = "1"
         mask = mask_greenland(lf, lf_thresh)
         mask = mask.where(mask.notnull(), other=False)
+        # Snapped to the areacella grid (round-off only, no regridding) and masked on the native grid
         for v, da in vardict.items():
             vardict[v] = convert_units(
                 v,
@@ -195,7 +200,7 @@ def load_cmip(
                 verbose=verbose,
             )
         vardict["lf"] = lf
-        vardict["la"] = (area * lf).compute()
+        vardict["la"] = (area * lf).compute()  # fractional land area, not area * mask
         vardict["mask"] = mask
         if verbose:
             print(f"{sid:20}: {[(v, vardict[v].shape) for v in variables]}")

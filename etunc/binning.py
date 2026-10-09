@@ -87,6 +87,8 @@ def compute_aridity_index(
     """
     if clip:
         rn = rn.clip(min=0)
+    # P = 0 gives inf (or NaN for 0/0), which `valid_area` and the binning drop.
+    # Without `clip`, a negative mean Rn (e.g. ice, high latitudes) gives a negative AI
     ai = rn / precip_wm2
     ai = ai.rename("ai")
     ai.attrs = {
@@ -133,9 +135,12 @@ def prepare_inputs(
             da = da.sel(time=time_slice)
         return da
 
+    # ET that already has a `year` dim (e.g. from `temporal.annual_mean`) passes through
+    # unchanged. Monthly ET goes through `compute_annual_mean`, which counts NaN months as 0
     out = {
         "et": aggregate(_prep(et), "year").rename("et"),
         "lai": aggregate(_prep(lai), lai_agg).rename("lai"),
+        # Ratio of the climatological means, not the mean of annual ratios
         "ai": compute_aridity_index(
             aggregate(_prep(precip), "clim"), aggregate(_prep(rn), "clim"), clip=clip_rn
         ),
@@ -150,6 +155,8 @@ def valid_area(inputs: Mapping[str, xr.DataArray], member_dim: str | None = None
     Gridcells where ET (in any year), LAI and AI are all valid; with
     `member_dim`, valid in every member along it.
     """
+    # ET only needs one valid year (its missing years stay NaN samples); LAI and AI must
+    # be valid, and np.isfinite also drops the inf AI of zero-precipitation gridcells
     valid = inputs["et"].notnull().any("year") & inputs["lai"].notnull() & np.isfinite(inputs["ai"])
     return valid.all(member_dim) if member_dim is not None else valid
 
@@ -207,6 +214,8 @@ def build_edges(
         raise ValueError("Binning variable contains no finite values.")
 
     if strategy == "quantile":
+        # Quantiles of gridcell values, not area-weighted: small high-latitude cells count
+        # as much as large tropical ones. Linear interpolation, so edges can fall between values
         edges = np.quantile(finite, np.linspace(0.0, 1.0, n_bins + 1))
         if collapse_duplicates:
             edges = np.unique(edges)
@@ -225,12 +234,14 @@ def build_edges(
 
 
 def as_field_dict(fields: xr.DataArray | Mapping[str, xr.DataArray]) -> dict[str, xr.DataArray]:
+    """One DataArray (keyed by its name) or a mapping of them, as a {label: DataArray} dict."""
     if isinstance(fields, xr.DataArray):
         return {fields.name or "field": fields}
     return dict(fields)
 
 
 def finite_flat(da: xr.DataArray) -> np.ndarray:
+    """Finite values of `da`, flattened over every dim."""
     flat = np.asarray(da.values, dtype=float).ravel()
     return flat[np.isfinite(flat)]
 
@@ -282,6 +293,9 @@ def pooled_bin_edges(
         if zero_frac > zero_warn_frac:
             warnings.warn(f"{label}: {zero_frac * 100:0.3f}% of values are 0 (> {zero_warn_frac * 100:g}%)")
 
+    # Every finite value counts once, so each field weighs in proportion to its size: a field
+    # with more gridcells (finer grid, larger valid area), members or years pulls the edges
+    # towards its own distribution
     pooled = np.concatenate(flat_list)
     edges = build_edges(pooled, n_bins, strategy, value_range, collapse_duplicates)
     n_eff = len(edges) - 1
@@ -332,14 +346,19 @@ def _bin_stats_flat(
     n_y = len(y_edges) - 1
     n_x = len(x_edges) - 1
 
+    # Bins are [lower, upper): a value on an interior edge goes to the bin above it. The clip
+    # puts the maximum (== last edge, which side="right" places past the last bin) into the
+    # last bin, and out-of-range values into the edge bins
     y_idx = np.clip(np.searchsorted(y_edges, y, side="right") - 1, 0, n_y - 1)
     x_idx = np.clip(np.searchsorted(x_edges, x, side="right") - 1, 0, n_x - 1)
 
+    # NaN samples got a (clipped) index above; they are dropped here
     valid = np.isfinite(target) & np.isfinite(y) & np.isfinite(x)
     v = target[valid]
     lin_idx = y_idx[valid] * n_x + x_idx[valid]
     total_bins = n_y * n_x
 
+    # Unweighted: every (year, gridcell) sample counts once, whatever its cell area
     count = np.bincount(lin_idx, minlength=total_bins).astype(np.float64)
     bin_sum = np.bincount(lin_idx, weights=v, minlength=total_bins)
     bin_sum2 = np.bincount(lin_idx, weights=v * v, minlength=total_bins)
@@ -359,6 +378,7 @@ def _bin_stats_flat(
 
 
 def edges_and_attrs(edges: xr.DataArray | np.ndarray) -> tuple[np.ndarray, dict]:
+    """Bin edges as a float array, and their attrs ({} for a plain array)."""
     if isinstance(edges, xr.DataArray):
         return np.asarray(edges.values, dtype=float), dict(edges.attrs)
     return np.asarray(edges, dtype=float), {}
@@ -425,6 +445,7 @@ def bin_stats(
     x_edges, x_edge_attrs = edges_and_attrs(x_edges)
     n_y, n_x = len(y_edges) - 1, len(x_edges) - 1
 
+    # join="exact" raises on any coordinate mismatch instead of silently reindexing to NaN
     if mask is not None:
         target, y_var, x_var, mask = _align_exact(target, y_var, x_var, mask)
         keep = mask == 1
@@ -432,6 +453,9 @@ def bin_stats(
     else:
         target, y_var, x_var = _align_exact(target, y_var, x_var)
 
+    # The key step: (lat, lon) LAI and AI are repeated over `year` (and `member`), so each
+    # (year, gridcell) ET value is one sample. A gridcell's weight in its bin therefore
+    # scales with its number of valid ET years
     tgt_b, y_b, x_b = xr.broadcast(target, y_var, x_var)
     dims = tgt_b.dims
     y_b, x_b = y_b.transpose(*dims), x_b.transpose(*dims)
@@ -455,6 +479,7 @@ def bin_stats(
         ])
         out_dims = (member_dim, "stats", "y_bin", "x_bin")
     else:
+        # Without member_dim, the samples of all members (if any) are pooled into one set of stats
         result = _bin_stats_flat(tgt_np.ravel(), y_np.ravel(), x_np.ravel(), y_edges, x_edges)
         out_dims = ("stats", "y_bin", "x_bin")
 
@@ -537,6 +562,7 @@ def bin_stats_by_source(
         if verbose:
             print(f"{src:20}: {int(bs.sel(stats='count').sum()):.3e} samples binned")
         results.append(bs)
+    # Attrs that differ between sources (e.g. per-source `attrs`) are dropped
     out = xr.concat(results, dim=dim, combine_attrs="drop_conflicts")
     return out.assign_coords({dim: list(inputs.keys())})
 
@@ -545,8 +571,11 @@ def pool_members(bs: xr.DataArray) -> xr.DataArray:
     """Combine per-member bin statistics into the statistics of all members' samples pooled."""
     mean, var_pop, count, count_pos = (bs.sel(stats=s, drop=True) for s in ("mean", "var_pop", "count", "count_pos"))
     n = count.sum("member")
+    # Count-weighted, so the result equals binning all members' samples together. A member
+    # with an empty bin has a NaN mean and count 0; the sums skip the NaN
     with np.errstate(invalid="ignore", divide="ignore"):
         pooled_mean = (mean * count).sum("member") / n
+        # Pooled E[X^2] from each member's var_pop + mean^2, then Var = E[X^2] - E[X]^2
         pooled_var = ((var_pop + mean**2) * count).sum("member") / n - pooled_mean**2
         pooled_var = pooled_var.clip(min=0)
         var_samp = xr.where(n > 1, pooled_var * n / (n - 1), np.nan)
@@ -569,6 +598,7 @@ def ensure_bin_coords(bs: xr.DataArray) -> xr.DataArray:
         edges = bs.attrs.get(f"{ax}_bin_edges")
         if f"{ax}_bin_lower" not in bs.coords and edges is not None:
             edges = np.asarray(edges, dtype=float)
+            # Only when no bins were dropped; the bin index values then index into `edges`
             if len(edges) - 1 == bs.sizes[dim]:
                 idx = bs[dim].values
                 bs = bs.assign_coords({
@@ -592,6 +622,10 @@ def drop_zero_width_bins(bs: xr.DataArray) -> xr.DataArray:
     for ax in ("y", "x"):
         dim = f"{ax}_bin"
         if f"{ax}_bin_lower" in bs.coords:
+            # Exception: if the *last* edges are duplicated (a spike at the maximum), the clip in
+            # `_bin_stats_flat` puts those maximum values in the zero-width last bin, which is
+            # then dropped with its samples. The kept bins keep their original y_bin/x_bin
+            # values. Needs 1-D (shared) edge coords
             keep = (bs[f"{ax}_bin_upper"] > bs[f"{ax}_bin_lower"]).values
             bs = bs.isel({dim: np.flatnonzero(keep)})
     return bs
@@ -623,6 +657,10 @@ def test_significance(
     stds = np.sqrt(bs.sel(stats="var_samp"))
     ns = bs.sel(stats="count")
 
+    # Treats every (year, gridcell) sample as independent. Successive years of a gridcell and
+    # neighbouring gridcells are correlated, so the effective sample size is smaller than
+    # `count` and significance is overstated. Bins with count <= 1 get a NaN statistic or
+    # critical value, so they compare False (not significant)
     t_critical = xr.apply_ufunc(stats.t.ppf, 1 - alpha / 2, ns - 1)
     t_statistic = means / (stds / np.sqrt(ns))
 
@@ -647,6 +685,8 @@ def ensemble_spread(
     mean = bs.sel(stats="mean")
     if signif is not None:
         mean = mean.where(signif)
+    # xarray's std/var: ddof=0 (population spread) and NaN skipped, so a bin's spread uses
+    # only the members/sources that have a value in it (see `min_frac`)
     spread = getattr(mean, how)(dim=dim)
     if min_frac is not None:
         spread = spread.where(frac_valid(bs, dim) > min_frac)

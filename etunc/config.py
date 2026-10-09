@@ -52,12 +52,14 @@ BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
 # Constants
 # ------------------------------------------------------------------
 
-LAT_BNDS = slice(-58, 90)  # excludes Antarctica
-LF_THRESH = 0.5            # gridcell land fraction threshold
+LAT_BNDS = slice(-58, 90)  # excludes Antarctica (Tierra del Fuego ends near -56)
+LF_THRESH = 0.5            # gridcell land fraction threshold (land where strictly greater)
 
+# One L (near 20 C) for every water flux, ET and precipitation alike, with no
+# sublimation or fusion term. It cancels in ET/P but sets the W/m2 scale of ET and AI
 LATENT_HEAT_VAPORIZATION = 2.45e6  # J/kg
 LIQ_WATER_DENSITY = 1e3            # kg/m3
-EARTH_RADIUS = 6.371e6             # m, as in ILAMB
+EARTH_RADIUS = 6.371e6             # m, as in ILAMB, so cell areas match ILAMB's
 
 PROJECTION = ccrs.PlateCarree()
 DPI = 120

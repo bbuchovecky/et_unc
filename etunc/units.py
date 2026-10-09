@@ -22,7 +22,10 @@ from etunc.config import LATENT_HEAT_VAPORIZATION, LIQ_WATER_DENSITY
 def convert_units(v: str, da: xr.DataArray, verbose: bool = False) -> xr.DataArray:
     """Convert water fluxes to their energy equivalent [W/m2], keyed on variable name `v`."""
 
-    # CESM2: precip from m/s -> W/m2
+    # Any other name (LAI, radiative fluxes, EFLX_LH_TOT) passes through unchanged, without
+    # a check of its units. The `if`s are not exclusive: "mer" is scaled and then sign-flipped
+
+    # CESM2: precip from m/s -> W/m2 (a volume flux, so times the water density too)
     if v in ("PRECT_calculated_month_1", "PRECT_month_1", "PRECT_calculated", "PRECT"):
         if verbose:
             print("Converting units from m/s -> W/m2")
@@ -36,7 +39,7 @@ def convert_units(v: str, da: xr.DataArray, verbose: bool = False) -> xr.DataArr
         da = da * LATENT_HEAT_VAPORIZATION
         da.attrs["units"] = "W/m2"
 
-    # ERA5: et sign convention
+    # ERA5: et sign convention (fluxes are positive downward, so evaporation is negative)
     if v == "mer":
         da = -1 * da
 
@@ -94,6 +97,8 @@ def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
     if period is None:
         raise ValueError(f"Cannot convert units {units!r} of {da.name!r} to kg m-2 s-1")
 
+    # Each time stamp must lie inside the month or year it covers (not at its end, as in
+    # raw CESM output), or the wrong month length is used
     if period == "day":
         days = 1
     elif period == "month":

@@ -100,6 +100,8 @@ def target_grid(res: float | str) -> xr.Dataset:
     """
     res = _any_spacing(res)
     nlat, nlon = round(180 / res), round(360 / res)
+    # Centers stop half a cell short of 90/180, so float round-off in arange cannot add a
+    # cell; the edges come from linspace so they land exactly on -90/90 and -180/180
     return xr.Dataset(coords={
         "lat": ("lat", np.arange(-90 + res / 2, 90, res), LAT_ATTRS),
         "lon": ("lon", np.arange(-180 + res / 2, 180, res), LON_ATTRS),
@@ -177,6 +179,8 @@ def make_regridder(src: xr.Dataset | xr.DataArray, res: float | str, method: str
 
 def conservative_regridder(da: xr.DataArray, res: float | str) -> xe.Regridder:
     """Conservative regridder from the regular grid of `da` onto `target_grid(res)`, cached per grid."""
+    # Keyed on the exact coordinate values, so the yearly files of one product reuse a
+    # single weight matrix (building one from a 0.1 deg grid is slow)
     key = (_any_spacing(res), da["lat"].values.tobytes(), da["lon"].values.tobytes())
     if key not in _CONSERVATIVE:
         with warnings.catch_warnings():
@@ -205,8 +209,11 @@ def regrid_with_na_thres(da: xr.DataArray, regridder: xe.Regridder, na_thres: fl
     `na_thres` of its area is missing. Keeps the dtype and attrs (minus
     "grid_mapping") and sets standard lat/lon attrs.
     """
+    # skipna renormalizes by the valid source area, so a coastal target cell is the mean of
+    # its land source cells rather than diluted by ocean NaN; na_thres sets how much missing
+    # area is tolerated, and so how far the regridded land extends along the coasts
     out = regridder(da, skipna=True, na_thres=na_thres, keep_attrs=True)
-    out = out.astype(da.dtype)
+    out = out.astype(da.dtype)  # xESMF returns float64 even for float32 input
     out.attrs.pop("grid_mapping", None)  # PML's "crs" variable is not carried over
     out["lat"].attrs = dict(LAT_ATTRS)
     out["lon"].attrs = dict(LON_ATTRS)
@@ -279,6 +286,7 @@ def equal_coords(
     for crd in coords:
         if a[crd].shape != b[crd].shape:
             return False
+        # Non-numeric coords (datetime64, cftime `time`) are only compared by shape
         if np.issubdtype(a[crd].dtype, np.number):
             if not np.allclose(a[crd], b[crd], atol=atol):
                 return False
@@ -309,6 +317,7 @@ def on_grid(da: xr.DataArray, res: float | str, label: str) -> xr.DataArray:
     """
     grid = target_grid(res)
     check_same_grid(da, grid, label)
+    # Overwrite with the exact grid values: `bin_stats` aligns with join="exact"
     da = da.assign_coords(lat=grid.lat, lon=grid.lon)
     return da.sel(lat=LAT_BNDS)
 
@@ -321,14 +330,17 @@ def format_grid(da: xr.DataArray) -> xr.DataArray:
 def mask_greenland(landfrac: xr.DataArray, lf_thresh: float = LF_THRESH) -> xr.DataArray:
     """Land mask: True where landfrac > lf_thresh, excluding Greenland/Iceland (AR6 region 0)."""
     mask = regmask.defined_regions.ar6.land.mask(landfrac.lon, landfrac.lat)
+    # Strictly greater: a cell at exactly lf_thresh is not land. NaN landfrac is not land either
     return xr.where((mask == 0) & (landfrac > lf_thresh), False, landfrac > lf_thresh)
 
 
 def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
     """
-    Natural Earth land mask without Greenland/Iceland. (Same land mask as
-    `etunc.legacy.compute_cell_area`.)
+    Natural Earth land mask without Greenland/Iceland. (Same Natural Earth
+    mask as `etunc.legacy.compute_cell_area`, which keeps Greenland/Iceland.)
     """
+    # Binary by cell center: a coastal cell is land only if its center is on land, with no
+    # fractional coverage. This mask sets the land area binned by bin_obs and bin_cmip
     land = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask(grid.lon, grid.lat)
     return mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
 
@@ -379,6 +391,7 @@ def cell_area(
     cell at both ends and clipped to [-90, 90] and [-180, 180]; longitudes in
     [0, 360] are shifted by -180 first (which leaves the widths unchanged).
     """
+    # Kept line for line as in ILAMB so the areas stay bit-identical; do not simplify
     if lat_bnds is not None and lon_bnds is not None:
         return EARTH_RADIUS**2 * np.outer(
             (
@@ -406,7 +419,7 @@ def cell_area(
 
     dx = EARTH_RADIUS * (x[1:] - x[:-1])
     dy = EARTH_RADIUS * (np.sin(y[1:]) - np.sin(y[:-1]))
-    areas = np.outer(dx, dy).T
+    areas = np.outer(dx, dy).T  # (lon, lat) -> (lat, lon)
 
     return areas
 

@@ -59,6 +59,8 @@ def create_dask_cluster(
     -------
     (client, cluster)
     """
+    # `interface` is the network interface that workers on compute nodes use to reach
+    # the scheduler, which runs where this is called
     node = platform.node()
     if "crlogin" in node or queue == "casper":
         node = "casper"
@@ -66,7 +68,7 @@ def create_dask_cluster(
         interface = "ext"
     elif "derecho" in node or queue == "derecho":
         node = "derecho"
-        queue = "develop"
+        queue = "develop"  # shared-node queue; "main" would allocate (and charge) whole nodes
         interface = "hsn0"
     else:
         raise KeyError('must be on "casper" or "derecho", other machines not implemented')
@@ -90,6 +92,8 @@ def create_dask_cluster(
     )
     client = Client(cluster)
     cluster.scale(nworkers)
+    # Workers wait in the PBS queue; this only gives them a moment before printing, so
+    # the list below may be incomplete
     time.sleep(5)
 
     print(cluster.workers)
@@ -114,5 +118,6 @@ def close_dask_cluster(client_cluster: tuple[Client, PBSCluster], remove_std_fil
     client.close()
     cluster.close()
     if remove_std_files:
+        # PBS writes the worker job logs to the current working directory
         for f in glob("dask-worker.*"):
             os.remove(f)

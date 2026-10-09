@@ -29,7 +29,7 @@ MAP_KWARGS = {
     "evspsbl": {"cmap": "YlGnBu"},
     "lai":     {"cmap": "Greens"},
     "pr":      {"cmap": "Blues"},
-    "rns":     {"cmap": "YlOrRd", "vmin": None},
+    "rns":     {"cmap": "YlOrRd", "vmin": None},  # Rn can be negative; quick_map's default vmin is 0
     "rn":      {"cmap": "YlOrRd", "vmin": None},
     "ai":      {"cmap": "BrBG_r"},
 }
@@ -46,6 +46,7 @@ def finish(fig, fout: str | Path | None):
 
 
 def add_gridlines(ax, lat_bnds: slice = LAT_BNDS):
+    """Dashed 30 deg gridlines, latitudes limited to `lat_bnds`."""
     x_gls = np.arange(-180, 181, 30)
     y_gls = np.arange(-90, 91, 30)
     y_gls = y_gls[(y_gls >= lat_bnds.start) & (y_gls <= lat_bnds.stop)]
@@ -61,6 +62,7 @@ def add_gridlines(ax, lat_bnds: slice = LAT_BNDS):
 
 
 def map_ax(ax, lat_bnds: slice):
+    """Coastlines, global extent cut to `lat_bnds`, and gridlines on a map axis."""
     ax.coastlines(color="k", lw=0.8)
     ax.set_extent((-180, 180, lat_bnds.start, lat_bnds.stop), crs=PROJECTION)
     add_gridlines(ax, lat_bnds)
@@ -206,6 +208,7 @@ def plot_input_hist(
     fields = as_field_dict(fields)
     flats = {k: finite_flat(v) for k, v in fields.items()}
     if value_range is None:
+        # Cut the top 0.5%, so the long upper tail (e.g. AI in deserts) does not squash the rest
         pooled = np.concatenate(list(flats.values()))
         value_range = tuple(np.quantile(pooled, [0, 0.995]))
 
@@ -265,11 +268,15 @@ def plot_edges_compare(
 # ------------------------------------------------------------------
 
 def set_edge_ticks(ax, da: xr.DataArray, fmt: str):
+    """Label the bin boundaries of a (y_bin, x_bin) heatmap with the bin edge values."""
     for ax_name, dim, set_ticks in (("x", "x_bin", ax.set_xticks), ("y", "y_bin", ax.set_yticks)):
         lower, upper = f"{ax_name}_bin_lower", f"{ax_name}_bin_upper"
         if lower not in da.coords:
             continue
         idx = da[dim].values
+        # Ticks at index +- 0.5 assume contiguous bin indices. Zero-width LAI = 0 bins are
+        # dropped from the start, which keeps the rest contiguous; a gap mid-axis would
+        # shift these ticks off the pcolormesh cell boundaries (also in `hatch_bins`)
         pos = np.append(idx - 0.5, idx[-1] + 0.5)
         vals = np.append(da[lower].values, da[upper].values[-1])
         set_ticks(pos, [fmt.format(v) for v in vals], fontsize=7, rotation=90 if ax_name == "x" else 0)
@@ -378,6 +385,7 @@ def plot_bin_means(
         ax.set_title(label, fontsize=8)
         if hatch is not None:
             hatch_bins(ax, hatch.sel(**name_dict))
+    # FacetGrid axes are shared, so ticks set on the first panel apply to every panel
     if shared_edges:
         set_edge_ticks(fg.axs.flat[0], bs, "{:.2g}")
     else:
@@ -408,6 +416,8 @@ def plot_bin_summary(
     mean = bs.sel(stats="mean")
     count = bs.sel(stats="count")
     if dim is not None:
+        # Unweighted across `dim`: each member/source counts equally, whatever its sample count
+        # (unlike `binning.pool_members`)
         mean = mean.mean(dim)
         count = count.sum(dim)
         spread = ensemble_spread(bs, dim)

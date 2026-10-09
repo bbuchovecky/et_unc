@@ -27,10 +27,11 @@ def format_time_period(time_slice: slice) -> str:
 
 
 def to_yyyymm(time) -> str:
+    """One time stamp (numpy datetime64 or cftime) -> "YYYYMM"."""
     time_raw = time.values
     if isinstance(time_raw, np.datetime64):
         return pd.Timestamp(time_raw).strftime("%Y%m")
-    elif isinstance(time_raw, np.ndarray):
+    elif isinstance(time_raw, np.ndarray):  # cftime dates come back as a 0-d object array
         return time.item().strftime("%Y%m")
     raise TypeError(f"Unsupported type {type(time)!r} for time")
 
@@ -47,7 +48,11 @@ def period_str(years) -> str:
 def compute_annual_mean(da: xr.DataArray) -> xr.DataArray:
     """Days-in-month weighted annual mean of a monthly field; `time` -> `year`."""
     days_in_month = da.time.dt.days_in_month
+    # Weights sum to 1 over the months *in the time axis*, so a year with time steps
+    # missing averages only the months it has (see `complete_years`)
     weights = days_in_month.groupby('time.year') / days_in_month.groupby('time.year').sum()
+    # The NaN-skipping sum counts a NaN month as 0 (biased low) and gives 0, not NaN,
+    # for an all-NaN year. `annual_mean` masks both cases
     with xr.set_options(keep_attrs=True):
         return (da * weights).groupby('time.year').sum()
 
@@ -77,6 +82,7 @@ def aggregate(da: xr.DataArray, how: Aggregation = "clim") -> xr.DataArray:
     if how == "year":
         return compute_annual_mean(da)
     if how == "clim":
+        # Every year weighs equally (NaN years skipped)
         return compute_annual_mean(da).mean("year", keep_attrs=True)
     if how == "year_max":
         return da.groupby("time.year").max(keep_attrs=True)
@@ -87,6 +93,7 @@ def aggregate(da: xr.DataArray, how: Aggregation = "clim") -> xr.DataArray:
 
 def complete_years(da: xr.DataArray) -> list[int]:
     """Years with all 12 months in the time axis."""
+    # Checks the time axis only, not the values: an all-NaN month still counts
     years, months = da.time.dt.year.values, da.time.dt.month.values
     return [int(y) for y in np.unique(years) if np.unique(months[years == y]).size == 12]
 
@@ -97,6 +104,8 @@ def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
     `require_all_months`, years with any missing month are NaN instead;
     otherwise only years without any valid month are NaN.
     """
+    # The loaders pass require_all_months=False only for LAI, so a missing LAI month counts
+    # as LAI = 0. ET, pr and rns need all 12 months, since a 0 would bias the flux low
     n_valid = da.notnull().groupby("time.year").sum()
     with xr.set_options(keep_attrs=True):
         ann = aggregate(da, "year")
