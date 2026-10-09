@@ -6,6 +6,9 @@
 #PBS -l select=1:ncpus=4:mem=48GB
 #PBS -j oe
 
+# DEPRECATED: bin_cmip.py regrids in memory (etunc.load.cmip.load_model); only the
+# check-cmip-grids / load-cmip notebooks read the files this job writes.
+
 REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
 
 set -euo pipefail

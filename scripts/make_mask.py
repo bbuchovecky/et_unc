@@ -23,8 +23,8 @@ Steps
    - ILAMB products are read with `il.load_ilamb` (lon in [-180, 180], lat
      ascending, undecoded fill values removed) and bilinearly interpolated
      when their grid is not RES.
-   - PML, GLEAM and SiTHv2 are read from the RES files written by
-     `regrid_obs.py` (`lo.load_obs(..., res=...)`).
+   - PML, GLEAM and SiTHv2 are read from their native files and
+     conservatively regridded to RES in memory (`lo.load_obs_regridded`).
 2. The valid months of a product are its time steps in TIME_SLICE with at
    least one valid land gridcell. Months outside the product's record, and
    empty months inside it (e.g. a missing file), are not counted, so a product
@@ -96,7 +96,7 @@ ILAMB_PRODUCTS = {
     "rns": ["CERESed4.2"],
 }
 
-# Other gridded products, read from their regridded RES files:
+# Other gridded products, regridded to RES in memory from their native files:
 # {variable: {label: (load_obs dataset, version, variable in files)}}
 GRIDDED_PRODUCTS = {
     "et": {
@@ -104,7 +104,7 @@ GRIDDED_PRODUCTS = {
         "PML-V2.2c":       ("pml", "V2.2c", "ET"),
         "GLEAM-v4.3a":     ("gleam", "v4.3a", "E"),
         "GLEAM-v4.3b":     ("gleam", "v4.3b", "E"),
-        # "SiTHv2":          ("sith", "v2", "ET"),  # no regridded files until regrid_obs.py has run
+        # "SiTHv2":          ("sith", "v2", "ET"),  # no monthly files until re-downloaded
     },
 }
 
@@ -122,8 +122,6 @@ NCOLS = 4  # panels per row in plot_product_masks
 # the same grid cut to LAT_BNDS (no Antarctica), on which the masks are built.
 FULL_GRID = rg.target_grid(RES)
 GRID = FULL_GRID.sel(lat=config.LAT_BNDS)
-# load_obs names resolutions differently from regrid.py
-LO_RES = {tag: res for res, tag in lo.RES_DIRS.items()}[RES]  # "0.5deg" -> "0.5"
 
 
 # ------------------------------------------------------------------
@@ -133,12 +131,12 @@ LO_RES = {tag: res for res, tag in lo.RES_DIRS.items()}[RES]  # "0.5deg" -> "0.5
 # GRID. Values stay in their native units, since only NaN vs. not NaN is used.
 
 def load_gridded(variable: str, label: str) -> xr.DataArray:
-    """Monthly field of a PML/GLEAM/SiTH product over TIME_SLICE from its RES files."""
+    """Monthly field of a PML/GLEAM/SiTH product over TIME_SLICE, regridded to RES."""
     dataset, version, var = GRIDDED_PRODUCTS[variable][label]
-    # load_obs only opens the files for the years in TIME_SLICE. Years without
-    # a file are simply absent from the time axis (load_obs warns about them).
-    # .load() reads everything once, instead of re-reading for each reduction.
-    da = lo.load_obs(dataset, var, TIME_SLICE, version=version, freq="monthly", res=LO_RES).load()
+    # Only the files for the years in TIME_SLICE are opened. Years without a
+    # file are simply absent from the time axis (find_files warns about them).
+    # The result is already in memory, so the reductions do not re-read it.
+    da = lo.load_obs_regridded(dataset, var, TIME_SLICE, RES, version=version, freq="monthly")
     return rg.on_grid(da, RES, f"{variable}/{label}")
 
 

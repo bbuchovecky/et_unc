@@ -28,7 +28,7 @@ All of these paths are set in `etunc/config.py`.
 | `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders, grid checks and snapping, land masks, cell areas |
 | `etunc/binning.py` | The binning pipeline: inputs, quantile edges, bin statistics, post-processing |
 | `etunc/plotting.py` | Maps, edge and histogram plots, bin heatmaps |
-| `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH and their regridded files), `cmip`, `cesm`, `era5` |
+| `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH, regridded in memory or from saved files), `cmip`, `cesm`, `era5` |
 | `etunc/legacy.py` | Older loaders and helpers that only the notebooks still use |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
 | `scripts/` | Runnable pipelines, configured by the constants at the top of each file |
@@ -58,12 +58,13 @@ $PY scripts/bin_obs.py               # bin ET of every obs product combination (
 $PY scripts/bin_cmip.py              # bin ET of CMIP6 historical models (1°)
 $PY scripts/make_mask.py             # common valid-data mask of the obs products
 $PY scripts/obs_et_availability.py   # data availability of the obs ET products
-qsub scripts/regrid_obs.pbs          # regrid GLEAM/PML/SiTH to 0.5° and 1° (Casper)
-qsub scripts/regrid_cmip.pbs         # regrid CMIP6 fields to 1° (Casper)
+qsub scripts/regrid_obs.pbs          # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
+qsub scripts/regrid_cmip.pbs         # deprecated: save CMIP6 fields regridded to 1°
 
 $PY -m pytest                        # all tests (~7 min)
 ```
 
 The scripts take no arguments: edit the settings at the top of each script (time
 period, products or models, number of bins, ...). Each script's docstring lists
-its steps and every output file it writes.
+its steps and every output file it writes. The pipelines regrid their inputs in
+memory, so the two regrid jobs are not needed before running them.

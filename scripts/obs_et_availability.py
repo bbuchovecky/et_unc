@@ -2,7 +2,7 @@
 obs_et_availability.py
 ======================
 Compare the data availability of every observational ET product (ILAMB
-products, PML-V2.2, GLEAM v4.3, and SiTHv2 once it is regridded) over one
+products, PML-V2.2, GLEAM v4.3, and SiTHv2 once its monthly files exist) over one
 period, with the masking and processing of `bin_obs.py`.
 
 Processing
@@ -10,8 +10,9 @@ Processing
 - ILAMB products are read with `il.load_ilamb`: lon in
   [-180, 180], lat ascending, undecoded fill values removed, converted to W/m2,
   and 1 deg products (WECANN) bilinearly interpolated to the 0.5 deg grid.
-- PML (ET = Ec + Es + Ei) and GLEAM (E) are read from the 0.5 deg files written
-  by `regrid_obs.py` (conservative, `NA_THRES`) and converted from mm/month
+- PML (ET = Ec + Es + Ei) and GLEAM (E) are read from their native files,
+  conservatively regridded to 0.5 deg in memory (`lo.load_obs_regridded`,
+  `NA_THRES`) and converted from mm/month
   to W/m2. PML V2.2a-VIIRS is skipped (its monthly E 2019 file is empty).
 - Every product is put on one monthly time axis over `TIME_SLICE`, so months
   outside a product's record count as missing, and restricted to `config.LAT_BNDS`
@@ -70,8 +71,8 @@ TIME_SLICE = slice("2000-01", "2014-12")
 
 ILAMB_PRODUCTS = list(il.PRODUCTS["et"])  # every ILAMB ET product
 
-# {label: (load_obs dataset, version, variable)}, read from the 0.5 deg regridded files.
-# Products without regridded files (e.g. SiTHv2 before regrid_obs.py has run) are skipped.
+# {label: (load_obs dataset, version, variable)}, regridded to 0.5 deg in memory.
+# Products without monthly files (e.g. SiTHv2 until re-downloaded) are skipped.
 GRIDDED_PRODUCTS = {
     "PML-V2.2a-MODIS": ("pml", "V2.2a-MODIS", "ET"),
     # "PML-V2.2b":       ("pml", "V2.2b", "ET"),
@@ -83,7 +84,6 @@ GRIDDED_PRODUCTS = {
 # Common 0.5 deg grid, as in bin_obs.py; 1 deg ILAMB products are interpolated onto it
 TARGET_RES = 0.5
 TARGET_GRID = rg.target_grid(TARGET_RES)
-GRIDDED_RES = "0.5"  # load_obs `res` of the regridded files; must match TARGET_RES
 
 PROC_ROOT = config.PROC_ROOT / "obs"
 FIG_DIR = config.FIG_ROOT / "obs" / "availability"
@@ -106,12 +106,11 @@ def load_ilamb(product: str) -> xr.DataArray:
 
 
 def load_gridded(label: str) -> xr.DataArray:
-    """Monthly ET [W/m2] of a PML/GLEAM/SiTH product from its regridded files."""
+    """Monthly ET [W/m2] of a PML/GLEAM/SiTH product, regridded to TARGET_RES in memory."""
     dataset, version, var = GRIDDED_PRODUCTS[label]
-    if not lo.list_years(dataset, var, version, "monthly", res=GRIDDED_RES):
-        root = lo.at_resolution(dataset, GRIDDED_RES).root
-        raise FileNotFoundError(f"{label}: no {GRIDDED_RES} deg files under {root} (run regrid_obs.py)")
-    da = lo.load_obs(dataset, var, TIME_SLICE, version=version, freq="monthly", res=GRIDDED_RES).load()
+    if not lo.list_years(dataset, var, version, "monthly"):
+        raise FileNotFoundError(f"{label}: no monthly {var} files under {lo.get_dataset(dataset).root}")
+    da = lo.load_obs_regridded(dataset, var, TIME_SLICE, TARGET_RES, version=version, freq="monthly")
     da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
     return temporal.on_month_axis(rg.on_grid(da, TARGET_RES, label), MONTHS)
 

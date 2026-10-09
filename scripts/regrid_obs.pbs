@@ -6,6 +6,9 @@
 #PBS -l select=1:ncpus=4:mem=48GB
 #PBS -j oe
 
+# DEPRECATED: the obs pipelines regrid in memory with etunc.load.obs.load_obs_regridded
+# and no longer read the files this job writes. Kept until that path is verified.
+
 REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
 
 set -euo pipefail

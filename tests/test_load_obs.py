@@ -205,7 +205,7 @@ def test_at_resolution():
         lo.at_resolution("pml", "0.25")
 
 
-def test_load_obs_regridded(spec, monkeypatch, tmp_path):
+def test_load_obs_saved_regridded(spec, monkeypatch, tmp_path):
     """res="1" reads REGRID_ROOT/<root dir name>/1deg/<same relative path>, with lat/lon coords."""
     monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path / "regridded")
     lat, lon = np.array([45.5, 44.5]), np.array([-0.5, 0.5])
@@ -221,6 +221,22 @@ def test_load_obs_regridded(spec, monkeypatch, tmp_path):
     assert lo.load_obs(spec, "ET", slice("2001", "2001")).attrs["res"] == "native"
     with pytest.raises(FileNotFoundError, match=r"\(0\.5\)"):
         lo.load_obs(spec, "ET", res="0.5")
+
+
+@pytest.mark.parametrize("loader, name", [(lo.load_gleam, "gleam"), (lo.load_pml, "pml"), (lo.load_sith, "sith")])
+def test_wrappers_regrid_res(monkeypatch, loader, name):
+    """regrid_res sends the per-product loaders to load_obs_regridded; without it they call load_obs."""
+    calls = []
+    monkeypatch.setattr(lo, "load_obs_regridded", lambda *a, **kw: calls.append(("regridded", a, kw)))
+    monkeypatch.setattr(lo, "load_obs", lambda *a, **kw: calls.append(("load_obs", a, kw)))
+    loader("ET", slice("2001", "2002"), regrid_res=0.5, na_thres=0.3, version="v1")
+    loader("ET", slice("2001", "2002"), version="v1", res="1")
+    assert calls == [
+        ("regridded", (name, "ET", slice("2001", "2002"), 0.5), {"na_thres": 0.3, "version": "v1"}),
+        ("load_obs", (name, "ET", slice("2001", "2002")), {"version": "v1", "res": "1"}),
+    ]
+    with pytest.raises(ValueError, match="not both"):
+        loader("ET", regrid_res=0.5, res="0.5")
 
 
 def test_gleam_units_fix():

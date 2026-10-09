@@ -19,10 +19,15 @@ The path template may use the fields {version}, {freq}, {freq_dir}, {freq_tag},
 file holding every year) also works. Only files overlapping the requested
 years are opened, and the time selection is applied after opening.
 
+``load_obs_regridded`` (or ``regrid_res=`` of the per-product loaders) reads
+the native files and conservatively regrids them in memory onto
+``etunc.grid.target_grid(res)``. The pipelines use it.
+
 Every function also takes ``res``: "native" (default) reads the original
 files, "0.5" or "1" the copies regridded by ``regrid_obs.py`` to 0.5 or 1 deg,
 stored under ``REGRID_ROOT/<dataset dir>/<0.5deg|1deg>`` with the same layout
-as the dataset dir (see ``at_resolution``).
+as the dataset dir (see ``at_resolution``). These saved files are deprecated
+in favor of ``load_obs_regridded``.
 
 Example
 -------
@@ -31,7 +36,9 @@ Example
 >>> et = lo.load_pml("ET", slice("1995", "2014"), version="V2.2c")
 >>> et = lo.load_obs("pml", "ET", slice("2003", "2005"), version="V2.2a-MODIS", freq="8-day")
 >>> et = lo.load_sith("ET", slice("1995", "2014"), freq="yearly")
->>> et = lo.load_gleam("E", slice("1995", "2014"), res="1")             # regridded to 1 deg
+>>> et = lo.load_obs_regridded("gleam", "E", slice("1995", "2014"), 0.5)  # regridded in memory
+>>> et = lo.load_gleam("E", slice("1995", "2014"), regrid_res=0.5)       # same
+>>> et = lo.load_gleam("E", slice("1995", "2014"), res="1")             # saved 1 deg files (deprecated)
 >>> lo.list_variables("gleam"), lo.list_years("pml", "ET", version="V2.2b")
 >>> lo.list_files("sith", "ET")   # {path: (1982, 2022)}
 >>> et_wm2 = units.latent_heat_to_wm2(units.accumulation_to_flux(et))  # import etunc.units as units
@@ -61,13 +68,16 @@ Notes
 
 from __future__ import annotations
 
+import functools
 import gc
+import importlib.metadata
 import os
 import re
 import string
+import subprocess
 import time
 import warnings
-from datetime import datetime as dt
+from datetime import datetime as dt, timezone
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Mapping
@@ -487,34 +497,204 @@ def load_obs(
     return da
 
 
-def load_gleam(var: str, time_slice: slice = slice(None, None), **kwargs) -> xr.DataArray:
-    """GLEAM v4.3 variable (E, Et, Ec, Es, Ei, Eb, Ew, Ep); see `load_obs` for kwargs."""
-    return load_obs("gleam", var, time_slice, **kwargs)
+def _regrid_blocks(
+    da_all: xr.DataArray, resolutions: Mapping[str, float | str], na_thres: float, progress: bool = False,
+) -> tuple[dict[str, xr.DataArray], dict[str, float]]:
+    """
+    Conservatively regrid `da_all` onto every grid in `resolutions` ({key:
+    spacing}), loading one block of its dask time chunks at a time
+    (`regrid_with_na_thres`). Returns ({key: regridded (time, lat, lon)},
+    {"load": s, "regrid": s}). `progress` prints the last year of each block.
+    """
+    if da_all.sizes["time"] == 0:
+        raise ValueError(f"{da_all.name}: no time steps to regrid")
+    sizes = np.array(da_all.chunksizes.get("time", (da_all.sizes["time"],)))
+    stops = np.cumsum(sizes)
+    t = {"load": 0.0, "regrid": 0.0}
+    pieces: dict[str, list[xr.DataArray]] = {key: [] for key in resolutions}
+    for i0, i1 in zip(stops - sizes, stops):
+        t0 = time.perf_counter()
+        da = da_all.isel(time=slice(i0, i1)).load()
+        t["load"] += time.perf_counter() - t0
+        t0 = time.perf_counter()
+        for key, res in resolutions.items():
+            # na_thres decides which coastal cells keep a value: NaN if more than na_thres of the area is missing
+            pieces[key].append(regrid_with_na_thres(da, conservative_regridder(da, res), na_thres))
+        t["regrid"] += time.perf_counter() - t0
+        if progress:
+            print(f" {da.time.dt.year.values[-1]}", end="", flush=True)
+        del da
+    return {key: xr.concat(p, dim="time") for key, p in pieces.items()}, t
 
 
-def load_pml(var: str, time_slice: slice = slice(None, None), **kwargs) -> xr.DataArray:
-    """PML-V2.2 variable (ET, Ec, Es, Ei, E, Ew, PET, GPP); see `load_obs` for kwargs."""
-    return load_obs("pml", var, time_slice, **kwargs)
+def load_obs_regridded(
+    dataset: str | ObsDataset,
+    var: str,
+    time_slice: slice = slice(None, None),
+    res: float | str = 0.5,
+    *,
+    version: str | None = None,
+    freq: str = "monthly",
+    na_thres: float = NA_THRES,
+) -> xr.DataArray:
+    """
+    Load one variable from its native files and conservatively regrid it onto
+    `target_grid(res)` in memory, without writing regridded files.
+
+    Each time step is regridded as `regrid_obs.py` does (`regrid_with_na_thres`,
+    NaN where more than `na_thres` of a target cell's area is missing), so the
+    result equals ``load_obs(..., res=...)`` on the files it wrote. Files are
+    read one at a time (per-year files whole, multi-year files in blocks of
+    their on-disk time chunks), so only one block is in memory at native
+    resolution.
+
+    Parameters
+    ----------
+    dataset, var, time_slice, version, freq : as in `load_obs`.
+    res : grid spacing [deg] or tag of `target_grid` (0.5, 1.0, "0.5deg", ...).
+    na_thres : maximum fraction of missing source area in a target cell.
+
+    Returns
+    -------
+    Loaded DataArray (time, lat, lon) on `target_grid(res)`, with attrs
+    ``dataset``, ``version``, ``frequency``, ``res`` (spacing, e.g. "0.5"),
+    ``regrid_method`` and ``na_thres``.
+    """
+    spec, version = _resolve(dataset, version, freq)
+    files = find_files(spec, var, time_slice, version=version, freq=freq)
+    if not files:
+        y0, y1 = _year_bounds(time_slice)
+        raise FileNotFoundError(
+            f"No {spec.name} {version} {freq} files for {var!r} in years {y0}-{y1} under {spec.root}. "
+            f"Available variables: {list_variables(spec, version, freq)}"
+        )
+
+    # (time slice, chunks) per file, clipped to the requested years. Per-year file: read
+    # whole. Multi-year file: dask chunks = on-disk chunks, so each chunk is read once.
+    if _has_year(spec):
+        y0, y1 = _year_bounds(time_slice)
+        spans = list_files(spec, var, version, freq)
+        reads = []
+        for path in files:
+            first, last = spans[path]
+            first, last = max(first, y0 or first), min(last, y1 or last)
+            reads.append((slice(str(first), str(last)), None if spans[path][0] == spans[path][1] else {}))
+    else:
+        reads = [(time_slice, {})]
+
+    spacing = float(RESOLUTIONS.get(res, res))  # tag -> spacing
+    t = {"load": 0.0, "regrid": 0.0}
+    pieces = []
+    for file_slice, chunks in reads:
+        da_all = load_obs(spec, var, file_slice, version=version, freq=freq, chunks=chunks)
+        out, t_file = _regrid_blocks(da_all, {"out": spacing}, na_thres)
+        pieces.append(out["out"])
+        for k, v in t_file.items():
+            t[k] += v
+        del da_all, out
+        gc.collect()
+
+    da = xr.concat(pieces, dim="time").sel(time=time_slice)
+    da.attrs.update(res=f"{spacing:g}", regrid_method="xesmf conservative, skipna=True, unmapped_to_nan=True",
+                    na_thres=na_thres)
+    print(f"{spec.name} {version} {freq} {var}: regridded {len(reads)} files to {spacing:g} deg "
+          f"(load {t['load']:.1f}s, regrid {t['regrid']:.1f}s)")
+    return da
 
 
-def load_sith(var: str, time_slice: slice = slice(None, None), **kwargs) -> xr.DataArray:
-    """SiTHv2 variable (ET, Tr, Es, Ei, En); see `load_obs` for kwargs."""
-    return load_obs("sith", var, time_slice, **kwargs)
+def _load_named(
+    name: str, var: str, time_slice: slice, regrid_res: float | str | None, na_thres: float, kwargs: dict,
+) -> xr.DataArray:
+    """`load_obs` of a registered dataset, or `load_obs_regridded` if `regrid_res` is given."""
+    if regrid_res is None:
+        return load_obs(name, var, time_slice, **kwargs)
+    if kwargs.pop("res", "native") != "native":
+        raise ValueError("Give either regrid_res (regrid in memory) or res (saved regridded files), not both")
+    return load_obs_regridded(name, var, time_slice, regrid_res, na_thres=na_thres, **kwargs)
+
+
+def load_gleam(
+    var: str, time_slice: slice = slice(None, None), *,
+    regrid_res: float | str | None = None, na_thres: float = NA_THRES, **kwargs,
+) -> xr.DataArray:
+    """
+    GLEAM v4.3 variable (E, Et, Ec, Es, Ei, Eb, Ew, Ep); see `load_obs` for kwargs.
+    With `regrid_res`, regridded in memory by `load_obs_regridded`.
+    """
+    return _load_named("gleam", var, time_slice, regrid_res, na_thres, kwargs)
+
+
+def load_pml(
+    var: str, time_slice: slice = slice(None, None), *,
+    regrid_res: float | str | None = None, na_thres: float = NA_THRES, **kwargs,
+) -> xr.DataArray:
+    """
+    PML-V2.2 variable (ET, Ec, Es, Ei, E, Ew, PET, GPP); see `load_obs` for kwargs.
+    With `regrid_res`, regridded in memory by `load_obs_regridded`.
+    """
+    return _load_named("pml", var, time_slice, regrid_res, na_thres, kwargs)
+
+
+def load_sith(
+    var: str, time_slice: slice = slice(None, None), *,
+    regrid_res: float | str | None = None, na_thres: float = NA_THRES, **kwargs,
+) -> xr.DataArray:
+    """
+    SiTHv2 variable (ET, Tr, Es, Ei, En); see `load_obs` for kwargs.
+    With `regrid_res`, regridded in memory by `load_obs_regridded`.
+    """
+    return _load_named("sith", var, time_slice, regrid_res, na_thres, kwargs)
 
 
 # ------------------------------------------------------------------
-# Writing regridded files (regrid_obs.py)
+# Writing regridded files (regrid_obs.py, deprecated: use load_obs_regridded)
 # ------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parents[2]  # editable install, so the git checkout
+PROVENANCE_PACKAGES = ("etunc", "xesmf", "esmpy", "xarray", "numpy", "netCDF4")
+
+
+@functools.cache
+def code_provenance() -> dict[str, str]:
+    """
+    Code state that produced a regridded file: the git commit of the repo
+    (suffixed "-dirty" if etunc/ or scripts/ have uncommitted changes) and the
+    versions of the packages that do the regridding. Unavailable entries are
+    "unknown". Cached, so git runs once per process.
+    """
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True,
+                              check=True, timeout=30).stdout.strip()
+
+    try:
+        commit = git("rev-parse", "HEAD")
+        if git("status", "--porcelain", "--untracked-files=no", "--", "etunc", "scripts"):
+            commit += "-dirty"
+    except (OSError, subprocess.SubprocessError):
+        commit = "unknown"
+    prov = {"etunc_git_commit": commit}
+    for pkg in PROVENANCE_PACKAGES:
+        try:
+            prov[f"{pkg}_version"] = importlib.metadata.version(pkg)
+        except importlib.metadata.PackageNotFoundError:
+            prov[f"{pkg}_version"] = "unknown"
+    return prov
+
 
 def output_path(spec: ObsDataset, res_tag: str, src: Path) -> Path:
     """Regridded file of `src` at `res_tag` ("0.5deg", "1deg"): the tree that `at_resolution` reads."""
     return REGRID_ROOT / spec.root.name / res_tag / src.relative_to(spec.root)
 
 
-def _save(da: xr.DataArray, var: str, src: Path, outpath: Path, complevel: int) -> None:
-    """Write `da` next to `outpath` as .tmp, then move it into place."""
+def _save(da: xr.DataArray, var: str, src: Path, outpath: Path, complevel: int, history: str | None = None) -> None:
+    """
+    Write `da` next to `outpath` as .tmp, then move it into place. The source's
+    global attrs are kept, with `history` prepended to its CF "history" attr.
+    """
     with xr.open_dataset(src) as ds_src:
         global_attrs = dict(ds_src.attrs)
+    if history is not None:
+        global_attrs["history"] = "\n".join(filter(None, [history, str(global_attrs.get("history", ""))]))
     da.encoding = {}
     ds = xr.Dataset({var: da}, attrs=global_attrs)
     outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -540,6 +720,10 @@ def regrid_file(
     blocks of its on-disk time chunks. Existing outputs are skipped unless
     `overwrite`. `script` is recorded in the "regrid_script" attr. Returns
     timings, or None if skipped.
+
+    Provenance in the variable attrs: source file with its mtime and size,
+    the load_obs preprocess, regrid settings and date, and `code_provenance`
+    (git commit, package versions). The global "history" attr gets one line.
     """
     outpaths = {tag: output_path(spec, tag, src) for tag in resolutions}
     if not overwrite and all(p.exists() for p in outpaths.values()):
@@ -551,44 +735,40 @@ def regrid_file(
     # Per-year file: read whole. Multi-year file: dask chunks = on-disk chunks.
     da_all = load_obs(spec, var, slice(str(first), str(last)), version=version, freq=freq,
                          chunks=None if first == last else {})
-    sizes = np.array(da_all.chunksizes.get("time", (da_all.sizes["time"],)))
-    stops = np.cumsum(sizes)
-    t = {"load": 0.0, "regrid": 0.0, "save": 0.0}
-    pieces: dict[str, list[xr.DataArray]] = {tag: [] for tag in resolutions}
-    for i0, i1 in zip(stops - sizes, stops):
-        t0 = time.perf_counter()
-        da = da_all.isel(time=slice(i0, i1)).load()
-        t["load"] += time.perf_counter() - t0
-        t0 = time.perf_counter()
-        for tag, res in resolutions.items():
-            # na_thres decides which coastal cells keep a value: NaN if more than na_thres of the area is missing
-            pieces[tag].append(regrid_with_na_thres(da, conservative_regridder(da, res), na_thres))
-        t["regrid"] += time.perf_counter() - t0
-        if first != last:
-            print(f" {da.time.dt.year.values[-1]}", end="", flush=True)
-        del da
-    print(f" load {t['load']:.1f}s", end="", flush=True)
-    if not any(pieces.values()):
+    if da_all.sizes["time"] == 0:
         raise ValueError(f"{src} has no time steps in {label}")
+    regridded, t = _regrid_blocks(da_all, resolutions, na_thres, progress=first != last)
+    t["save"] = 0.0
+    print(f" load {t['load']:.1f}s", end="", flush=True)
 
-    for tag in resolutions:
-        out = xr.concat(pieces[tag], dim="time")
+    # Source state at regrid time: a later mtime or size on disk means the regridded file is out of date
+    src_stat = src.stat()
+    regrid_date = dt.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    for tag, out in regridded.items():
+        out.attrs.pop("res", None)  # load_obs's res="native" describes the source, not this file
+        out.attrs["target_grid"] = tag
         out.attrs["src_dims"] = da_all.dims
         out.attrs["src_shape"] = da_all.shape
         out.attrs["src_dlat_deg"], out.attrs["src_dlon_deg"] = approx_resolution(da_all)
         out.attrs["tgt_dlat_deg"], out.attrs["tgt_dlon_deg"] = approx_resolution(out)
         out.attrs["source_file"] = str(src)
+        out.attrs["source_mtime"] = dt.fromtimestamp(src_stat.st_mtime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        out.attrs["source_size_bytes"] = src_stat.st_size
+        # Unit fixes and decoding applied by load_obs before regridding
+        out.attrs["load_preprocess"] = spec.preprocess.__name__ if spec.preprocess is not None else "none"
         out.attrs["regrid_method"] = "xesmf conservative, skipna=True, unmapped_to_nan=True"
         out.attrs["na_thres"] = na_thres
         out.attrs["regrid_script"] = script
-        out.attrs["regrid_date"] = dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        out.attrs["regrid_date"] = regrid_date
+        out.attrs.update(code_provenance())
 
         t0 = time.perf_counter()
-        _save(out, var, src, outpaths[tag], complevel)
+        history = f"{regrid_date}: regridded to {tag} by {script} (etunc {out.attrs['etunc_git_commit']})"
+        _save(out, var, src, outpaths[tag], complevel, history=history)
         t["save"] += time.perf_counter() - t0
         print(f" | {tag} {out.shape}", end="", flush=True)
 
     print(f" | regrid {t['regrid']:.1f}s save {t['save']:.1f}s")
-    del da_all, pieces
+    del da_all, regridded
     gc.collect()
     return t

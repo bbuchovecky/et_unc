@@ -116,9 +116,9 @@ def test_output_path_mirrors_source(monkeypatch, tmp_path):
     assert lo.output_path(spec, "1deg", src) == tmp_path / "gleam-v4.3/1deg/v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
 
 
-def test_regrid_file_multi_year(monkeypatch, tmp_path):
-    """SiTH-like file spanning 2000-2002 is regridded block by block into one output file."""
-    monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path / "out")
+@pytest.fixture
+def sith_like(tmp_path):
+    """SiTH-like 2000-2002 file (int32 x100, (time, lon, lat)) with on-disk time chunks of 10: (spec, ds)."""
     spec = lo.ObsDataset("per", tmp_path / "per", "{freq_dir}/{var}.P{version}.A{year_start}_{year_end}.{freq_tag}.nc",
                          ("v2",), {"monthly": "M"}, freq_dirs={"monthly": "Monthly"}, preprocess=lo._decode_sith)
     time = pd.date_range("2000-01", periods=36, freq="ME")
@@ -131,7 +131,13 @@ def test_regrid_file_multi_year(monkeypatch, tmp_path):
     (spec.root / "Monthly").mkdir(parents=True)
     # time chunks of 10 -> blocks of 10, 10, 10, 6 that straddle years
     ds.to_netcdf(spec.root / "Monthly/ET.Pv2.A2000_2002.M.nc", encoding={"ET": {"chunksizes": (10, 5, 5)}})
+    return spec, ds
 
+
+def test_regrid_file_multi_year(monkeypatch, tmp_path, sith_like):
+    """SiTH-like file spanning 2000-2002 is regridded block by block into one output file."""
+    monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path / "out")
+    spec, ds = sith_like
     ((src, years),) = lo.list_files(spec, "ET", "v2", "monthly").items()
     assert years == (2000, 2002)
     assert lo.regrid_file(spec, "ET", src, years, "v2", "monthly") is not None
@@ -141,6 +147,15 @@ def test_regrid_file_multi_year(monkeypatch, tmp_path):
         np.testing.assert_allclose(out.ET.sel(lat=10.5, lon=20.5), np.repeat([2000.0, 2001.0, 2002.0], 12))
         assert np.isnan(out.ET.sel(lat=0.5, lon=0.5)).all()
         assert tuple(out.ET.attrs["src_shape"]) == (36, 10, 10)
+        # Provenance: target grid, source state, preprocess and code versions
+        attrs = out.ET.attrs
+        assert attrs["target_grid"] == "1deg" and "res" not in attrs
+        assert attrs["source_size_bytes"] == src.stat().st_size
+        assert attrs["source_mtime"].endswith("UTC") and attrs["regrid_date"].endswith("UTC")
+        assert attrs["load_preprocess"] == "_decode_sith"
+        assert attrs["etunc_git_commit"] and attrs["xesmf_version"] and attrs["esmpy_version"]
+        assert out.attrs["history"].splitlines()[0].endswith(f"(etunc {attrs['etunc_git_commit']})")
+        assert out.attrs["Fill Value"] == "-999"  # source global attrs kept
     assert lo.output_path(spec, "0.5deg", src).exists()
 
     # Read back with the load functions
@@ -149,6 +164,63 @@ def test_regrid_file_multi_year(monkeypatch, tmp_path):
     np.testing.assert_allclose(back.sel(lat=10.5, lon=20.5), 2001.0)
     assert lo.list_files(spec, "ET", "v2", "monthly", res="0.5") == {lo.output_path(spec, "0.5deg", src): (2000, 2002)}
     assert lo.regrid_file(spec, "ET", src, years, "v2", "monthly", overwrite=False) is None  # existing output skipped
+
+
+@pytest.fixture
+def per_year(tmp_path):
+    """GLEAM-like per-year files 2000-2001 on a 0.1 deg patch, varying in space and time, with NaN."""
+    spec = lo.ObsDataset("yr", tmp_path / "yr", "{version}/{freq}/{var}/{var}_{year}.nc", ("v1",), {"monthly": "M"})
+    rng = np.random.default_rng(0)
+    for year in (2000, 2001):
+        time = pd.date_range(f"{year}-01", periods=12, freq="MS")
+        data = rng.uniform(0, 100, (12, 20, 20)).astype("float32")
+        data[:, :7, :5] = np.nan  # part of one 1 deg cell missing (kept), most of another (NaN at na_thres=0.5)
+        data[:, 12:, 10:17] = np.nan
+        ds = xr.Dataset({"E": (("time", "lat", "lon"), data, {"units": "mm/month"})},
+                        coords={"time": time, "lat": np.round(11.95 - 0.1 * np.arange(20), 4),
+                                "lon": np.round(20.05 + 0.1 * np.arange(20), 4)})
+        path = spec.root / f"v1/monthly/E/E_{year}.nc"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ds.to_netcdf(path)
+    return spec
+
+
+@pytest.mark.parametrize("which", ["per_year", "sith_like"])
+def test_load_obs_regridded_matches_regrid_file(monkeypatch, tmp_path, request, which):
+    """In-memory regridding equals the files regrid_file writes, read back with load_obs(res=)."""
+    monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path / "out")
+    spec = request.getfixturevalue(which)
+    if which == "sith_like":
+        spec, var = spec[0], "ET"
+    else:
+        var = "E"
+    version = spec.versions[0]
+    for src, years in lo.list_files(spec, var, version, "monthly").items():
+        lo.regrid_file(spec, var, src, years, version, "monthly")
+
+    for res, saved_res in ((1.0, "1"), ("0.5deg", "0.5")):
+        mem = lo.load_obs_regridded(spec, var, slice("2000", "2001"), res, version=version)
+        saved = lo.load_obs(spec, var, slice("2000", "2001"), version=version, res=saved_res).load()
+        xr.testing.assert_equal(mem, saved)
+        assert mem.dtype == saved.dtype == np.float32
+        assert mem.attrs["res"] == saved_res and mem.attrs["na_thres"] == rg.NA_THRES
+        assert mem.attrs["dataset"] == spec.name and mem.attrs["version"] == version
+
+
+def test_load_obs_regridded_time_slices(per_year, sith_like):
+    """Month-precision slices and partial reads of a multi-year file return exactly the requested months."""
+    mem = lo.load_obs_regridded(per_year, "E", slice("2000-03", "2001-02"), 1.0)
+    np.testing.assert_array_equal(mem.time, pd.date_range("2000-03", "2001-02", freq="MS"))
+
+    spec, ds = sith_like
+    mem = lo.load_obs_regridded(spec, "ET", slice("2001", "2001"), 1.0)
+    np.testing.assert_array_equal(mem.time, ds.time.sel(time="2001"))
+    np.testing.assert_allclose(mem.sel(lat=10.5, lon=20.5), 2001.0)
+
+
+def test_load_obs_regridded_missing_files(per_year):
+    with pytest.raises(FileNotFoundError, match="No yr v1 monthly files"):
+        lo.load_obs_regridded(per_year, "E", slice("1990", "1991"), 1.0)
 
 
 # ------------------------------------------------------------------

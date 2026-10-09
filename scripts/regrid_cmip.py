@@ -1,6 +1,10 @@
 """
 regrid_cmip.py
 ==============
+DEPRECATED: bin_cmip.py regrids the native fields itself (`cmip.load_model`),
+so no pipeline reads the files written here; only the check-cmip-grids and
+load-cmip notebooks do. Kept until it is decided whether those still need them.
+
 Conservatively regrid CMIP6 fields listed in the ESGF cache catalog
 (config.ESGF_CACHE_CATALOG) onto the common grid (TARGET_RES) with
 `cmip.regrid_to_target`, one file per (model, variable) under

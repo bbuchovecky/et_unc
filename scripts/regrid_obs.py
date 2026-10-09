@@ -1,4 +1,9 @@
 """
+DEPRECATED: the obs pipelines (bin_obs.py, make_mask.py, obs_et_availability.py)
+now regrid the native files in memory with `lo.load_obs_regridded`, so they no
+longer read the files written here. This script is kept only until that path is
+verified, then it will be removed together with `load_obs(res=...)`.
+
 Regrid gridded observational products (GLEAM v4.3, PML-V2.2, SiTHv2) from
 their native 0.1 deg grid to the common 0.5 deg and 1 deg grids.
 
@@ -45,19 +50,20 @@ import etunc.grid as rg
 
 # {dataset: {"versions": ..., "freqs": ..., "vars": ...}}; None = all available
 SELECTION: dict[str, dict[str, tuple[str, ...] | None]] = {
-    # "gleam": {"versions": ("v4.3b",), "freqs": ("monthly", "yearly"), "vars": None},
-    # "gleam": {"versions": None, "freqs": ("monthly", "yearly"), "vars": None},
-    ## V2.2a-VIIRS skipped: monthly E 2019 is a 0-byte file on the TPDC server
-    # "pml":   {"versions": ("V2.2c", "V2.2b", "V2.2a-MODIS"), "freqs": ("monthly", "yearly"), "vars": None},
-    # "sith":  {"versions": None, "freqs": ("monthly", "yearly"), "vars": None},
+    "gleam": {"versions": ("v4.3a", "v4.3b",), "freqs": ("monthly", "yearly"), "vars": None},
+
+    # V2.2a-VIIRS skipped: monthly E 2019 is a 0-byte file on the TPDC server
+    "pml":   {"versions": ("V2.2c", "V2.2b", "V2.2a-MODIS"), "freqs": ("monthly", "yearly"), "vars": None},
+
+    # monthly SiTHv2 skipped: erver-side issue downloading monthly variables
     "sith":  {"versions": None, "freqs": ("yearly",), "vars": None},
 }
 YEARS: list[int] | None = None  # optional subset of years; multi-year files touching it are regridded whole
 
 RESOLUTIONS = rg.RESOLUTIONS  # output directory tag (= lo.RES_DIRS values) -> grid spacing [deg]
 NA_THRES = 0.5     # coarse cells with more than this fraction of missing area are NaN
-OVERWRITE = True  # False: skip source files whose outputs all exist
-COMPLEVEL = 4
+OVERWRITE = False  # False: skip source files whose outputs all exist
+COMPLEVEL = 4      # compression level for NetCDF
 
 
 # ------------------------------------------------------------------

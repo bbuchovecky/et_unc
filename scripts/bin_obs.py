@@ -18,8 +18,10 @@ Steps
      W/m2, LAI is m2/m2. Annual means are computed over complete years only. A
      missing month counts as LAI = 0 (winter gaps at high latitudes), while
      ET, pr and rns need all 12 months for the annual mean to be valid.
-   - Gridded ET products (`load_gridded`) are read from the 0.5 deg files
-     written by regrid_obs.py (conservative regridding) and converted from
+   - Gridded ET products (`load_gridded`) are read from their native 0.1 deg
+     files and conservatively regridded in memory each month
+     (`lo.load_obs_regridded`, NaN where more than half of a 0.5 deg cell is
+     missing), then converted from
      mm/month or mm/year to W/m2, only over the years shared by the LAI, pr and
      rns products. Monthly products use complete years and need all 12
      months; for yearly products the yearly total is the annual mean.
@@ -113,8 +115,8 @@ ILAMB_PRODUCTS = {
     "rns": ["CERESed4.2"],
 }
 
-# Gridded ET products added to the ILAMB ET products, read from their regridded
-# files: {label: (load_obs dataset, version, variable, freq)}. {} = ILAMB only.
+# Gridded ET products added to the ILAMB ET products, regridded in memory from their
+# native files: {label: (load_obs dataset, version, variable, freq)}. {} = ILAMB only.
 GRIDDED_ET_PRODUCTS = {
     "PMLv2.2a_MODIS": ("pml", "V2.2a-MODIS", "ET", "monthly"),
     # "PMLv2.2b":       ("pml", "V2.2b", "ET", "monthly"),
@@ -123,7 +125,6 @@ GRIDDED_ET_PRODUCTS = {
     "GLEAMv4.3b":     ("gleam", "v4.3b", "E", "monthly"),
     "SiTHv2":         ("sith", "v2", "ET", "yearly"),  # "monthly" once re-downloaded
 }
-GRIDDED_RES = "0.5"  # load_obs `res` of the regridded files; must match TARGET_RES
 # Gridcell-years of gridded products with annual mean ET below this [W/m2] are
 # NaN; GLEAM v4.3b has extreme negative monthly E at high latitudes in winter
 MIN_ANNUAL_ET = -1.0
@@ -135,9 +136,9 @@ MIN_ANNUAL_ET = -1.0
 def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
     """Annual mean ET [W/m2] (year, lat, lon) of a gridded product within `years` (first, last)."""
     dataset, version, var, freq = GRIDDED_ET_PRODUCTS[label]
-    da = lo.load_obs(
-        dataset, var, slice(str(years[0]), str(years[1])), version=version, freq=freq, res=GRIDDED_RES,
-    ).load()
+    da = lo.load_obs_regridded(
+        dataset, var, slice(str(years[0]), str(years[1])), TARGET_RES, version=version, freq=freq,
+    )
     da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
 
     if freq == "monthly":
@@ -305,8 +306,6 @@ def main():
 
     # Gridded ET only over the years that some (lai, pr, rns) product set shares
     if GRIDDED_ET_PRODUCTS:
-        if float(GRIDDED_RES) != TARGET_RES:
-            raise ValueError(f"GRIDDED_RES {GRIDDED_RES} does not match TARGET_RES {TARGET_RES}")
         years = set().union(*(
             temporal.shared_years(*das) for das in itertools.product(*(ann[v].values() for v in FACTORS[1:]))
         ))
