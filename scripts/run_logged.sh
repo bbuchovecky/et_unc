@@ -9,8 +9,6 @@
 
 set -euo pipefail  # pipefail: the exit status is the script's, not tee's
 
-PY=/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python
-
 if [[ $# -ne 1 || ! -f $1 ]]; then
     echo "Usage: $0 <script.py>" >&2
     exit 2
@@ -18,7 +16,12 @@ fi
 script=$1
 repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 
-LOG_DIR=${LOG_DIR:-$("$PY" -c "import etunc.config as c; print(c.WORK_ROOT / 'logs')")}
+# Python of the repo's pixi env (activated by `pixi run`). pixi may not be on
+# PATH in batch shells, so fall back to its default install location.
+PIXI=${PIXI:-$(command -v pixi || echo "$HOME/.pixi/bin/pixi")}
+PY=("$PIXI" run --manifest-path "$repo/pyproject.toml" python)
+
+LOG_DIR=${LOG_DIR:-$("${PY[@]}" -c "import etunc.config as c; print(c.WORK_ROOT / 'logs')")}
 mkdir -p "$LOG_DIR"
 log=$LOG_DIR/$(basename "$script" .py).$(date +%Y%m%d-%H%M%S).log
 
@@ -28,7 +31,7 @@ log=$LOG_DIR/$(basename "$script" .py).$(date +%Y%m%d-%H%M%S).log
     echo "script  : $script"
     echo "start   : $(date '+%Y-%m-%d %H:%M:%S %Z')"
     echo "host    : $(hostname)"
-    echo "python  : $PY"
+    echo "python  : $("${PY[@]}" -c "import sys; print(sys.executable)")"
     echo "commit  : $(git -C "$repo" rev-parse HEAD) ($(git -C "$repo" rev-parse --abbrev-ref HEAD))"
     echo "#########"
     echo
@@ -38,7 +41,7 @@ echo "Logging to $log"
 start=$SECONDS
 status=0
 # -u: unbuffered, so lines reach the terminal and log as they are printed
-"$PY" -u "$script" 2>&1 | tee -a "$log" || status=$?
+"${PY[@]}" -u "$script" 2>&1 | tee -a "$log" || status=$?
 
 echo -e "\n######### exit status $status after $(( (SECONDS - start) / 60 )) min, $(date '+%Y-%m-%d %H:%M:%S %Z')" | tee -a "$log"
 exit $status

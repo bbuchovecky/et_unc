@@ -14,27 +14,29 @@ Runs on NCAR's glade (Derecho/Casper). Data and outputs live outside the repo:
 
 ## Commands
 
-The Python env is `etunc` (`/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python`), defined in `envs/etunc.yml` (exact versions in `envs/etunc.lock.yml`) with the repo installed editable (`pip install --no-deps -e .`). It has xarray, xesmf, regionmask, cartopy and dask-jobqueue, but not ILAMB (`etunc.grid.cell_area` is a bit-identical port of `ilamblib.CellAreas`). The notebooks run on the `etunc` Jupyter kernel, except `notebooks/check-disalexi.ipynb` (`openet` env, `envs/openet.yml`). The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
+The Python env is the pixi env `etunc`, defined in `pyproject.toml` (`[tool.pixi.*]`, exact versions in `pixi.lock`) with the repo installed editable. It is detached to `/glade/work/bbuchovecky/pixi/envs/etunc-<hash>/envs/default`. Don't hardcode that path; use `pixi run` (pixi is at `~/.pixi/bin/pixi`). `pixi run` finds the manifest by searching up from the current directory, so outside the repo (e.g. PBS jobs) pass `--manifest-path <repo>/pyproject.toml`, as `scripts/run_logged.sh` does. Ad-hoc commands (`pixi run python ...`) run in the caller's directory, while defined tasks (`pixi run test`, `bin-obs`, …) run in the repo root. Every `pixi run` first checks the env against `pixi.lock`: if the manifest was edited, it re-solves, rewrites `pixi.lock` and updates the env before running. Use `--frozen` (install the lock as-is) or `--locked` (fail if the lock is stale) to prevent that. Dependencies are changed with `pixi add` or by editing the manifest, and the updated `pixi.lock` is committed with them. The env has xarray, xesmf, regionmask, cartopy and dask-jobqueue, but not ILAMB (`etunc.grid.cell_area` is a bit-identical port of `ilamblib.CellAreas`). The notebooks run on the `etunc` Jupyter kernel, except `notebooks/check-disalexi.ipynb` (`openet` env, `envs/openet.yml`). The repo is self-contained: don't add dependencies on the user's other packages (e.g. xclimate) or on modules from their other projects.
 
 ```bash
-PY=/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python
-$PY -m pytest                                        # full suite in tests/ (~7 min, no external data needed)
-$PY -m pytest tests/test_binning.py                  # binning tests only (~70 s)
-$PY -m pytest tests/test_binning.py::test_bin_stats_mask  # single test
-$PY scripts/bin_obs.py                               # obs pipeline (ILAMB + gridded ET products)
-$PY scripts/bin_cmip.py                              # CMIP6 pipeline
-$PY scripts/make_mask.py                             # common valid-data mask of the obs products
-$PY scripts/obs_et_availability.py                   # data availability of the obs ET products
-scripts/run_logged.sh scripts/bin_obs.py             # any script, output also logged to WORK_ROOT/logs (header: git commit + diff)
-qsub scripts/regrid_cmip.pbs                         # DEPRECATED: saves CMIP6 regridded to 1° (only notebooks read it)
-qsub scripts/regrid_obs.pbs                          # DEPRECATED: saves GLEAM/PML/SiTH regridded to 0.5° and 1°
+pixi install                                         # create/update the env from pixi.lock
+pixi run test                                        # full suite in tests/ (~7 min, no external data needed)
+pixi run pytest tests/test_binning.py                # binning tests only (~70 s)
+pixi run pytest tests/test_binning.py::test_bin_stats_mask  # single test
+pixi run python scripts/bin_obs.py                   # obs pipeline (ILAMB + gridded ET products)
+pixi run python scripts/bin_cmip.py                  # CMIP6 pipeline
+pixi run python scripts/make_mask.py                 # common valid-data mask of the obs products
+pixi run python scripts/obs_et_availability.py       # data availability of the obs ET products
+scripts/run_logged.sh scripts/bin_obs.py             # any script, output also logged to WORK_ROOT/logs or $LOG_DIR (header: host, python, git commit + branch)
+pixi run bin-obs                                     # = run_logged.sh scripts/bin_obs.py (also bin-cmip, make-mask, obs-availability)
+pixi run kernel                                      # (re)register the `etunc` Jupyter kernel on the pixi env
+qsub scripts/legacy_regrid/regrid_cmip.pbs           # DEPRECATED: saves CMIP6 regridded to 1° (only notebooks read it)
+qsub scripts/legacy_regrid/regrid_obs.pbs            # DEPRECATED: saves GLEAM/PML/SiTH regridded to 0.5° and 1°
 ```
 
 The scripts in `scripts/` take no CLI arguments and import only the `etunc` package, never each other. They are configured by module-level constants at the top of each file (`TIME_SLICE`, `N_XBINS`/`N_YBINS`, `SOURCE_IDS`, `MEMBER_IDS`, `MIN_YEARS`, `ILAMB_PRODUCTS`, `GRIDDED_ET_PRODUCTS`, …). Output folders come from `etunc.config`. The download scripts are in `scripts/download/`.
 
 ## Architecture
 
-Layout: `etunc/` (library), `scripts/` (runnable pipelines; `scripts/download/`), `notebooks/`, `tests/`, `envs/`. README.md has a table of the modules.
+Layout: `etunc/` (library), `scripts/` (runnable pipelines; `scripts/download/`), `notebooks/`, `tests/`, `envs/` (conda envs outside pixi: `openet`, `lftp`). README.md has a table of the modules.
 
 The dataset-agnostic core library is the `etunc` package (split out of the former `binned_et.py`): `config` (paths and domain constants), `units` (unit conversions, net radiation), `temporal` (annual means, aggregation, period strings), `binning` (inputs, edges, bin statistics, post-processing), `plotting` (maps and bin heatmaps), `grid` (below; also `check_same_grid`/`equal_coords` and `mask_greenland`) and `legacy` (notebook-only loaders and helpers). Scripts import them as `import etunc.binning as binning` etc., with `etunc.grid` as `rg`. The `etunc.binning` docstring documents the pipeline:
 1. Load monthly fields plus a land mask on one shared lat/lon grid, with water fluxes converted to energy fluxes in W/m².

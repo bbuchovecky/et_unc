@@ -21,6 +21,6 @@ echo "Job ${PBS_JOBID} started on $(hostname) at $(date)"
 echo "OMP_NUM_THREADS=${OMP_NUM_THREADS}"
 
 # Use the -u flag to run the script with unbuffered output
-/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python3 -u scripts/regrid_obs.py
+"${HOME}/.pixi/bin/pixi" run python -u scripts/regrid_obs.py
 
 echo "Job ${PBS_JOBID} finished at $(date)"

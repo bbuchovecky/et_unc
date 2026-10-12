@@ -7,8 +7,8 @@ name = "etunc"
 version = "0.1.0"
 description = "Evapotranspiration uncertainty: ET binned by climatological LAI and aridity index"
 requires-python = ">=3.12"
-# Listed for documentation only. The env comes from envs/etunc.yml and the
-# package is installed with `pip install --no-deps -e .`.
+# Resolved by pixi for the editable install, but every entry is already met by
+# a conda package in [tool.pixi.dependencies], so nothing comes from PyPI.
 dependencies = [
     "numpy",
     "pandas",
@@ -29,3 +29,73 @@ include = ["etunc*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# ---------------------------------------------------------------------------
+# pixi: the etunc env (exact versions in pixi.lock)
+#   pixi install          create/update the env (detached, see README)
+#   pixi run kernel       register the `etunc` Jupyter kernel
+#   pixi run test         full test suite
+# ---------------------------------------------------------------------------
+[tool.pixi.workspace]
+name = "etunc"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.dependencies]
+python = "==3.12.12"
+
+# --- Numerics ---
+numpy = "==2.3.5"
+pandas = "==3.0.0"
+scipy = "==1.17.0"          # test_significance
+libopenblas = "==0.3.30"
+
+# --- N-dimensional arrays / I/O ---
+xarray = "==2026.1.0"
+# xarray uses these silently when installed (nan-reductions, rolling,
+# groupby), so they are pinned too: their absence can change results.
+bottleneck = "==1.6.0"
+numbagg = "==0.9.4"
+numba = "==0.63.1"
+flox = "==0.11.1"
+cftime = "==1.6.5"
+netcdf4 = "==1.7.4"
+libnetcdf = { version = "==4.9.3", build = "nompi_*" }
+hdf5 = { version = "==1.14.6", build = "nompi_*" }
+
+# --- Parallel ---
+dask = "==2026.1.2"
+distributed = "==2026.1.2"
+dask-jobqueue = "==0.9.0"   # dask_cluster
+
+# --- Regridding / geospatial ---
+xesmf = "==0.9.2"
+esmpy = "==8.9.1"
+esmf = { version = "==8.9.1", build = "nompi_*" }
+regionmask = "==0.13.0"
+affine = "==2.4.0"          # used by regionmask to rasterize masks
+shapely = "==2.1.2"
+geopandas = "==1.1.2"
+pyproj = "==3.7.2"
+proj = "==9.7.1"
+
+# --- Plotting ---
+matplotlib = "==3.10.8"
+cartopy = "==0.25.0"
+freetype = "==2.14.1"       # text rendering in PNGs
+
+# --- Tests / notebooks ---
+pytest = "==9.1.1"
+ipykernel = "*"
+
+[tool.pixi.pypi-dependencies]
+etunc = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+test = "pytest"
+kernel = "python -m ipykernel install --user --name etunc --display-name etunc"
+# Pipelines, logged to WORK_ROOT/logs (see scripts/run_logged.sh)
+bin-obs = "scripts/run_logged.sh scripts/bin_obs.py"
+bin-cmip = "scripts/run_logged.sh scripts/bin_cmip.py"
+make-mask = "scripts/run_logged.sh scripts/make_mask.py"
+obs-availability = "scripts/run_logged.sh scripts/obs_et_availability.py"

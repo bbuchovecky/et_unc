@@ -35,33 +35,46 @@ All of these paths are set in `etunc/config.py`.
 | `scripts/download/` | Download scripts for the obs products |
 | `notebooks/` | Exploratory and analysis notebooks |
 | `tests/` | pytest suite (synthetic data, no glade data needed) |
-| `envs/` | Conda environments: `etunc.yml` (+ exact `etunc.lock.yml`), `openet.yml`, `lftp.yml` |
+| `envs/` | Conda environments outside the pixi manifest: `openet.yml`, `lftp.yml` |
+| `pixi.lock` | Exact versions of the `etunc` env (manifest in `pyproject.toml` under `[tool.pixi.*]`) |
 
 ## Setup
 
+The `etunc` env is managed by [pixi](https://pixi.sh). One-time setup, so the
+env (~3 GB) and the package cache go to /glade/work instead of home:
+
 ```bash
-mamba env create -f envs/etunc.yml          # or envs/etunc.lock.yml for the exact versions
-mamba run -n etunc pip install --no-deps -e .
-mamba run -n etunc python -m ipykernel install --user --name etunc   # Jupyter kernel for the notebooks
+curl -fsSL https://pixi.sh/install.sh | bash
+pixi config set --global detached-environments /glade/work/bbuchovecky/pixi/envs
+export PIXI_CACHE_DIR=/glade/work/bbuchovecky/pixi/cache   # also in ~/.bashrc
+```
+
+Then, from the repo:
+
+```bash
+pixi install       # creates the env from pixi.lock, with etunc installed editable
+pixi run kernel    # registers the `etunc` Jupyter kernel for the notebooks
 ```
 
 The package is installed editable, so changes under `etunc/` take effect
-without reinstalling. `notebooks/check-disalexi.ipynb` uses the separate
-`openet` env (`envs/openet.yml`).
+without reinstalling. Add or change a dependency with `pixi add <pkg>` (or edit
+`[tool.pixi.dependencies]`, then `pixi install`); either way, commit the updated
+`pixi.lock`. `notebooks/check-disalexi.ipynb` uses the separate conda env
+`openet` (`envs/openet.yml`).
 
 ## Running
 
 ```bash
-PY=/glade/work/bbuchovecky/miniforge3/envs/etunc/bin/python
+pixi run python scripts/bin_obs.py               # bin ET of every obs product combination (0.5°)
+pixi run python scripts/bin_cmip.py              # bin ET of CMIP6 historical models (1°)
+pixi run python scripts/make_mask.py             # common valid-data mask of the obs products
+pixi run python scripts/obs_et_availability.py   # data availability of the obs ET products
+pixi run bin-obs                                 # same as scripts/run_logged.sh scripts/bin_obs.py
+                                                 # (also bin-cmip, make-mask, obs-availability)
+qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
+qsub scripts/legacy_regrid/regrid_cmip.pbs       # deprecated: save CMIP6 fields regridded to 1°
 
-$PY scripts/bin_obs.py               # bin ET of every obs product combination (0.5°)
-$PY scripts/bin_cmip.py              # bin ET of CMIP6 historical models (1°)
-$PY scripts/make_mask.py             # common valid-data mask of the obs products
-$PY scripts/obs_et_availability.py   # data availability of the obs ET products
-qsub scripts/regrid_obs.pbs          # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
-qsub scripts/regrid_cmip.pbs         # deprecated: save CMIP6 fields regridded to 1°
-
-$PY -m pytest                        # all tests (~7 min)
+pixi run test                                    # all tests (~7 min)
 ```
 
 The scripts take no arguments: edit the settings at the top of each script (time
