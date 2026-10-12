@@ -12,7 +12,7 @@ Processing
   and 1 deg products (WECANN) bilinearly interpolated to the 0.5 deg grid.
 - PML (ET = Ec + Es + Ei) and GLEAM (E) are read from their native files,
   conservatively regridded to 0.5 deg in memory (`lo.load_obs_regridded`,
-  `NA_THRES`) and converted from mm/month
+  `NA_THRESH`) and converted from mm/month
   to W/m2. PML V2.2a-VIIRS is skipped (its monthly E 2019 file is empty).
 - Every product is put on one monthly time axis over `TIME_SLICE`, so months
   outside a product's record count as missing, and restricted to `config.LAT_BNDS`

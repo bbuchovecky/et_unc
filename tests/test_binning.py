@@ -143,6 +143,7 @@ def test_convert_units():
     )
     np.testing.assert_allclose(units.convert_units("mer", da), -da * config.LATENT_HEAT_VAPORIZATION)
     assert units.convert_units("et", da).attrs["units"] == "W/m2"
+    assert units.convert_units("mer", da).attrs["units"] == "W/m2"  # kept through the sign flip
     xr.testing.assert_identical(units.convert_units("lai", da), da)
 
 
@@ -770,6 +771,25 @@ def test_save_map_writes_styled_map(tmp_path, inputs, capsys):
     assert fout.exists() and str(fout) in capsys.readouterr().out
     with pytest.raises(KeyError):
         plotting.save_map(da, "not_a_variable", tmp_path / "x.png")
+    plt.close("all")
+
+
+def test_save_ensemble_map_three_panels(tmp_path, inputs, capsys):
+    """save_ensemble_map draws mean, std and range maps over `dim`, each with a variable/units colorbar."""
+    lai = inputs["lai"].assign_attrs(units="m2/m2")
+    da = xr.concat([lai, lai + 1, lai + 3], dim="member")
+    fout = tmp_path / "maps" / "lai.png"
+    fig = plotting.save_ensemble_map(da, "lai", fout, title="LAI")
+    assert fout.exists() and str(fout) in capsys.readouterr().out
+    maps = [ax for ax in fig.axes if hasattr(ax, "projection")]
+    assert [ax.get_title() for ax in maps] == [
+        "ensemble mean", "ensemble standard deviation", "ensemble range (max - min)"
+    ]
+    # Range of members lai, lai + 1, lai + 3 is 3 wherever lai is valid
+    rng_vals = maps[2].collections[0].get_array()
+    assert np.allclose(rng_vals[~np.ma.getmaskarray(rng_vals)], 3)
+    assert all(ax.get_ylabel() == "lai [m2/m2]" for ax in fig.axes if ax not in maps)
+    assert fig._suptitle.get_text() == "LAI, 3 members"
     plt.close("all")
 
 

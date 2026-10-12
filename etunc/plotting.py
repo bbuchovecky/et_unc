@@ -128,6 +128,42 @@ def save_map(da: xr.DataArray, variable: str, fout: str | Path, title: str = "")
     print(fout)
 
 
+def save_ensemble_map(
+    da: xr.DataArray,
+    variable: str,
+    fout: str | Path | None = None,
+    dim: str = "member",
+    title: str = "",
+    lat_bnds: slice = LAT_BNDS,
+):
+    """
+    Three stacked maps of a climatology of `variable` with an ensemble dim
+    `dim`: the mean along `dim` (MAP_KWARGS style), the standard deviation
+    (ddof=0, as `binning.ensemble_spread`) and the range (max - min), each
+    gridcell over the members with a value there. Saved (path printed) if
+    `fout` is given.
+    """
+    units = da.attrs.get("units", "?")
+    panels = {
+        "ensemble mean": (da.mean(dim), {"vmin": 0, **MAP_KWARGS[variable]}),
+        "ensemble standard deviation": (da.std(dim), {"vmin": 0, "cmap": "magma_r"}),
+        "ensemble range (max - min)": (da.max(dim) - da.min(dim), {"vmin": 0, "cmap": "magma_r"}),
+    }
+    fig, axs = plt.subplots(3, 1, figsize=(8, 9), layout="constrained", subplot_kw={"projection": PROJECTION})
+    for ax, (label, (field, kwargs)) in zip(axs, panels.items()):
+        field.plot.pcolormesh(
+            ax=ax, transform=ccrs.PlateCarree(), robust=True,
+            cbar_kwargs={"label": f"{variable} [{units}]"}, **kwargs,
+        )
+        ax.set_title(label)
+        map_ax(ax, lat_bnds)
+    fig.suptitle(f"{title}, {da.sizes[dim]} members" if title else f"{da.sizes[dim]} members")
+    finish(fig, fout)
+    if fout is not None:
+        print(fout)
+    return fig
+
+
 def plot_mask_agreement(
     masks: xr.DataArray,
     land: xr.DataArray,

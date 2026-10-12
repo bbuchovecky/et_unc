@@ -2,7 +2,7 @@
 
 Research code for quantifying evapotranspiration (ET) uncertainty. Annual-mean
 ET is binned in a 2-D space of climatological leaf area index (LAI) and aridity
-index (AI = Rn / L·P), so that observational products (ILAMB, PML-V2.2,
+index (AI = Rn / Lv×P), so that observational products (ILAMB, ERA5, PML-V2.2,
 GLEAM v4.3, SiTHv2), CMIP6 models and CESM2 ensembles can be compared bin by
 bin.
 
@@ -12,8 +12,8 @@ the repo:
 | | Path |
 | --- | --- |
 | Inputs (shared, read-only) | `/glade/campaign/univ/uwas0155/` (ILAMB and gridded obs, regridded obs and CMIP6) |
-| CMIP6 catalogs | `/glade/derecho/scratch/bbuchovecky/cmip_intake_esgf_fetch/` (purgeable scratch; see `etunc/config.py`) |
-| Outputs | `/glade/work/bbuchovecky/et_unc/{proc,fig}` |
+| CMIP6 catalogs | `/glade/derecho/scratch/$USER/cmip_intake_esgf_fetch/` (purgeable scratch; see `etunc/config.py`) |
+| Outputs | `/glade/work/$USER/et_unc/{proc,fig}` |
 
 All of these paths are set in `etunc/config.py`.
 
@@ -45,8 +45,8 @@ env (~3 GB) and the package cache go to /glade/work instead of home:
 
 ```bash
 curl -fsSL https://pixi.sh/install.sh | bash
-pixi config set --global detached-environments /glade/work/bbuchovecky/pixi/envs
-export PIXI_CACHE_DIR=/glade/work/bbuchovecky/pixi/cache   # also in ~/.bashrc
+pixi config set --global detached-environments /glade/work/$USER/pixi/envs
+export PIXI_CACHE_DIR=/glade/work/$USER/pixi/cache   # can also put in ~/.bashrc
 ```
 
 Then, from the repo:
@@ -67,10 +67,12 @@ without reinstalling. Add or change a dependency with `pixi add <pkg>` (or edit
 ```bash
 pixi run python scripts/bin_obs.py               # bin ET of every obs product combination (0.5°)
 pixi run python scripts/bin_cmip.py              # bin ET of CMIP6 historical models (1°)
+pixi run python scripts/bin_lens.py              # bin ET of the CESM2 Large Ensemble historical members (1°)
+pixi run python scripts/bin_fppe.py              # bin ET of the CESM2 FHIST perturbed-parameter ensemble members (1°)
 pixi run python scripts/make_mask.py             # common valid-data mask of the obs products
 pixi run python scripts/obs_et_availability.py   # data availability of the obs ET products
 pixi run bin-obs                                 # same as scripts/run_logged.sh scripts/bin_obs.py
-                                                 # (also bin-cmip, make-mask, obs-availability)
+                                                 # (also bin-cmip, bin-lens, bin-fppe, make-mask, obs-availability)
 qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
 qsub scripts/legacy_regrid/regrid_cmip.pbs       # deprecated: save CMIP6 fields regridded to 1°
 
@@ -81,3 +83,6 @@ The scripts take no arguments: edit the settings at the top of each script (time
 period, products or models, number of bins, ...). Each script's docstring lists
 its steps and every output file it writes. The pipelines regrid their inputs in
 memory, so the two regrid jobs are not needed before running them.
+
+## Config
+`etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`. Binning settings (e.g., `N_XBINS`, `N_YBINS`) exist there but they also can changed at the top of each run script. For consistent analysis, all run script should have the same binning settings.

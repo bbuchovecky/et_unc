@@ -24,21 +24,21 @@ CAMPAIGN_ROOT = Path("/glade/campaign/univ/uwas0155")
 OBS_ROOT = CAMPAIGN_ROOT / "obs"
 ILAMB_ROOT = OBS_ROOT / "ilamb"
 
-# Regridded files, written by the regrid scripts and read by the loaders.
+# DEPRECATED: Regridded files, written by the regrid scripts and read by the loaders
 OBS_REGRID_ROOT = OBS_ROOT / "regridded"
 CMIP_REGRID_ROOT = CAMPAIGN_ROOT / "cmip6" / "regridded"
 
-# CMIP6 catalogs from the external cmip-intake-esgf-fetch tool. They (and about
-# 2/3 of the file paths in cmip_evap.csv) are on purgeable Derecho scratch.
+# CMIP6 catalogs from the external cmip-intake-esgf-fetch tool. The file paths in the  are on purgeable Derecho scratch.
 # Moving them to campaign storage only needs CMIP_FETCH_ROOT changed here.
 CMIP_FETCH_ROOT = Path("/glade/derecho/scratch/bbuchovecky/cmip_intake_esgf_fetch")
 CMIP_CATALOG_ROOT = CMIP_FETCH_ROOT / "catalogs"
-CMIP_CATALOG = CMIP_CATALOG_ROOT / "cmip_evap.csv"  # evspsbl, lai, pr, radiative fluxes
+CMIP_CATALOG = CMIP_CATALOG_ROOT / "cmip6_bin.csv"  # evspsbl, lai, pr, radiative fluxes
 CMIP_FX_CATALOG = CMIP_CATALOG_ROOT / "cmip6_fx_glade.csv"  # one sftlf file per model
-ESGF_CACHE_CATALOG = CMIP_FETCH_ROOT / "manifests" / "esgf_cache_catalog.csv"
+
+# ESGF_CACHE_CATALOG = CMIP_FETCH_ROOT / "manifests" / "esgf_cache_catalog.csv"  # I don't think this is necessary anymore
 
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------s
 # Outputs
 # ------------------------------------------------------------------
 
@@ -52,10 +52,20 @@ BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
 # Constants
 # ------------------------------------------------------------------
 
+# Binning settings
+N_XBINS = 15         # aridity index
+N_YBINS = 15         # LAI
+SIGNIF_ALPHA = 0.05  # t-test of bin mean ET against 0 (95% confidence)
+SIGNIF_N_MIN = 10    # bins with <= this many samples are never significant
+
+# Common grid and masking
+TARGET_RES = 1             # target resolution (regrid all output to this resolution)
 LAT_BNDS = slice(-58, 90)  # excludes Antarctica (Tierra del Fuego ends near -56)
+NA_THRESH = 0.5            # for conservative regridding: target cells with more than this 
+                           # fraction of missing source area are NaN
 LF_THRESH = 0.5            # gridcell land fraction threshold (land where strictly greater)
 
-# One L (near 20 C) for every water flux, ET and precipitation alike, with no
+# One Lv (near 20 C) for every water flux, ET and precipitation alike, with no
 # sublimation or fusion term. It cancels in ET/P but sets the W/m2 scale of ET and AI
 LATENT_HEAT_VAPORIZATION = 2.45e6  # J/kg
 LIQ_WATER_DENSITY = 1e3            # kg/m3
@@ -77,7 +87,7 @@ def summarize():
     print(f"{'CMIP_CATALOG_ROOT':18} = {CMIP_CATALOG_ROOT}")
     print(f"{'CMIP_CATALOG':18} = {CMIP_CATALOG}")
     print(f"{'CMIP_FX_CATALOG':18} = {CMIP_FX_CATALOG}")
-    print(f"{'ESGF_CACHE_CATALOG':18} = {ESGF_CACHE_CATALOG}")
+    # print(f"{'ESGF_CACHE_CATALOG':18} = {ESGF_CACHE_CATALOG}")
     print("\nOutput Paths:")
     print(f"{'WORK_ROOT':18} = {WORK_ROOT}")
     print(f"{'PROC_ROOT':18} = {PROC_ROOT}")
@@ -85,6 +95,7 @@ def summarize():
     print(f"{'BIN_EDGES_ROOT':18} = {BIN_EDGES_ROOT}")
     print("\nConstants:")
     print(f"{'LAT_BNDS':18} = {LAT_BNDS}")
+    print(f"{'NA_THRESH':18} = {NA_THRESH}")
     print(f"{'LF_THRESH':18} = {LF_THRESH}")
     print(f"{'LATENT_HEAT_VAPORIZATION':18} = {LATENT_HEAT_VAPORIZATION}")
     print(f"{'LIQ_WATER_DENSITY':18} = {LIQ_WATER_DENSITY}")

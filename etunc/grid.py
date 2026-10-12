@@ -49,7 +49,7 @@ import regionmask as regmask
 import xarray as xr
 import xesmf as xe
 
-from etunc.config import EARTH_RADIUS, LAT_BNDS, LF_THRESH
+from etunc.config import EARTH_RADIUS, LAT_BNDS, LF_THRESH, NA_THRESH
 
 
 RESOLUTIONS = {"0.5deg": 0.5, "1deg": 1.0}  # grid tag (output directory name) -> spacing [deg]
@@ -58,9 +58,6 @@ LAT_ATTRS = {"units": "degrees_north", "standard_name": "latitude"}
 LON_ATTRS = {"units": "degrees_east", "standard_name": "longitude"}
 
 _CONSERVATIVE: dict[tuple, xe.Regridder] = {}
-
-NA_THRES = 0.5  # default: target cells with more than this fraction of missing source area are NaN
-
 
 # ------------------------------------------------------------------
 # Grids
@@ -202,7 +199,7 @@ def bilinear_regridder(da: xr.DataArray | xr.Dataset, res: float | str) -> xe.Re
     return make_regridder(src, res, "bilinear", periodic=True, unmapped_to_nan=True)
 
 
-def regrid_with_na_thres(da: xr.DataArray, regridder: xe.Regridder, na_thres: float = NA_THRES) -> xr.DataArray:
+def regrid_with_na_thres(da: xr.DataArray, regridder: xe.Regridder, na_thres: float = NA_THRESH) -> xr.DataArray:
     """
     Apply a conservative `regridder` skipping NaN: each target cell is the
     area-weighted mean of its valid source cells, and NaN where more than

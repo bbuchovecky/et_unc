@@ -198,7 +198,7 @@ def test_at_resolution():
     spec = lo.get_dataset("pml")
     assert lo.at_resolution(spec) is spec
     regridded = lo.at_resolution("pml", "0.5")
-    assert regridded.root == lo.REGRID_ROOT / "pml-v2.2" / "0.5deg"
+    assert regridded.root == lo.OBS_REGRID_ROOT / "pml-v2.2" / "0.5deg"
     assert (regridded.lat_name, regridded.lon_name) == ("lat", "lon")
     assert regridded.template == spec.template and regridded.preprocess is spec.preprocess
     with pytest.raises(ValueError, match="res"):
@@ -207,7 +207,7 @@ def test_at_resolution():
 
 def test_load_obs_saved_regridded(spec, monkeypatch, tmp_path):
     """res="1" reads REGRID_ROOT/<root dir name>/1deg/<same relative path>, with lat/lon coords."""
-    monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path / "regridded")
+    monkeypatch.setattr(lo, "OBS_REGRID_ROOT", tmp_path / "regridded")
     lat, lon = np.array([45.5, 44.5]), np.array([-0.5, 0.5])
     for year in (2001, 2002):
         write_year(tmp_path / f"regridded/{tmp_path.name}/1deg/v1/monthly/ET/FAKE-v1_ET_{year}.nc", "ET", year,

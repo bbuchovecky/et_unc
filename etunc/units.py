@@ -41,7 +41,8 @@ def convert_units(v: str, da: xr.DataArray, verbose: bool = False) -> xr.DataArr
 
     # ERA5: et sign convention (fluxes are positive downward, so evaporation is negative)
     if v == "mer":
-        da = -1 * da
+        with xr.set_options(keep_attrs=True):  # keep the "W/m2" set above
+            da = -1 * da
 
     return da
 

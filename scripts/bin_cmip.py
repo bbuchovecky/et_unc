@@ -60,7 +60,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import xarray as xr
 
-import etunc.config as config
+import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
 import etunc.plotting as plotting
@@ -74,21 +74,21 @@ warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will
 # Paths
 # ------------------------------------------------------------------
 
-CATALOG = config.CMIP_CATALOG        # evspsbl, lai, pr, radiative fluxes (on purgeable scratch)
-FX_CATALOG = config.CMIP_FX_CATALOG  # one sftlf file per model, from any experiment
-PROC_ROOT = config.PROC_ROOT / "cmip6"
-BIN_EDGES_ROOT = config.BIN_EDGES_ROOT
-FIG_ROOT = config.FIG_ROOT
+CATALOG = cfg.CMIP_CATALOG        # evspsbl, lai, pr, radiative fluxes (on purgeable scratch)
+FX_CATALOG = cfg.CMIP_FX_CATALOG  # one sftlf file per model, from any experiment
+PROC_ROOT = cfg.PROC_ROOT / "cmip6"
+BIN_EDGES_ROOT = cfg.BIN_EDGES_ROOT
+FIG_ROOT = cfg.FIG_ROOT
 
 
 # ------------------------------------------------------------------
 # Settings
 # ------------------------------------------------------------------
 
-N_XBINS = 15    # aridity index
-N_YBINS = 15    # LAI
-SIGNIF_ALPHA = 0.05  # t-test of bin mean ET against 0 (95% confidence)
-SIGNIF_N_MIN = 10    # bins with <= this many samples are never significant
+N_XBINS = cfg.N_XBINS
+N_YBINS = cfg.N_YBINS
+SIGNIF_ALPHA = cfg.SIGNIF_ALPHA
+SIGNIF_N_MIN = cfg.SIGNIF_N_MIN
 
 EXPERIMENT_ID = "historical"
 TIME_SLICE = slice("1995-01", "2014-12")
@@ -109,11 +109,10 @@ MEMBER_IDS: dict[str, str | list[str]] = {
     # "CanESM5": "max_r",
 }
 
-# Common 1 deg grid that every model is conservatively regridded onto
-TARGET_RES = 1.0
-GRID_TAG = rg.grid_tag(TARGET_RES)
-TARGET_GRID = rg.target_grid(TARGET_RES)
-NA_THRES = 0.5  # target cells with more than this fraction of area outside the native land mask are NaN
+# Common grid
+TARGET_RES = cfg.TARGET_RES
+GRID_TAG = rg.grid_tag(cfg.TARGET_RES)
+TARGET_GRID = rg.target_grid(cfg.TARGET_RES)
 
 # ------------------------------------------------------------------
 # Binning helpers
@@ -159,9 +158,9 @@ def plot_model_edges(
 # ------------------------------------------------------------------
 
 def main():
-    config.summarize()
+    cfg.summarize()
     period = temporal.format_time_period(TIME_SLICE)
-    mask = rg.land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS)
+    mask = rg.land_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
     loader = CMIPESGFLoader(CATALOG)
 
     # ------------------------------------------------------------------
@@ -194,7 +193,7 @@ def main():
         try:
             ann = cmip.load_model(
                 loader, sid, mids, sftlf[sid], mask, variables=VARIABLES, experiment_id=EXPERIMENT_ID,
-                time_slice=TIME_SLICE, res=TARGET_RES, na_thres=NA_THRES,
+                time_slice=TIME_SLICE, res=TARGET_RES, na_thres=cfg.NA_THRESH,
             )
         except ValueError as err:  # e.g. sftlf on a different grid than the data
             print(f"{sid}: {err}, skipping")
@@ -241,7 +240,7 @@ def main():
     # Quantile bin edges pooled across models (member-mean field per model)
     # ------------------------------------------------------------------
     print("\n=== Pooled bin edges ===")
-    n_bins = {"lai": N_YBINS, "ai": N_XBINS}
+    n_bins = {"lai": cfg.N_YBINS, "ai": cfg.N_XBINS}
     pooled_edges = {}
     for v in ("lai", "ai"):
         print(f"\n{v}")
@@ -287,8 +286,8 @@ def main():
                 member_dim="member", y_name="lai", x_name="ai", name="evspsbl",
                 attrs={
                     **attrs,
-                    "n_y_bins_requested": N_YBINS,
-                    "n_x_bins_requested": N_XBINS,
+                    "n_y_bins_requested": cfg.N_YBINS,
+                    "n_x_bins_requested": cfg.N_XBINS,
                     "collapse_duplicate_quantile_bins": 0,
                     "pool_edges": int(kind == "pooled_cmip"),
                 },
@@ -320,15 +319,15 @@ def main():
         print(fout)
 
         # Hatch non-empty bins whose mean is not significantly different from 0
-        signif = binning.test_significance(bs_all, alpha=SIGNIF_ALPHA, n_min=SIGNIF_N_MIN)
+        signif = binning.test_significance(bs_all, alpha=cfg.SIGNIF_ALPHA, n_min=cfg.SIGNIF_N_MIN)
         not_signif = ~signif & bs_all.sel(stats="mean").notnull()
         print(f"{kind}: {int(not_signif.sum())} of {int(bs_all.sel(stats='mean').notnull().sum())} "
-              f"non-empty bins not significant at {1 - SIGNIF_ALPHA:.0%}")
+              f"non-empty bins not significant at {1 - cfg.SIGNIF_ALPHA:.0%}")
         fout = FIG_ROOT / "cmip6" / "qbin" / f"{fstem}.bin_mean_signif.png"
         plotting.plot_bin_means(
             bs_all, "source_id", fout=fout, hatch=not_signif,
             title=(f"CMIP6 evspsbl bin mean, {nsid} models, {kind} edges, {period}; hatched: not significantly "
-                   f"different from 0 at {1 - SIGNIF_ALPHA:.0%} (t-test, n > {SIGNIF_N_MIN})"),
+                   f"different from 0 at {1 - cfg.SIGNIF_ALPHA:.0%} (t-test, n > {cfg.SIGNIF_N_MIN})"),
         )
         print(fout)
 

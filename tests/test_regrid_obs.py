@@ -110,7 +110,7 @@ def test_time_varying_missing_values():
 
 def test_output_path_mirrors_source(monkeypatch, tmp_path):
     """The output path mirrors the source path under REGRID_ROOT/<dataset dir>/<res tag>."""
-    monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path)
+    monkeypatch.setattr(lo, "OBS_REGRID_ROOT", tmp_path)
     spec = lo.get_dataset("gleam")
     src = spec.root / "v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
     assert lo.output_path(spec, "1deg", src) == tmp_path / "gleam-v4.3/1deg/v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
@@ -136,7 +136,7 @@ def sith_like(tmp_path):
 
 def test_regrid_file_multi_year(monkeypatch, tmp_path, sith_like):
     """SiTH-like file spanning 2000-2002 is regridded block by block into one output file."""
-    monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path / "out")
+    monkeypatch.setattr(lo, "OBS_REGRID_ROOT", tmp_path / "out")
     spec, ds = sith_like
     ((src, years),) = lo.list_files(spec, "ET", "v2", "monthly").items()
     assert years == (2000, 2002)
@@ -188,7 +188,7 @@ def per_year(tmp_path):
 @pytest.mark.parametrize("which", ["per_year", "sith_like"])
 def test_load_obs_regridded_matches_regrid_file(monkeypatch, tmp_path, request, which):
     """In-memory regridding equals the files regrid_file writes, read back with load_obs(res=)."""
-    monkeypatch.setattr(lo, "REGRID_ROOT", tmp_path / "out")
+    monkeypatch.setattr(lo, "OBS_REGRID_ROOT", tmp_path / "out")
     spec = request.getfixturevalue(which)
     if which == "sith_like":
         spec, var = spec[0], "ET"
@@ -203,7 +203,7 @@ def test_load_obs_regridded_matches_regrid_file(monkeypatch, tmp_path, request, 
         saved = lo.load_obs(spec, var, slice("2000", "2001"), version=version, res=saved_res).load()
         xr.testing.assert_equal(mem, saved)
         assert mem.dtype == saved.dtype == np.float32
-        assert mem.attrs["res"] == saved_res and mem.attrs["na_thres"] == rg.NA_THRES
+        assert mem.attrs["res"] == saved_res and mem.attrs["na_thres"] == rg.NA_THRESH
         assert mem.attrs["dataset"] == spec.name and mem.attrs["version"] == version
 
 
@@ -236,7 +236,7 @@ REAL_MONTHS = [
 
 
 # Regridding itself conserves exactly (test_conserves_area_weighted_total). The
-# global means still differ because the NA_THRES coastal mask changes the land
+# global means still differ because the NA_THRESH coastal mask changes the land
 # area: coarse cells < 50% valid are dropped and partly valid cells are counted
 # at full area. That shifts the mean by up to ~1.2% (GLEAM Jan 1980 at 1 deg,
 # when the dropped coastal band has high ET), hence the 2% tolerance.

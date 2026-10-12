@@ -25,7 +25,7 @@ the native files and conservatively regrids them in memory onto
 
 Every function also takes ``res``: "native" (default) reads the original
 files, "0.5" or "1" the copies regridded by ``regrid_obs.py`` to 0.5 or 1 deg,
-stored under ``REGRID_ROOT/<dataset dir>/<0.5deg|1deg>`` with the same layout
+stored under ``OBS_REGRID_ROOT/<dataset dir>/<0.5deg|1deg>`` with the same layout
 as the dataset dir (see ``at_resolution``). These saved files are deprecated
 in favor of ``load_obs_regridded``.
 
@@ -86,12 +86,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-import etunc.config as config
-from etunc.grid import NA_THRES, RESOLUTIONS, approx_resolution, conservative_regridder, regrid_with_na_thres
+from etunc.config import NA_THRESH, OBS_ROOT, OBS_REGRID_ROOT
+from etunc.grid import RESOLUTIONS, approx_resolution, conservative_regridder, regrid_with_na_thres
 
-OBS_ROOT = config.OBS_ROOT
-REGRID_ROOT = config.OBS_REGRID_ROOT
-RES_DIRS = {"0.5": "0.5deg", "1": "1deg"}  # res -> directory under REGRID_ROOT/<dataset dir>
+RES_DIRS = {"0.5": "0.5deg", "1": "1deg"}  # res -> directory under OBS_REGRID_ROOT/<dataset dir>
 
 
 # ------------------------------------------------------------------
@@ -211,7 +209,7 @@ def _decode_sith(ds: xr.Dataset, var: str, version: str, freq: str) -> xr.Datase
     """Apply SiTHv2's non-CF "scale factor" and "Fill Value" and put dims in (time, lat, lon) order."""
     da = ds[var]
     attrs = dict(da.attrs)
-    # Unlike CF scale_factor, SiTHv2's "scale factor" is a divisor (stored = value x 100)
+    # Unlike CF scale_factor, SiTHv2's "scale factor" is a divisor (stored = value x 100) to help with compression
     scale = float(attrs.pop("scale factor", 1))
     fill = ds.attrs.get("Fill Value")
     # Cast before masking: int32 cannot hold NaN
@@ -248,7 +246,7 @@ def get_dataset(dataset: str | ObsDataset) -> ObsDataset:
 def at_resolution(dataset: str | ObsDataset, res: str = "native") -> ObsDataset:
     """
     The product at resolution `res`: "native" returns it unchanged; "0.5" or
-    "1" returns a copy rooted at its regridded tree, ``REGRID_ROOT/<root
+    "1" returns a copy rooted at its regridded tree, ``OBS_REGRID_ROOT/<root
     dir name>/<0.5deg|1deg>``, whose files have lat/lon coordinates.
     """
     spec = get_dataset(dataset)
@@ -256,7 +254,7 @@ def at_resolution(dataset: str | ObsDataset, res: str = "native") -> ObsDataset:
         return spec
     if res not in RES_DIRS:
         raise ValueError(f"Unknown res {res!r}; options: {('native', *RES_DIRS)}")
-    return replace(spec, root=REGRID_ROOT / spec.root.name / RES_DIRS[res], lat_name="lat", lon_name="lon")
+    return replace(spec, root=OBS_REGRID_ROOT / spec.root.name / RES_DIRS[res], lat_name="lat", lon_name="lon")
 
 
 def _resolve(
@@ -535,7 +533,7 @@ def load_obs_regridded(
     *,
     version: str | None = None,
     freq: str = "monthly",
-    na_thres: float = NA_THRES,
+    na_thres: float = NA_THRESH,
 ) -> xr.DataArray:
     """
     Load one variable from its native files and conservatively regrid it onto
@@ -615,7 +613,7 @@ def _load_named(
 
 def load_gleam(
     var: str, time_slice: slice = slice(None, None), *,
-    regrid_res: float | str | None = None, na_thres: float = NA_THRES, **kwargs,
+    regrid_res: float | str | None = None, na_thres: float = NA_THRESH, **kwargs,
 ) -> xr.DataArray:
     """
     GLEAM v4.3 variable (E, Et, Ec, Es, Ei, Eb, Ew, Ep); see `load_obs` for kwargs.
@@ -626,7 +624,7 @@ def load_gleam(
 
 def load_pml(
     var: str, time_slice: slice = slice(None, None), *,
-    regrid_res: float | str | None = None, na_thres: float = NA_THRES, **kwargs,
+    regrid_res: float | str | None = None, na_thres: float = NA_THRESH, **kwargs,
 ) -> xr.DataArray:
     """
     PML-V2.2 variable (ET, Ec, Es, Ei, E, Ew, PET, GPP); see `load_obs` for kwargs.
@@ -637,7 +635,7 @@ def load_pml(
 
 def load_sith(
     var: str, time_slice: slice = slice(None, None), *,
-    regrid_res: float | str | None = None, na_thres: float = NA_THRES, **kwargs,
+    regrid_res: float | str | None = None, na_thres: float = NA_THRESH, **kwargs,
 ) -> xr.DataArray:
     """
     SiTHv2 variable (ET, Tr, Es, Ei, En); see `load_obs` for kwargs.
@@ -683,7 +681,7 @@ def code_provenance() -> dict[str, str]:
 
 def output_path(spec: ObsDataset, res_tag: str, src: Path) -> Path:
     """Regridded file of `src` at `res_tag` ("0.5deg", "1deg"): the tree that `at_resolution` reads."""
-    return REGRID_ROOT / spec.root.name / res_tag / src.relative_to(spec.root)
+    return OBS_REGRID_ROOT / spec.root.name / res_tag / src.relative_to(spec.root)
 
 
 def _save(da: xr.DataArray, var: str, src: Path, outpath: Path, complevel: int, history: str | None = None) -> None:
@@ -708,7 +706,7 @@ def regrid_file(
     spec: ObsDataset, var: str, src: Path, years: tuple[int, int], version: str, freq: str,
     *,
     resolutions: Mapping[str, float] = RESOLUTIONS,
-    na_thres: float = NA_THRES,
+    na_thres: float = NA_THRESH,
     overwrite: bool = True,
     complevel: int = 4,
     script: str = "regrid_obs.py",

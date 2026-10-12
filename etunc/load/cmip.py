@@ -24,10 +24,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from etunc.config import LAT_BNDS, LF_THRESH
+from etunc.config import LAT_BNDS, LF_THRESH, NA_THRESH
 from etunc.grid import (
-    NA_THRES, bounded_conservative_regridder, bounded_source_grid, check_coords, check_same_grid, make_regridder,
-    mask_greenland, target_grid,
+    bounded_conservative_regridder, bounded_source_grid, check_coords, check_same_grid,
+    make_regridder, mask_greenland, target_grid,
 )
 from etunc.temporal import annual_mean, complete_years, period_str
 from etunc.units import convert_units, net_radiation_cmip
@@ -713,7 +713,7 @@ def regrid_annual(
     src_grid: xr.Dataset,
     res: float | str,
     mask: xr.DataArray,
-    na_thres: float = NA_THRES,
+    na_thres: float = NA_THRESH,
     members: list[str] | None = None,
 ) -> dict[str, xr.DataArray]:
     """
@@ -748,7 +748,7 @@ def load_model(
     experiment_id: str,
     time_slice: slice,
     res: float | str,
-    na_thres: float = NA_THRES,
+    na_thres: float = NA_THRESH,
 ) -> dict[str, xr.DataArray]:
     """
     Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
