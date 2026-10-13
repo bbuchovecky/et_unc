@@ -27,16 +27,24 @@ All of them build an xESMF regridder onto `target_grid(res)`.
 
 conservative_regridder : first-order conservative from a regular 1-D lat/lon
     grid with explicit cell edges (`source_grid`), cached per source grid.
-    Used for the 0.1 deg obs products.
+    Used for the monthly obs fields (`load_obs_regridded`, `load_ilamb`).
 bounded_conservative_regridder : first-order conservative from any 1-D
     lat/lon grid (e.g. Gaussian), with cell edges from CF bounds or midpoints
-    (`bounded_source_grid`). Used for CMIP6 annual means.
-bilinear_regridder : bilinear, periodic in lon. Used for ILAMB 1 deg products.
+    (`bounded_source_grid`), cached per source grid. Used by `regrid_annual`.
 make_regridder : any xESMF method from an arbitrary source grid (1-D or 2-D
     lat/lon, edges inferred by xESMF if absent).
 
 All but `make_regridder` set target cells outside the source domain to NaN
 (`unmapped_to_nan=True`).
+
+Annual means for binning
+------------------------
+Every load module (`etunc.load.ilamb`, `.era5`, `.obs`, `.cmip`, `.cesm`) has
+`load_native` (annual means on the native grid, native land mask, native grid)
+and `load_annual` = `regrid_annual(*load_native(...), res)`. `regrid_annual`
+is the one rule that puts them on a target grid: native land mask, then
+conservative regridding that skips NaN (`regrid_with_na_thres`, `NA_THRESH`),
+then `on_grid`.
 """
 from __future__ import annotations
 
@@ -58,6 +66,7 @@ LAT_ATTRS = {"units": "degrees_north", "standard_name": "latitude"}
 LON_ATTRS = {"units": "degrees_east", "standard_name": "longitude"}
 
 _CONSERVATIVE: dict[tuple, xe.Regridder] = {}
+_BOUNDED: dict[tuple, xe.Regridder] = {}
 
 # ------------------------------------------------------------------
 # Grids
@@ -187,16 +196,18 @@ def conservative_regridder(da: xr.DataArray, res: float | str) -> xe.Regridder:
 
 
 def bounded_conservative_regridder(ds: xr.Dataset | xr.DataArray, res: float | str) -> xe.Regridder:
-    """Conservative regridder from the 1-D grid of `ds` (edges from `bounded_source_grid`) onto `target_grid(res)`."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return make_regridder(bounded_source_grid(ds), res, "conservative", unmapped_to_nan=True)
-
-
-def bilinear_regridder(da: xr.DataArray | xr.Dataset, res: float | str) -> xe.Regridder:
-    """Bilinear regridder (periodic in lon) from the lat/lon grid of `da` onto `target_grid(res)`."""
-    src = xr.Dataset(coords={"lat": da["lat"], "lon": da["lon"]})
-    return make_regridder(src, res, "bilinear", periodic=True, unmapped_to_nan=True)
+    """
+    Conservative regridder from the 1-D grid of `ds` (edges from
+    `bounded_source_grid`) onto `target_grid(res)`, cached per grid.
+    """
+    src = bounded_source_grid(ds)
+    # Keyed on the centers and edges, so the products and members on one grid share a weight matrix
+    key = (_any_spacing(res), *(src[c].values.tobytes() for c in ("lat", "lon", "lat_b", "lon_b")))
+    if key not in _BOUNDED:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _BOUNDED[key] = make_regridder(src, res, "conservative", unmapped_to_nan=True)
+    return _BOUNDED[key]
 
 
 def regrid_with_na_thres(da: xr.DataArray, regridder: xe.Regridder, na_thres: float = NA_THRESH) -> xr.DataArray:
@@ -214,6 +225,47 @@ def regrid_with_na_thres(da: xr.DataArray, regridder: xe.Regridder, na_thres: fl
     out.attrs.pop("grid_mapping", None)  # PML's "crs" variable is not carried over
     out["lat"].attrs = dict(LAT_ATTRS)
     out["lon"].attrs = dict(LON_ATTRS)
+    return out
+
+
+def regrid_annual(
+    ann: dict[str, xr.DataArray],
+    native_mask: xr.DataArray,
+    src_grid: xr.Dataset | xr.DataArray,
+    res: float | str,
+    *,
+    mask: xr.DataArray | None = None,
+    na_thres: float = NA_THRESH,
+    label: str = "",
+) -> dict[str, xr.DataArray]:
+    """
+    Second stage of every `load_annual`: native annual means `ann` ({key:
+    ([member,] year, lat, lon)}, from a `load_native`) masked with the native
+    land mask `native_mask`, conservatively regridded onto `target_grid(res)`
+    within LAT_BNDS, and masked with the target `mask` if given. Each target
+    cell is the area-weighted mean of its valid (land) source cells, and NaN
+    where more than `na_thres` of its area is missing. A `member_id` coord on
+    `member` is kept.
+    """
+    regridder = bounded_conservative_regridder(src_grid, res)
+    out = {}
+    for k, a in ann.items():
+        name = f"{label}/{k}" if label else k
+        check_same_grid(a, native_mask, name)
+        with xr.set_options(keep_attrs=True):
+            # Mask snapped to the coords of `a`, so `.where` cannot misalign on round-off. A no-op
+            # where `load_native` masked already; here it guarantees that only land is averaged
+            a = a.where(native_mask.assign_coords(lat=a.lat, lon=a.lon))
+        member_id = a["member_id"].values if "member_id" in a.coords else None
+        a = regrid_with_na_thres(a.reset_coords(drop=True), regridder, na_thres)
+        # Exact target coords, so datasets line up under the exact-join alignment of the binning
+        a = on_grid(a, res, name)
+        if member_id is not None:
+            a = a.assign_coords(member_id=("member", member_id))
+        if mask is not None:
+            with xr.set_options(keep_attrs=True):
+                a = a.where(mask)
+        out[k] = a.rename(k)
     return out
 
 

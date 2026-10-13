@@ -21,8 +21,8 @@ Steps
    grid (`rg.target_grid`), restricted to `config.LAT_BNDS` and the land mask
    (Natural Earth without Greenland/Iceland, `rg.land_mask`).
    - ILAMB products are read with `il.load_ilamb` (lon in [-180, 180], lat
-     ascending, undecoded fill values removed) and bilinearly interpolated
-     when their grid is not RES.
+     ascending, undecoded fill values removed) and conservatively regridded
+     to RES each month (`NA_THRESH`).
    - PML, GLEAM and SiTHv2 are read from their native files and
      conservatively regridded to RES in memory (`lo.load_obs_regridded`).
 2. The valid months of a product are its time steps in TIME_SLICE with at
@@ -93,7 +93,7 @@ ILAMB_PRODUCTS = {
     "et":  ["CLASS", "DOLCE", "FLUXCOM", "GLEAMv3.3a", "MOD16A2", "MODIS", "WECANN"],
     "lai": ["MODIS"],
     "pr":  ["GPCPv2.3"],
-    "rns": ["CERESed4.2"],
+    "rn":  ["CERESed4.2"],
 }
 
 # Other gridded products, regridded to RES in memory from their native files:
@@ -110,7 +110,7 @@ GRIDDED_PRODUCTS = {
 
 # Minimum fraction of a product's valid months in which a gridcell must be
 # valid, per variable. 1.0 = every month; e.g. 0.9 tolerates 10% missing months.
-MIN_VALID_FRAC = {"et": 1.0, "lai": 1.0, "pr": 1.0, "rns": 1.0}
+MIN_VALID_FRAC = {"et": 1.0, "lai": 1.0, "pr": 1.0, "rn": 1.0}
 
 PROC_ROOT = config.PROC_ROOT / "obs"            # NetCDF output directory
 FIG_ROOT = config.FIG_ROOT / "obs" / "mask"      # figure output directory
@@ -217,7 +217,7 @@ def main():
               f"({100 * float(m['product_mask'].sum()) / n_land:5.1f}% of land)")
 
     # 2. Stack the per-product results along a new `product` dimension, with
-    #    the variable (et, lai, pr, rns) of each product as a coordinate.
+    #    the variable (et, lai, pr, rn) of each product as a coordinate.
     labels = list(masks)
     ds = xr.concat(list(masks.values()), dim="product", coords="minimal", compat="override")
     ds = ds.assign_coords(

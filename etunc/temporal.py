@@ -105,11 +105,37 @@ def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
     otherwise only years without any valid month are NaN.
     """
     # The loaders pass require_all_months=False only for LAI, so a missing LAI month counts
-    # as LAI = 0. ET, pr and rns need all 12 months, since a 0 would bias the flux low
+    # as LAI = 0. ET, pr and Rn need all 12 months, since a 0 would bias the flux low
     n_valid = da.notnull().groupby("time.year").sum()
     with xr.set_options(keep_attrs=True):
         ann = aggregate(da, "year")
         return ann.where(n_valid == 12 if require_all_months else n_valid > 0)
+
+
+def annual_means(monthly: dict[str, xr.DataArray]) -> dict[str, xr.DataArray]:
+    """
+    Loaded annual means ([member,] year, lat, lon) of monthly binning
+    variables {key: (..., time, lat, lon)} over complete years only, as every
+    `load_native` takes them. A missing month counts as 0 for "lai", while
+    every other key (ET, pr, Rn) needs all 12 months.
+    """
+    out = {}
+    for k, da in monthly.items():
+        # Drop partial first/last years: they would bias annual means toward the months present
+        da = da.sel(time=da.time.dt.year.isin(complete_years(da)))
+        # Key rule for which gridcell-years are binned: a missing LAI month (winter gaps at
+        # high latitudes) counts as 0, while ET, pr and Rn need all 12 months
+        ann = annual_mean(da, require_all_months=(k != "lai"))
+        out[k] = ann.transpose(..., "lat", "lon").load()
+    return out
+
+
+def print_annual(da: xr.DataArray, label: str) -> None:
+    """One-line summary of annual means `da` (year, lat, lon): dims, shape, period, range and units."""
+    print(
+        f"{label}: {da.dims} {da.shape} {period_str(da.year.values)} "
+        f"[{float(da.min()):0.3g}, {float(da.max()):0.3g}] {da.attrs.get('units', '?')}"
+    )
 
 
 def shared_years(*anns: xr.DataArray) -> list[int]:

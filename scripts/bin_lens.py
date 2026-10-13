@@ -9,13 +9,13 @@ Follows bin_cmip.py, with the LENS2 members in place of the CMIP6 models.
 Steps
 -----
 1. Load MEMBERS (default: all 50 members with CMIP6 biomass burning forcing,
-   not smoothed) over TIME_SLICE on the native f09 grid with `etunc.load.cesm.load_cesm2le`,
-   and mask them with the LENS2 land fraction (LANDFRAC > LF_THRESH, no Greenland
+   not smoothed) over TIME_SLICE on the native f09 grid with `lc.load_annual`
+   (`lc.load_native`, then `rg.regrid_annual`), and mask them with the LENS2 land fraction (LANDFRAC > LF_THRESH, no Greenland
    or Iceland). ET is EFLX_LH_TOT [W/m2], LAI is TLAI, PRECT is converted to
    W/m2, and Rn = FSNS - FLNS. Annual means use complete years only: a missing
    month counts as LAI = 0, while ET, pr and Rn need all 12 months.
    The annual means are conservatively regridded (xESMF,
-   `rg.bounded_conservative_regridder`) onto the common 1 deg grid of
+   `rg.regrid_annual`) onto the common 1 deg grid of
    bin_cmip.py (lon in [-180, 180], lat ascending). A target cell is NaN if
    more than NA_THRESH of its area is outside the native land mask. The Natural
    Earth land mask is then applied.
@@ -58,7 +58,6 @@ import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
 import etunc.plotting as plotting
-import etunc.units as units
 import etunc.grid as rg
 import etunc.load.cesm as lc
 import etunc.load.cmip as cmip
@@ -111,50 +110,6 @@ TARGET_GRID = rg.target_grid(TARGET_RES)
 
 
 # ------------------------------------------------------------------
-# Loading
-# ------------------------------------------------------------------
-
-def load_native(native_mask: xr.DataArray) -> tuple[dict[str, xr.DataArray], list[str]]:
-    """
-    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
-    of MEMBERS on the native grid, masked with `native_mask`, and the ens_name
-    of each member.
-    """
-    grid = lc.load_grid("lens")
-    fields, ens = {}, None
-    for k, (v, gcomp) in VARIABLES.items():
-        print(f"{v} ({gcomp})")
-        # Full globe (lat_bnds), so the regridding sees every source cell around LAT_BNDS
-        da = lc.load_cesm_variable(
-            "lens", f"{v}_{FREQUENCY}", grid, mask=native_mask, time_slice=TIME_SLICE,
-            lat_bnds=slice(None, None), gcomp=gcomp, stream=STREAM, bb=BB, verbose=False,
-        )
-        names = da["ens_name"].values.tolist()
-        if ens is None:
-            ens = names if MEMBERS is None else list(MEMBERS)
-            missing = [m for m in ens if m not in names]
-            if missing:
-                raise ValueError(f"Members {missing} not in LENS2 ({BB}): {names}")
-        # Drops ens_name (re-added as member_id after regridding) and other non-index coords
-        da = da.isel(member=[names.index(m) for m in ens]).reset_coords(drop=True)
-        # Drop partial first/last years: they would bias annual means toward the months present
-        fields[k] = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))
-
-    monthly = {
-        "et": fields["et"],
-        "lai": fields["lai"].assign_attrs(units="m2/m2"),
-        "pr": fields["pr"],
-        "rn": units.net_radiation_cesm(fields["fsns"], fields["flns"]),
-    }
-    ann = {}
-    for k, da in monthly.items():
-        # Key rule for which gridcell-years are binned: a missing LAI month counts
-        # as 0, while ET, pr and Rn need all 12 months
-        ann[k] = temporal.annual_mean(da, require_all_months=(k != "lai")).transpose(..., "lat", "lon").load()
-    return ann, ens
-
-
-# ------------------------------------------------------------------
 # Plotting
 # ------------------------------------------------------------------
 
@@ -179,23 +134,18 @@ def main():
     cfg.summarize()
     period = temporal.format_time_period(TIME_SLICE)
     mask = rg.land_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
-    grid = lc.load_grid("lens")
-    # Sets the area LENS2 contributes: native cells with LANDFRAC > LF_THRESH, minus
-    # Greenland/Iceland. Masking on the native grid keeps ocean and ice-sheet values
-    # out of the area-weighted means of the regridding
-    native_mask = rg.mask_greenland(grid["LANDFRAC"], cfg.LF_THRESH)
 
     # ------------------------------------------------------------------
     # Load and regrid annual means, build binning inputs, and map climatologies
     # ------------------------------------------------------------------
     print("=== Load LENS2 ===")
-    ann, ens = load_native(native_mask)
-    ann = cmip.regrid_annual(ann, rg.bounded_source_grid(grid), TARGET_RES, mask, cfg.NA_THRESH, members=ens)
-    nmem, mtag = len(ens), cmip.member_tag(ens)
-    print(
-        f"LENS2 ({BB}): {nmem} member(s), native {native_mask.sizes['lat']}x{native_mask.sizes['lon']} "
-        f"-> {ann['et'].dims} {ann['et'].shape}, years {temporal.period_str(ann['et'].year.values)}"
+    ann = lc.load_annual(
+        "lens", MEMBERS, TIME_SLICE, TARGET_RES, variables=VARIABLES, frequency=FREQUENCY, stream=STREAM,
+        bb=BB, mask=mask, na_thres=cfg.NA_THRESH,
     )
+    ens = ann["et"]["member_id"].values.tolist()
+    nmem, mtag = len(ens), cmip.member_tag(ens)
+    print(f"LENS2 ({BB}): {nmem} member(s)")
     inputs = binning.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
 
     # Maps of the climatologies' member mean, std and range (before the common area mask)

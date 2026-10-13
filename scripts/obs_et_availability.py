@@ -9,7 +9,8 @@ Processing
 ----------
 - ILAMB products are read with `il.load_ilamb`: lon in
   [-180, 180], lat ascending, undecoded fill values removed, converted to W/m2,
-  and 1 deg products (WECANN) bilinearly interpolated to the 0.5 deg grid.
+  and conservatively regridded each month (`NA_THRESH`) when their grid is not
+  the 0.5 deg grid (WECANN).
 - PML (ET = Ec + Es + Ei) and GLEAM (E) are read from their native files,
   conservatively regridded to 0.5 deg in memory (`lo.load_obs_regridded`,
   `NA_THRESH`) and converted from mm/month
@@ -81,7 +82,7 @@ GRIDDED_PRODUCTS = {
     "GLEAM-v4.3b":     ("gleam", "v4.3b", "E"),
     "SiTHv2":          ("sith", "v2", "ET"),
 }
-# Common 0.5 deg grid, as in bin_obs.py; 1 deg ILAMB products are interpolated onto it
+# Common 0.5 deg grid; 1 deg ILAMB products are regridded onto it
 TARGET_RES = 0.5
 TARGET_GRID = rg.target_grid(TARGET_RES)
 

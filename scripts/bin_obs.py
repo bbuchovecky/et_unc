@@ -5,37 +5,36 @@ Bin evapotranspiration (ET) in a 2-D space of climatological leaf area index
 (LAI, y-axis) and aridity index (AI = Rn / L*P, x-axis), and plot intermediate
 diagnostics, for every (ET, LAI, precipitation, net radiation) combination of
 observational products: the ILAMB products in ILAMB_PRODUCTS, ERA5 as a product
-of each variable in ERA5_VARIABLES (ET, pr and rns; ERA5 has no LAI), plus the
+of each variable in ERA5_VARIABLES (ET, pr and rn; ERA5 has no LAI), plus the
 gridded ET products in GRIDDED_ET_PRODUCTS (PML-V2.2, GLEAM v4.3, SiTHv2). Set
 ERA5_VARIABLES = () and GRIDDED_ET_PRODUCTS = {} for an ILAMB-only run. (Merges
 the former ilamb_binned_et.py and obs_binned_et.py.)
 
 Steps
 -----
-1. Load each product onto a common grid (lon in [-180, 180], lat
-   ascending in [-90, 90]) defined by config.TARGET_RES.
-   - ILAMB products (`il.load_ilamb_annual`): 1 deg products are bilinearly
-     interpolated (xESMF). ET (evspsbl, hfls), pr and rns are converted to
-     W/m2, LAI is m2/m2. Annual means are computed over complete years only. A
-     missing month counts as LAI = 0 (winter gaps at high latitudes), while
-     ET, pr and rns need all 12 months for the annual mean to be valid.
-   - ERA5 (`le.load_era5_annual`, GDEX monthly mean rates: ET = -mer,
-     pr = mtpr, rns = msnswrf + msnlwrf): annual means over complete years on
-     the native 0.25 deg grid, masked to land (LANDFRAC > LF_THRESH) and
-     conservatively regridded (NaN where more than half of a 0.5 deg cell is
-     not land), as for CMIP6. Loaded only over the years in which every
-     variable that ERA5 does not provide (LAI) has some product.
-   - Gridded ET products (`load_gridded`) are read from their native 0.1 deg
-     files and conservatively regridded in memory each month
-     (`lo.load_obs_regridded`, NaN where more than half of a 0.5 deg cell is
-     missing), then converted from
-     mm/month or mm/year to W/m2, only over the years shared by the LAI, pr and
-     rns products (ERA5 included). Monthly products use complete years and need all 12
-     months; for yearly products the yearly total is the annual mean.
-     Gridcell-years with annual mean ET < MIN_ANNUAL_ET (-1 W/m2) are NaN
-     (GLEAM v4.3b has extreme negative values at high latitudes).
-2. Map the climatological mean of each product, and of AI for each pr/rns pair.
-3. Each (ET, LAI, pr, rns) combination uses the complete years shared by all
+1. Load annual means of each product onto the common TARGET_RES grid (lon in
+   [-180, 180], lat ascending), all by the same rule: `load_annual` of the
+   product's load module, i.e. annual means over complete years on the native
+   grid, masked to land there (`load_native`), then conservatively regridded
+   (`rg.regrid_annual`: NaN where more than NA_THRESH of a target cell is
+   missing). ET, pr and rn are in W/m2 and need all 12 months for a valid
+   annual mean, while a missing LAI month counts as LAI = 0 (winter gaps at
+   high latitudes).
+   - ILAMB products (`il.load_annual`): native land mask from Natural Earth
+     (removes the ocean of the global pr and rn products).
+   - ERA5 (`le.load_annual`, GDEX monthly mean rates: ET = -mer, pr = mtpr,
+     rn = msnswrf + msnlwrf): native land mask LANDFRAC > LF_THRESH, as for
+     CMIP6. Loaded only over the years in which every variable that ERA5 does
+     not provide (LAI) has some product.
+   - Gridded ET products (`lo.load_annual`), from their native 0.1 deg files
+     (mm/month or mm/year): native land mask from Natural Earth. Loaded only
+     over the years shared by the LAI, pr and rn products (ERA5 included). For
+     yearly products the yearly total is the annual mean.
+   Gridcell-years of any ET product with annual mean ET < MIN_ANNUAL_ET
+   (-1 W/m2) are NaN (GLEAM v4.3b has extreme negative values at high
+   latitudes).
+2. Map the climatological mean of each product, and of AI for each pr/rn pair.
+3. Each (ET, LAI, pr, rn) combination uses the complete years shared by all
    four products, and is skipped if there are fewer than MIN_YEARS. Binning
    inputs are annual mean ET and climatological LAI and AI
    (`binning.prepare_inputs`), restricted to one common area mask: land gridcells
@@ -48,7 +47,7 @@ Steps
 
 Outputs
 -------
-<combo>  : "<et>-<lai>-<pr>-<rns>" product names
+<combo>  : "<et>-<lai>-<pr>-<rn>" product names
 <period> : YYYYMM-YYYYMM of a combination / product; <span> covers all combinations
 <kind>   : "pooled_obs" or "combo"
 
@@ -57,15 +56,15 @@ PROC_ROOT/qbin/obs.<combo>.et.qbin_clim_<kind>.<period>.nc      per combination
 PROC_ROOT/qbin/obs.all<N>.et.qbin_clim_<kind>.<span>.nc          all combinations along `combo`
 PROC_ROOT/qbin/obs.all<N>.et.qbin_clim_pooled_obs.<span>.et_product_std.nc   std across ET products
 BIN_EDGES_ROOT/obs.{lai,ai}_clim.15_quantiles_{pooled,combo}.all<N>.<span>.nc
-FIG_ROOT/obs/<var>/obs.<product>.<var>.map.<period>.png          var in et, lai, pr, rns
-FIG_ROOT/obs/ai/obs.<pr>-<rns>.ai.map.<period>.png
+FIG_ROOT/obs/<var>/obs.<product>.<var>.map.<period>.png          var in et, lai, pr, rn
+FIG_ROOT/obs/ai/obs.<pr>-<rn>.ai.map.<period>.png
 FIG_ROOT/obs/qbin_edges/obs.{lai,ai}_clim.15_quantiles_{pooled,combo}.all<N>.<span>.png
 FIG_ROOT/obs/qbin/obs.all<N>.et.qbin_clim_<kind>.<span>.summary.png
 FIG_ROOT/obs/qbin/obs.all<N>.et.qbin_clim_<kind>.<span>.bin_mean.png   one heatmap per combination
 FIG_ROOT/obs/qbin/obs.all<N>.et.qbin_clim_<kind>.<span>.bin_mean_signif.png
     as bin_mean, with bins whose mean is not significantly different from 0 hatched
 FIG_ROOT/obs/qbin/obs.all<N>.et.qbin_clim_pooled_obs.<span>.et_product_std.png
-    std of bin mean ET across ET products, one heatmap per (lai, pr, rns) product set
+    std of bin mean ET across ET products, one heatmap per (lai, pr, rn) product set
 """
 
 from __future__ import annotations
@@ -88,7 +87,6 @@ import etunc.grid as rg
 import etunc.load.era5 as le
 import etunc.load.ilamb as il
 import etunc.load.obs as lo
-import etunc.units as units
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
 
@@ -125,15 +123,15 @@ ILAMB_PRODUCTS = {
     "et":  list(il.PRODUCTS["et"]),  # every ILAMB ET product
     "lai": ["MODIS"],
     "pr":  ["GPCPv2.3"],
-    "rns": ["CERESed4.2"],
+    "rn":  ["CERESed4.2"],
 }
 
 # Variables for which ERA5 is added as a product (labelled "ERA5"), any of
-# le.VARIABLES ("et", "pr", "rns"; ERA5 has no LAI). () = no ERA5
-ERA5_VARIABLES = ("et", "pr", "rns")
+# le.VARIABLES ("et", "pr", "rn"; ERA5 has no LAI). () = no ERA5
+ERA5_VARIABLES = ("et", "pr", "rn")
 
-# Gridded ET products added to the ILAMB ET products, regridded in memory from their
-# native files: {label: (load_obs dataset, version, variable, freq)}. {} = ILAMB only.
+# Gridded ET products added to the ILAMB ET products, read from their native files:
+# {label: (load_obs dataset, version, variable, freq)}. {} = ILAMB only.
 GRIDDED_ET_PRODUCTS = {
     "PMLv2.2a_MODIS": ("pml", "V2.2a-MODIS", "ET", "monthly"),
     # "PMLv2.2b":       ("pml", "V2.2b", "ET", "monthly"),
@@ -142,7 +140,7 @@ GRIDDED_ET_PRODUCTS = {
     "GLEAMv4.3b":     ("gleam", "v4.3b", "E", "monthly"),
     "SiTHv2":         ("sith", "v2", "ET", "monthly"),
 }
-# Gridcell-years of gridded products with annual mean ET below this [W/m2] are
+# Gridcell-years of any ET product with annual mean ET below this [W/m2] are
 # NaN; GLEAM v4.3b has extreme negative monthly E at high latitudes in winter
 MIN_ANNUAL_ET = -1.0
 
@@ -150,11 +148,11 @@ MIN_ANNUAL_ET = -1.0
 # Loading
 # ------------------------------------------------------------------
 
-def era5_span(ann: dict[str, dict[str, xr.DataArray]]) -> tuple[int, int]:
+def era5_span(ann: dict[str, dict[str, xr.DataArray]]) -> slice:
     """
-    First and last year to load ERA5 for: the years on GDEX in which every
-    variable that ERA5 does not provide (always LAI) has some product in `ann`.
-    ERA5 years outside them can never be part of a combination.
+    Years to load ERA5 for: from the first to the last year on GDEX in which
+    every variable that ERA5 does not provide (always LAI) has some product in
+    `ann`. ERA5 years outside them can never be part of a combination.
     """
     years = set(le.available_years("meanflux"))
     for v in FACTORS:
@@ -162,40 +160,18 @@ def era5_span(ann: dict[str, dict[str, xr.DataArray]]) -> tuple[int, int]:
             years &= set().union(*(da.year.values.tolist() for da in ann[v].values()))
     if not years:
         raise RuntimeError("No ERA5 year is covered by a product of every variable that ERA5 does not provide.")
-    return min(years), max(years)
+    return slice(str(min(years)), str(max(years)))
 
 
-def load_gridded(label: str, years: tuple[int, int]) -> xr.DataArray:
-    """Annual mean ET [W/m2] (year, lat, lon) of a gridded product within `years` (first, last)."""
-    dataset, version, var, freq = GRIDDED_ET_PRODUCTS[label]
-    da = lo.load_obs_regridded(
-        dataset, var, slice(str(years[0]), str(years[1])), TARGET_RES, version=version, freq=freq,
-    )
-    da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
-
-    if freq == "monthly":
-        da = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))
-        ann = temporal.annual_mean(da, require_all_months=True)
-    elif freq == "yearly":
-        ann = temporal.yearly_to_annual(da)
-    else:
-        raise ValueError(f"{label}: unsupported freq {freq!r}")
-
-    outlier = ann < MIN_ANNUAL_ET
-    if outlier.any():
-        print(f"et/{label}: {int(outlier.sum())} gridcell-years with annual ET < {MIN_ANNUAL_ET} W/m2 set to NaN "
-              f"(min {float(ann.min()):0.3g})")
-        with xr.set_options(keep_attrs=True):
-            ann = ann.where(~outlier)
-
-    # Same grid checks and LAT_BNDS selection as il.load_ilamb_annual
-    ann = rg.on_grid(ann, TARGET_RES, f"et/{label}").rename("et")
-
-    print(
-        f"et  {label:12}: {ann.dims} {ann.shape} {temporal.period_str(ann.year.values)} "
-        f"[{float(ann.min()):0.3g}, {float(ann.max()):0.3g}] {ann.attrs['units']}"
-    )
-    return ann
+def drop_et_outliers(da: xr.DataArray, label: str) -> xr.DataArray:
+    """Annual mean ET `da` with gridcell-years below MIN_ANNUAL_ET set to NaN."""
+    outlier = da < MIN_ANNUAL_ET
+    if not outlier.any():
+        return da
+    print(f"et/{label}: {int(outlier.sum())} gridcell-years with annual ET < {MIN_ANNUAL_ET} W/m2 set to NaN "
+          f"(min {float(da.min()):0.3g})")
+    with xr.set_options(keep_attrs=True):
+        return da.where(~outlier)
 
 
 # ------------------------------------------------------------------
@@ -217,10 +193,10 @@ def combo_inputs(
     years: list[int],
     mask: xr.DataArray,
 ) -> dict[str, xr.DataArray]:
-    """`binning.prepare_inputs` for one (et, lai, pr, rns) combination over `years`, on land gridcells."""
+    """`binning.prepare_inputs` for one (et, lai, pr, rn) combination over `years`, on land gridcells."""
     fields = {v: ann[v][p].sel(year=years) for v, p in zip(FACTORS, combo)}
     return binning.prepare_inputs(
-        et=fields["et"], lai=fields["lai"], precip=fields["pr"], rn=fields["rns"], mask=mask,
+        et=fields["et"], lai=fields["lai"], precip=fields["pr"], rn=fields["rn"], mask=mask,
     )
 
 
@@ -240,7 +216,7 @@ def concat_combos(das: list[xr.DataArray], combos: dict[str, tuple]) -> xr.DataA
 def et_product_spread(bs_all: xr.DataArray) -> xr.Dataset:
     """
     Sample std (ddof=1) of the bin mean ET across ET products, separately for
-    each (lai, pr, rns) product set along `lai_pr_rns`, so only the ET product
+    each (lai, pr, rn) product set along `lai_pr_rn`, so only the ET product
     varies. Needs edges shared by all combinations ("pooled_obs"). Bins with
     fewer than two ET products are NaN; `n_products` counts the ET products
     with a bin mean and `n_et_products` the ET products in each set.
@@ -248,15 +224,15 @@ def et_product_spread(bs_all: xr.DataArray) -> xr.Dataset:
     labels = ["-".join(c) for c in zip(*(bs_all[f"{v}_product"].values for v in FACTORS[1:]))]
     grouped = (
         bs_all.sel(stats="mean", drop=True)
-        .assign_coords(lai_pr_rns=("combo", labels))
-        .groupby("lai_pr_rns")
+        .assign_coords(lai_pr_rn=("combo", labels))
+        .groupby("lai_pr_rn")
     )
     with xr.set_options(keep_attrs=True):
         n = grouped.count("combo")
         std = grouped.std("combo", ddof=1).where(n >= 2)
     out = xr.Dataset({"et_std": std, "n_products": n.astype("i4")}, attrs=bs_all.attrs)
     out["et_std"].attrs["long_name"] = "std of bin mean ET across ET products (ddof=1)"
-    return out.assign_coords(n_et_products=("lai_pr_rns", [labels.count(g) for g in out.lai_pr_rns.values]))
+    return out.assign_coords(n_et_products=("lai_pr_rn", [labels.count(g) for g in out.lai_pr_rn.values]))
 
 
 # ------------------------------------------------------------------
@@ -296,18 +272,18 @@ def plot_combo_edges(combo_edges: xr.DataArray, pooled: xr.DataArray, title: str
 
 def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | None = None):
     """
-    One heatmap per (lai, pr, rns) product set of the std of bin mean ET across
+    One heatmap per (lai, pr, rn) product set of the std of bin mean ET across
     ET products (`et_product_spread`), on a shared colour scale. Hatched bins
     lack a bin mean from at least one ET product.
     """
-    groups = spread.lai_pr_rns.values
+    groups = spread.lai_pr_rn.values
     fig, axs = plt.subplots(
         1, len(groups), figsize=(5.5 * len(groups), 4.5), squeeze=False, layout="constrained",
     )
     units = spread.attrs.get("units", "?")
     vmax = float(spread["et_std"].quantile(0.98))
     for ax, g in zip(axs.ravel(), groups):
-        s = spread.sel(lai_pr_rns=g)
+        s = spread.sel(lai_pr_rn=g)
         plotting.plot_bin_field(
             s["et_std"], ax=ax, hatch=s["n_products"] < s["n_et_products"],
             cmap="viridis", vmin=0, vmax=vmax, extend="max",
@@ -333,28 +309,32 @@ def main():
     # ------------------------------------------------------------------
     print("=== Load ILAMB products ===")
     ann = {
-        v: {p: il.load_ilamb_annual(v, p, TARGET_RES) for p in (ILAMB_PRODUCTS.get(v) or products)}
+        v: {p: il.load_annual(v, p, slice(None, None), TARGET_RES)[v] for p in (ILAMB_PRODUCTS.get(v) or products)}
         for v, products in il.PRODUCTS.items()
     }
 
-    # ERA5 before the gridded ET products, so that ERA5 pr and rns count toward their years
+    # ERA5 before the gridded ET products, so that ERA5 pr and rn count toward their years
     if ERA5_VARIABLES:
         span = era5_span(ann)
-        print(f"\n=== Load ERA5 ({span[0]}-{span[1]}) ===")
-        for v in ERA5_VARIABLES:
-            ann[v]["ERA5"] = le.load_era5_annual(v, span, TARGET_RES)
+        print(f"\n=== Load ERA5 ({span.start}-{span.stop}) ===")
+        for v, da in le.load_annual(ERA5_VARIABLES, span, TARGET_RES).items():
+            ann[v]["ERA5"] = da
 
-    # Gridded ET only over the years that some (lai, pr, rns) product set shares
+    # Gridded ET only over the years that some (lai, pr, rn) product set shares
     if GRIDDED_ET_PRODUCTS:
         years = set().union(*(
             temporal.shared_years(*das) for das in itertools.product(*(ann[v].values() for v in FACTORS[1:]))
         ))
         if not years:
-            raise RuntimeError("No (lai, pr, rns) product set shares any year.")
-        span = (min(years), max(years))
-        print(f"\n=== Load gridded ET products ({span[0]}-{span[1]}) ===")
-        for label in GRIDDED_ET_PRODUCTS:
-            ann["et"][label] = load_gridded(label, span)
+            raise RuntimeError("No (lai, pr, rn) product set shares any year.")
+        span = slice(str(min(years)), str(max(years)))
+        print(f"\n=== Load gridded ET products ({span.start}-{span.stop}) ===")
+        for label, (dataset, version, var, freq) in GRIDDED_ET_PRODUCTS.items():
+            et = lo.load_annual(dataset, var, span, TARGET_RES, version=version, freq=freq)[var]
+            ann["et"][label] = et.rename("et")
+
+    # One plausibility rule for every ET product
+    ann["et"] = {p: drop_et_outliers(da, p) for p, da in ann["et"].items()}
 
     # ------------------------------------------------------------------
     # Maps of climatological means
@@ -364,16 +344,16 @@ def main():
         for p, da in products.items():
             save_clim_map(temporal.aggregate(da, "clim"), v, p, temporal.period_str(da.year.values), mask)
 
-    for pr_p, rns_p in itertools.product(ann["pr"], ann["rns"]):
-        years = temporal.shared_years(ann["pr"][pr_p], ann["rns"][rns_p])
+    for pr_p, rn_p in itertools.product(ann["pr"], ann["rn"]):
+        years = temporal.shared_years(ann["pr"][pr_p], ann["rn"][rn_p])
         if not years:
-            print(f"{pr_p}-{rns_p}: no shared years, skipping AI map")
+            print(f"{pr_p}-{rn_p}: no shared years, skipping AI map")
             continue
         ai = binning.compute_aridity_index(
             temporal.aggregate(ann["pr"][pr_p].sel(year=years), "clim"),
-            temporal.aggregate(ann["rns"][rns_p].sel(year=years), "clim"),
+            temporal.aggregate(ann["rn"][rn_p].sel(year=years), "clim"),
         )
-        save_clim_map(ai, "ai", f"{pr_p}-{rns_p}", temporal.period_str(years), mask)
+        save_clim_map(ai, "ai", f"{pr_p}-{rn_p}", temporal.period_str(years), mask)
 
     # ------------------------------------------------------------------
     # Combinations and their shared years

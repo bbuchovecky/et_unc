@@ -6,9 +6,14 @@ the FHIST perturbed-parameter ensemble ("fppe"), the GOGA2 10-member ensemble
 ("goga") and the CESM2 Large Ensemble ("lens"). Also holds each ensemble's grid
 file (LANDFRAC, LANDAREA, ...) and the FHIST PPE member names.
 
-Every loader returns a lazy (dask) Dataset with a ``member`` dimension. Its time
-axis is shifted from CESM's end-of-interval stamps to the month the data
-averages (see ``shift_time``).
+Every ensemble loader (`load_fhist_ppe`, `load_goga2`, `load_cesm2le`)
+returns a lazy (dask) Dataset of native monthly fields with a ``member``
+dimension. Its time axis is shifted from CESM's end-of-interval stamps to the
+month the data averages (see ``shift_time``).
+
+Annual means for binning, as in every load module: `load_native` (LENS2 or
+FHIST PPE annual means of ET, LAI, pr and Rn on the native grid, LANDFRAC
+mask) and `load_annual` = `etunc.grid.regrid_annual` of it.
 
 Example
 -------
@@ -18,6 +23,9 @@ Example
 >>> ds = lc.load_goga2("EFLX_LH_TOT", "lnd", "month_1", "h0")
 >>> ds = lc.load_cesm2le("EFLX_LH_TOT", "lnd", "month_1", "h0", bb="cmip6")
 >>> lc.ppe_member_name(2)   # "2.dleaf.max"
+>>> variables = {"et": ("EFLX_LH_TOT", "lnd"), "lai": ("TLAI", "lnd"), "pr": ("PRECT", "atm"),
+...              "fsns": ("FSNS", "atm"), "flns": ("FLNS", "atm")}
+>>> ann = lc.load_annual("lens", None, slice("1995-01", "2014-12"), 1, variables=variables)
 """
 
 from __future__ import annotations
@@ -26,14 +34,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from glob import glob
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal, Mapping, Sequence
 
 import numpy as np
 import xarray as xr
 
-from etunc.config import LAT_BNDS
-from etunc.grid import equal_coords
-from etunc.units import convert_units
+from etunc.config import LAT_BNDS, LF_THRESH, NA_THRESH
+from etunc.grid import bounded_source_grid, check_same_grid, mask_greenland, regrid_annual
+from etunc.temporal import annual_means, print_annual
+from etunc.units import convert_units, net_radiation_cesm
 
 
 CESM2_COMPONENT_MAP = {
@@ -515,7 +524,7 @@ def load_cesm2le(
 
 
 # ------------------------------------------------------------------
-# Wrappers: masked, unit-converted fields on a given grid
+# Grid file
 # ------------------------------------------------------------------
 
 def load_cesm_grid(source: Literal["fppe", "goga", "lens"], lat_bnds: slice = LAT_BNDS) -> xr.Dataset:
@@ -523,57 +532,158 @@ def load_cesm_grid(source: Literal["fppe", "goga", "lens"], lat_bnds: slice = LA
     return load_grid(source).sel(lat=lat_bnds)
 
 
-def load_cesm_variable(
-    source: Literal["fppe", "goga", "lens"],
-    variable: str,
-    grid: xr.Dataset | xr.DataArray,
+# ------------------------------------------------------------------
+# Annual means for binning (scripts/bin_lens.py, scripts/bin_fppe.py)
+# ------------------------------------------------------------------
+
+def _lens_fields(
+    variables: Mapping[str, tuple[str, str]],
+    members: Sequence[str] | None,
+    time_slice: slice,
+    frequency: str,
+    stream: str,
+    bb: str,
+) -> dict[str, xr.DataArray]:
+    """{key: (member, time, lat, lon)} of LENS2 `members` (ens_names; None = all), with member_id = ens_name."""
+    fields, ens = {}, None
+    for k, (v, gcomp) in variables.items():
+        print(f"{v} ({gcomp})")
+        da = load_cesm2le(v, gcomp, frequency, stream, bb=bb, verbose=False)[v].sel(time=time_slice)
+        names = da["ens_name"].values.tolist()
+        if ens is None:
+            ens = names if members is None else list(members)
+            missing = [m for m in ens if m not in names]
+            if missing:
+                raise ValueError(f"Members {missing} not in LENS2 ({bb}): {names}")
+        # Only member_id is kept of the non-index coords
+        da = da.isel(member=[names.index(m) for m in ens]).reset_coords(drop=True)
+        fields[k] = da.assign_coords(member_id=("member", ens))
+    return fields
+
+
+def _fppe_fields(
+    variables: Mapping[str, tuple[str, str]],
+    members: Sequence[int] | None,
+    time_slice: slice,
+    frequency: str,
+    stream: str,
+    drop_outliers: Sequence[int],
+) -> dict[str, xr.DataArray]:
+    """
+    {key: (member, time, lat, lon)} of the FHIST PPE `members` (None = all but
+    `drop_outliers`) that have every variable, with member_id = parameter name.
+    """
+    # One `load_fhist_ppe` call per component
+    by_gcomp: dict[str, list[str]] = {}
+    for v, gcomp in variables.values():
+        by_gcomp.setdefault(gcomp, []).append(v)
+    ds = {}
+    for gcomp, vs in by_gcomp.items():
+        d = load_fhist_ppe(vs, gcomp, frequency, stream, members=members, drop_outliers=drop_outliers)
+        if not d.data_vars:
+            raise RuntimeError(f"No FHIST PPE files found for {vs} ({gcomp})")
+        missing = [v for v in vs if v not in d]
+        if missing:
+            raise RuntimeError(f"Missing FHIST PPE variables {missing} ({gcomp})")
+        # load_fhist_ppe squeezes out `member` when only one member is found
+        ds[gcomp] = d if "member" in d.dims else d.expand_dims("member")
+
+    # A member counts only if it has every variable of every component
+    ids = sorted(set.intersection(*(set(d.member.values.tolist()) for d in ds.values())))
+    for gcomp, d in ds.items():
+        dropped = sorted(set(d.member.values.tolist()) - set(ids))
+        if dropped:
+            print(f"{gcomp}: members {dropped} lack another component's variables, skipping them")
+    if not ids:
+        raise RuntimeError("No FHIST PPE member has every variable.")
+    names = [ppe_member_name(m) for m in ids]
+    return {
+        k: ds[gcomp][v].sel(member=ids, time=time_slice).reset_coords(drop=True).assign_coords(member_id=("member", names))
+        for k, (v, gcomp) in variables.items()
+    }
+
+
+def load_native(
+    source: Literal["lens", "fppe"],
+    members: Sequence[str] | Sequence[int] | None,
+    time_slice: slice,
     *,
-    mask: xr.DataArray | bool = True,
-    time_slice: slice = slice(None, None),
-    lat_bnds: slice = LAT_BNDS,
-    gcomp: str = "lnd",
+    variables: Mapping[str, tuple[str, str]],
+    frequency: str = "month_1",
     stream: str = "h0",
     bb: str = "cmip6",
-    verbose: bool = True,
-) -> xr.DataArray:
+    drop_outliers: Sequence[int] = (13, 28),
+) -> tuple[dict[str, xr.DataArray], xr.DataArray, xr.Dataset]:
     """
-    Load a CESM ensemble variable on `grid`, masked and converted to W/m2.
+    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
+    of a CESM ensemble on its native grid, masked with the grid file's land
+    fraction (LANDFRAC > LF_THRESH, no Greenland/Iceland), with `member_id`
+    on `member`. Complete years only; a missing month counts as LAI = 0, while
+    ET, pr and Rn need all 12 months (`annual_means`).
 
-    source : "fppe" (FHIST PPE), "goga" (GOGA2) or "lens" (LENS2)
-    variable : name with frequency suffix, e.g. "EFLX_LH_TOT_month_1"
-    gcomp, stream : model component ("lnd" or "atm") and history stream of
-        `variable`, for every source. For "fppe", PRECT is read as
-        PRECT_calculated from "atm" whatever `gcomp` is.
+    source : "lens" (LENS2; `members` are ens_names, `bb` its biomass burning
+        forcing) or "fppe" (FHIST PPE; `members` are integer ids, None = all
+        but `drop_outliers`).
+    variables : {key: (CESM variable, gcomp)} for the keys "et" (EFLX_LH_TOT,
+        in W/m2), "lai", "pr" (PRECT or PRECT_calculated, m/s), "fsns" and "flns".
+
+    Returns (annual means, native land mask, native grid with cell edges), the
+    input of `etunc.grid.regrid_annual`.
     """
-    if verbose:
-        print(f"{source.upper()}: Loading {variable}")
-    # The last two "_" parts are the frequency ("month_1")
-    v = "_".join(variable.split("_")[:-2])
-    frq = "_".join(variable.split("_")[-2:])
+    grid = load_grid(source)
+    # Sets the area the ensemble contributes: native cells with LANDFRAC > LF_THRESH, minus
+    # Greenland/Iceland. Masking on the native grid keeps ocean and ice-sheet values
+    # out of the area-weighted means of the regridding
+    native_mask = mask_greenland(grid["LANDFRAC"], LF_THRESH)
 
-    if source == "fppe":
-        if v == "PRECT":
-            v = "PRECT_calculated"
-            variable = f"PRECT_calculated_{frq}"
-            gcomp = "atm"
-        ds = load_fhist_ppe(v, gcomp, frq, stream, verbose=verbose)
-    elif source == "goga":
-        ds = load_goga2(v, gcomp, frq, stream)
-    elif source == "lens":
-        ds = load_cesm2le(v, gcomp, frq, stream, bb=bb, verbose=verbose)
+    if source == "lens":
+        fields = _lens_fields(variables, members, time_slice, frequency, stream, bb)
+    elif source == "fppe":
+        fields = _fppe_fields(variables, members, time_slice, frequency, stream, drop_outliers)
     else:
-        raise ValueError(f"Unknown CESM source {source!r}")
+        raise ValueError(f"Unsupported CESM source {source!r}; use 'lens' or 'fppe'")
+    for k, da in fields.items():
+        check_same_grid(da, grid, f"{source}/{k}")
+        # Exact grid-file coords, so `.where(native_mask)` cannot misalign on round-off
+        fields[k] = da.assign_coords(lat=grid.lat, lon=grid.lon)
 
-    da = ds[v].sel(time=time_slice, lat=lat_bnds)
-    if not equal_coords(da, grid, ("lat", "lon")):
-        raise IndexError(f"{variable} and grid do not have the same 'lat', 'lon' coordinates")
-    # Only snaps round-off differences (checked above); it never silently regrids
-    da = da.reindex_like(grid, method="nearest", tolerance=1e-3)
-    # A bool `mask` (the default True) means no masking
-    if isinstance(mask, xr.DataArray):
-        if not equal_coords(mask, grid, ("lat", "lon")):
-            raise IndexError("mask and grid do not have the same 'lat', 'lon' coordinates")
-        da = da.where(mask.reindex_like(grid, method="nearest", tolerance=1e-3))
-    # Keyed on the full name: only PRECT* is converted (m/s -> W/m2). EFLX_LH_TOT is
-    # already W/m2; any other water flux (e.g. mm/s) passes through unconverted
-    return convert_units(variable, da, verbose=verbose)
+    monthly = {
+        # EFLX_LH_TOT is the total latent heat flux, already in W/m2
+        "et": fields["et"].assign_attrs(units="W/m2"),
+        "lai": fields["lai"].assign_attrs(units="m2/m2"),
+        # Keyed on the variable name: PRECT(_calculated) m/s -> W/m2
+        "pr": convert_units(variables["pr"][0], fields["pr"]),
+        "rn": net_radiation_cesm(fields["fsns"], fields["flns"]),
+    }
+    with xr.set_options(keep_attrs=True):
+        monthly = {k: da.where(native_mask) for k, da in monthly.items()}
+    return annual_means(monthly), native_mask, bounded_source_grid(grid)
+
+
+def load_annual(
+    source: Literal["lens", "fppe"],
+    members: Sequence[str] | Sequence[int] | None,
+    time_slice: slice,
+    res: float | str,
+    *,
+    variables: Mapping[str, tuple[str, str]],
+    frequency: str = "month_1",
+    stream: str = "h0",
+    bb: str = "cmip6",
+    drop_outliers: Sequence[int] = (13, 28),
+    mask: xr.DataArray | None = None,
+    na_thres: float = NA_THRESH,
+) -> dict[str, xr.DataArray]:
+    """
+    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
+    of a CESM ensemble on `target_grid(res)` within LAT_BNDS, masked with
+    `mask` if given: `etunc.grid.regrid_annual` of `load_native`.
+    """
+    native = load_native(
+        source, members, time_slice, variables=variables, frequency=frequency, stream=stream, bb=bb,
+        drop_outliers=drop_outliers,
+    )
+    ann = regrid_annual(*native, res, mask=mask, na_thres=na_thres, label=source)
+    for k, da in ann.items():
+        print_annual(da, f"{k:3} {source}")
+    return ann

@@ -9,15 +9,15 @@ diagnostics, for the CESM2 FHIST perturbed-parameter ensemble (FHIST PPE,
 Steps
 -----
 1. Load MEMBERS (default: every member except DROP_OUTLIERS) over TIME_SLICE
-   with `lc.load_fhist_ppe`: EFLX_LH_TOT and TLAI from "lnd", PRECT_calculated,
-   FSNS and FLNS from "atm". Only members with every variable are used.
+   with `lc.load_annual` (`lc.load_native`, then `rg.regrid_annual`):
+   EFLX_LH_TOT and TLAI from "lnd", PRECT_calculated, FSNS and FLNS from "atm". Only members with every variable are used.
 2. Mask the fields on the native f19 grid with the grid file's land fraction
    (LANDFRAC > LF_THRESH, no Greenland or Iceland). ET is EFLX_LH_TOT [W/m2],
    PRECT_calculated is converted to W/m2, and Rn = FSNS - FLNS. Annual means
    use complete years only: a missing month counts as LAI = 0, while ET, pr
    and Rn need all 12 months.
    The annual means are conservatively regridded (xESMF,
-   `rg.bounded_conservative_regridder`) onto the common 1 deg grid of
+   `rg.regrid_annual`) onto the common 1 deg grid of
    bin_cmip.py (lon in [-180, 180], lat ascending). A target cell is NaN if
    more than NA_THRESH of its area is outside the native land mask. The Natural
    Earth land mask is then applied.
@@ -57,7 +57,6 @@ import xarray as xr
 
 import etunc.config as cfg
 import etunc.temporal as temporal
-import etunc.units as units
 import etunc.binning as binning
 import etunc.plotting as plotting
 import etunc.grid as rg
@@ -87,10 +86,13 @@ SIGNIF_N_MIN = cfg.SIGNIF_N_MIN
 TIME_SLICE = slice("1995-01", "2014-12")
 FREQUENCY = "month_1"
 STREAM = "h0"
-# Model component of each variable (one `load_fhist_ppe` call per component)
+# {binning input: (CESM variable, component)}. EFLX_LH_TOT is already in W/m2
 VARIABLES = {
-    "lnd": ["EFLX_LH_TOT", "TLAI"],
-    "atm": ["PRECT_calculated", "FSNS", "FLNS"],
+    "et": ("EFLX_LH_TOT", "lnd"),
+    "lai": ("TLAI", "lnd"),
+    "pr": ("PRECT_calculated", "atm"),
+    "fsns": ("FSNS", "atm"),
+    "flns": ("FLNS", "atm"),
 }
 ET_NAME = "EFLX_LH_TOT"  # name of the binned ET in outputs
 
@@ -109,80 +111,8 @@ CMIP_EDGES_TAG: str | None = None
 
 
 # ------------------------------------------------------------------
-# Loading
+# CMIP6 edges
 # ------------------------------------------------------------------
-
-def load_members() -> dict[str, xr.Dataset]:
-    """{gcomp: lazy Dataset (member, time, lat, lon)} of VARIABLES, for the members with every variable."""
-    ds = {}
-    for gcomp, variables in VARIABLES.items():
-        d = lc.load_fhist_ppe(variables, gcomp, FREQUENCY, STREAM, members=MEMBERS, drop_outliers=DROP_OUTLIERS)
-        if not d.data_vars:
-            raise RuntimeError(f"No FHIST PPE files found for {variables} ({gcomp})")
-        # load_fhist_ppe squeezes out `member` when only one member is found
-        ds[gcomp] = d if "member" in d.dims else d.expand_dims("member")
-
-    # A member counts only if it has every variable of every component
-    ids = sorted(set.intersection(*(set(d.member.values.tolist()) for d in ds.values())))
-    for gcomp, d in ds.items():
-        missing = [v for v in VARIABLES[gcomp] if v not in d]
-        if missing:
-            raise RuntimeError(f"Missing FHIST PPE variables {missing} ({gcomp})")
-        dropped = sorted(set(d.member.values.tolist()) - set(ids))
-        if dropped:
-            print(f"{gcomp}: members {dropped} lack another component's variables, skipping them")
-    if not ids:
-        raise RuntimeError("No FHIST PPE member has every variable.")
-    return {gcomp: d.sel(member=ids) for gcomp, d in ds.items()}
-
-
-def load_annual(mask: xr.DataArray) -> dict[str, xr.DataArray]:
-    """
-    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2],
-    masked with the native land fraction, conservatively regridded onto
-    TARGET_GRID within LAT_BNDS and masked with `mask`. `member` holds the
-    integer member ids, `member_id` the parameter names ("2.dleaf.max").
-    """
-    grid = lc.load_grid("fppe")
-    # Native cells with LANDFRAC > LF_THRESH, minus Greenland/Iceland: keeps ocean and
-    # ice-sheet values out of the area-weighted means of the regridding
-    native_mask = rg.mask_greenland(grid["LANDFRAC"], cfg.LF_THRESH)
-
-    ds = load_members()
-    fields = {}
-    for gcomp, variables in VARIABLES.items():
-        for v in variables:
-            da = ds[gcomp][v].sel(time=TIME_SLICE)
-            rg.check_same_grid(da, grid, f"fppe/{v}")
-            # Exact grid-file coords, so `.where(native_mask)` cannot misalign on round-off
-            da = da.assign_coords(lat=grid.lat, lon=grid.lon)
-            # Drop partial first/last years: they would bias annual means toward the months present
-            fields[v] = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))
-
-    monthly = {
-        # EFLX_LH_TOT is the total latent heat flux, already in W/m2
-        "et": fields["EFLX_LH_TOT"].assign_attrs(units="W/m2"),
-        "lai": fields["TLAI"].assign_attrs(units="m2/m2"),
-        "pr": units.convert_units("PRECT_calculated", fields["PRECT_calculated"]),
-        "rn": units.net_radiation_cesm(fields["FSNS"], fields["FLNS"]),
-    }
-
-    ann = {}
-    for k, da in monthly.items():
-        with xr.set_options(keep_attrs=True):
-            da = da.where(native_mask).load()
-        # A missing LAI month counts as 0, while ET, pr and Rn need all 12 months
-        ann[k] = temporal.annual_mean(da, require_all_months=(k != "lai")).transpose(..., "lat", "lon")
-
-    ids = ann["et"].member.values.tolist()
-    names = [lc.ppe_member_name(m) for m in ids]
-    ann = cmip.regrid_annual(ann, rg.bounded_source_grid(grid), TARGET_RES, mask, cfg.NA_THRESH, members=names)
-    print(
-        f"fppe: {len(ids)} member(s) {ids}, native {native_mask.sizes['lat']}x{native_mask.sizes['lon']} "
-        f"-> {ann['et'].dims} {ann['et'].shape}, years {temporal.period_str(ann['et'].year.values)}"
-    )
-    return ann
-
 
 def load_cmip_edges(v: str, n_bins: int, period: str) -> xr.DataArray | None:
     """CMIP6 pooled edges of `v` saved by bin_cmip.py for `period` and GRID_TAG, or None if there are none."""
@@ -229,7 +159,10 @@ def main():
     # climatologies
     # ------------------------------------------------------------------
     print("=== Load FHIST PPE ===")
-    ann = load_annual(mask)
+    ann = lc.load_annual(
+        "fppe", MEMBERS, TIME_SLICE, TARGET_RES, variables=VARIABLES, frequency=FREQUENCY, stream=STREAM,
+        drop_outliers=DROP_OUTLIERS, mask=mask, na_thres=cfg.NA_THRESH,
+    )
     inputs = binning.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
     inputs["et"] = inputs["et"].rename(ET_NAME)
     names = inputs["et"]["member_id"].values.tolist()

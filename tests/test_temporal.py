@@ -51,6 +51,24 @@ def test_annual_mean_missing_month(require_all_months):
         np.testing.assert_allclose(ann.sel(year=2000), 2.0 * (366 - 30) / 366)  # April (30 days) as 0, leap year
 
 
+def test_annual_means_keys_and_complete_years():
+    """
+    annual_means drops partial years, counts a missing month as 0 only for "lai" (every other key needs all 12
+    months), puts lat/lon last and returns loaded data.
+    """
+    times = pd.date_range("2000-01-01", "2001-06-01", freq="MS")  # 2001 is partial
+    values = np.full(len(times), 2.0)
+    values[3] = np.nan  # 2000-04 missing
+    field = monthly(times, values).transpose("lat", "time", "lon").expand_dims(member=[0]).chunk()
+    ann = temporal.annual_means({"lai": field, "et": field})
+    for k in ("lai", "et"):
+        assert ann[k].dims == ("member", "year", "lat", "lon")
+        assert ann[k].year.values.tolist() == [2000]
+        assert ann[k].chunks is None  # loaded
+    np.testing.assert_allclose(ann["lai"], 2.0 * (366 - 30) / 366)
+    assert ann["et"].isnull().all()
+
+
 def test_period_str_and_shared_years():
     """period_str spans the first to last year; shared_years is the sorted intersection of `year` coords."""
     assert temporal.period_str([2009, 2003, 2005]) == "200301-200912"

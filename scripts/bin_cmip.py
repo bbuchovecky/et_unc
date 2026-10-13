@@ -16,7 +16,7 @@ Steps
    - rlus. Annual means use complete years only: a missing month counts as
    LAI = 0, while ET, pr and Rn need all 12 months.
    The annual means are conservatively regridded (xESMF,
-   `rg.bounded_conservative_regridder`) onto the common 1 deg grid (lon in
+   `rg.regrid_annual`) onto the common 1 deg grid (lon in
    [-180, 180], lat ascending). A target cell is NaN if more than NA_THRES of
    its area is outside the native land mask. The Natural Earth land mask is
    then applied. A model whose sftlf is not on its data grid is skipped
@@ -191,9 +191,9 @@ def main():
     inputs = {}
     for sid, mids in members.items():
         try:
-            ann = cmip.load_model(
-                loader, sid, mids, sftlf[sid], mask, variables=VARIABLES, experiment_id=EXPERIMENT_ID,
-                time_slice=TIME_SLICE, res=TARGET_RES, na_thres=cfg.NA_THRESH,
+            ann = cmip.load_annual(
+                loader, sid, mids, sftlf[sid], TIME_SLICE, TARGET_RES, variables=VARIABLES,
+                experiment_id=EXPERIMENT_ID, mask=mask, na_thres=cfg.NA_THRESH,
             )
         except ValueError as err:  # e.g. sftlf on a different grid than the data
             print(f"{sid}: {err}, skipping")

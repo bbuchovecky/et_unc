@@ -145,13 +145,13 @@ def test_bounded_conservative_regridder_conserves():
 
 @pytest.mark.parametrize("res", [0.5, 1.0])
 def test_regridded_coords_are_target_grid(res):
-    """Conservative, bilinear and generic regridders all return exactly the target lat/lon."""
+    """Conservative and generic regridders return exactly the target lat/lon."""
     grid = rg.target_grid(res)
     fine = field(np.round(10.05 + 0.1 * np.arange(20), 4), np.round(20.05 + 0.1 * np.arange(20), 4))
     coarse = field(np.arange(-88.75, 90, 2.5), np.arange(-178.75, 180, 2.5))
     outs = [
         rg.conservative_regridder(fine, res)(fine),
-        rg.bilinear_regridder(coarse, res)(coarse),
+        rg.bounded_conservative_regridder(coarse, res)(coarse),
         cmip.regrid_to_target(coarse, res),
     ]
     for out in outs:
@@ -166,20 +166,85 @@ def test_conservative_regridder_cached():
     assert rg.conservative_regridder(da, 1.0) is not rg.conservative_regridder(da, 0.5)
 
 
-def test_bilinear_constant_and_unmapped_nan():
-    """Constant 1 deg sub-domain field stays constant at 0.5 deg; points outside it are NaN."""
-    da = field(np.arange(10.5, 20, 1.0), np.arange(20.5, 30, 1.0), value=3.0)
-    out = rg.bilinear_regridder(da, 0.5)(da)
-    inside = out.sel(lat=slice(10.5, 19.5), lon=slice(20.5, 29.5))
-    np.testing.assert_allclose(inside, 3.0)
-    assert int(out.notnull().sum()) == inside.size
+def test_bounded_conservative_regridder_cached():
+    """As conservative_regridder: one regridder per source grid (centers and edges) and resolution."""
+    da = field(np.array([-60.0, -20.0, 10.0, 70.0]), np.arange(0.0, 360, 90))
+    assert rg.bounded_conservative_regridder(da, 1.0) is rg.bounded_conservative_regridder(da.to_dataset(name="x"), "1deg")
+    assert rg.bounded_conservative_regridder(da, 1.0) is not rg.bounded_conservative_regridder(da, 0.5)
+    # Same centers, other edges (CF bounds): another regridder
+    ds = da.to_dataset(name="x")
+    ds["lat_bnds"] = (("lat", "bnds"), [[-90, -40], [-40, 0], [0, 30], [30, 90]])
+    assert rg.bounded_conservative_regridder(ds, 1.0) is not rg.bounded_conservative_regridder(da, 1.0)
 
 
-def test_bilinear_periodic_across_dateline():
-    """Global source on [0, 360): target points between 359.5 and 0.5 E are interpolated, not NaN."""
-    da = field(np.arange(-89.5, 90, 1.0), np.arange(0.5, 360, 1.0), value=2.0)
-    out = rg.bilinear_regridder(da, 0.5)(da)
-    np.testing.assert_allclose(out.sel(lat=slice(-89, 89)), 2.0)
+# ------------------------------------------------------------------
+# regrid_annual: the second stage of every load_annual
+# ------------------------------------------------------------------
+
+def coast_case():
+    """
+    2.5 deg global annual means with land values 1 and ocean values 100, and
+    the land mask: in each 10 deg target cell, land is the first native
+    column (25%) east of lon 0 and the first three (75%) west of it.
+    """
+    lat, lon = np.arange(-88.75, 90, 2.5), np.arange(-178.75, 180, 2.5)
+    col = ((lon + 180) % 10) // 2.5
+    land_lon = (col == 0) | ((col <= 2) & (lon < 0))
+    native_mask = xr.DataArray(np.broadcast_to(land_lon, (lat.size, lon.size)).copy(),
+                               coords={"lat": lat, "lon": lon}, dims=("lat", "lon"))
+    ann = xr.where(native_mask, 1.0, 100.0).expand_dims(year=[2000]).assign_attrs(units="W/m2")
+    return {"x": ann}, native_mask, rg.bounded_source_grid(native_mask)
+
+
+def test_regrid_annual_coast_na_thres():
+    """
+    The native land mask keeps ocean values out: a target cell that is part
+    land is the mean of its land cells, or NaN if more than na_thres is not
+    land. Output on the exact target grid within LAT_BNDS, named by its key.
+    """
+    out = rg.regrid_annual(*coast_case(), 10, na_thres=0.5)["x"]
+    west, east = out.lon < 0, out.lon > 0
+    np.testing.assert_allclose(out.where(west, drop=True), 1.0)  # 75% land: kept
+    assert out.where(east, drop=True).isnull().all()             # 25% land: NaN
+    assert out.name == "x" and out.attrs["units"] == "W/m2"
+    grid = rg.target_grid(10).sel(lat=config.LAT_BNDS)
+    np.testing.assert_array_equal(out.lat, grid.lat)
+    np.testing.assert_array_equal(out.lon, grid.lon)
+
+    loose = rg.regrid_annual(*coast_case(), 10, na_thres=0.8)["x"]
+    np.testing.assert_allclose(loose, 1.0)  # 25% land kept too, still without ocean values
+
+
+def test_regrid_annual_target_mask_and_member_id():
+    """The target `mask` is applied after regridding, and member_id on `member` is kept."""
+    ann, native_mask, src_grid = coast_case()
+    members = ["a", "b"]
+    ann = {"x": xr.concat([ann["x"], 2 * ann["x"]], dim="member").assign_coords(member_id=("member", members))}
+    grid = rg.target_grid(10).sel(lat=config.LAT_BNDS)
+    mask = xr.ones_like(grid.lat * grid.lon, dtype=bool).where(grid.lon < -150, False)
+    out = rg.regrid_annual(ann, native_mask, src_grid, 10, mask=mask)["x"]
+    assert out.dims == ("member", "year", "lat", "lon")
+    assert out.member_id.values.tolist() == members
+    assert out.where(~mask).isnull().all()
+    np.testing.assert_allclose(out.sel(member=1).where(mask, drop=True), 2.0)
+
+
+def test_regrid_annual_on_grid_source_is_identity():
+    """A source already on the target grid comes out unchanged (conservative regrid onto itself)."""
+    grid = rg.target_grid(1.0)
+    rng = np.random.default_rng(0)
+    values = rng.uniform(0, 5, (2, grid.sizes["lat"], grid.sizes["lon"]))
+    ann = xr.DataArray(values, dims=("year", "lat", "lon"), coords={"year": [2000, 2001], "lat": grid.lat, "lon": grid.lon})
+    native_mask = xr.ones_like(ann.isel(year=0, drop=True), dtype=bool)
+    out = rg.regrid_annual({"x": ann}, native_mask, rg.bounded_source_grid(ann), 1.0)["x"]
+    np.testing.assert_allclose(out, ann.sel(lat=config.LAT_BNDS), rtol=1e-12)
+
+
+def test_regrid_annual_mask_off_grid_raises():
+    """A native mask on another grid than the annual means raises instead of silently misaligning."""
+    ann, native_mask, src_grid = coast_case()
+    with pytest.raises(ValueError, match="differ from the reference grid"):
+        rg.regrid_annual(ann, native_mask.assign_coords(lat=native_mask.lat + 1), src_grid, 10)
 
 
 # ------------------------------------------------------------------

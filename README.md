@@ -25,10 +25,10 @@ All of these paths are set in `etunc/config.py`.
 | `etunc/config.py` | Paths and domain constants (`LAT_BNDS`, `LF_THRESH`, L = 2.45e6 J/kg, ...) |
 | `etunc/units.py` | Unit conversions to W/m², net radiation for each data source |
 | `etunc/temporal.py` | Annual means (complete years, missing-month rules), aggregation, period strings |
-| `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders, grid checks and snapping, land masks, cell areas |
+| `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders, `regrid_annual` (the one regridding rule of every loader), grid checks and snapping, land masks, cell areas |
 | `etunc/binning.py` | The binning pipeline: inputs, quantile edges, bin statistics, post-processing |
 | `etunc/plotting.py` | Maps, edge and histogram plots, bin heatmaps |
-| `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH, regridded in memory or from saved files), `cmip`, `cesm`, `era5` |
+| `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH), `cmip`, `cesm`, `era5`. Each has `load_native` (annual means on the native grid, land-masked) and `load_annual` (= `grid.regrid_annual` of it) |
 | `etunc/legacy.py` | Older loaders and helpers that only the notebooks still use |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
 | `scripts/` | Runnable pipelines, configured by the constants at the top of each file |
@@ -82,7 +82,10 @@ pixi run test                                    # all tests (~7 min)
 The scripts take no arguments: edit the settings at the top of each script (time
 period, products or models, number of bins, ...). Each script's docstring lists
 its steps and every output file it writes. The pipelines regrid their inputs in
-memory, so the two regrid jobs are not needed before running them.
+memory, so the two regrid jobs are not needed before running them. Every data
+family goes onto the target grid by the same rule: annual means over complete
+years on the native grid, masked to land there, then conservatively regridded
+(`etunc.grid.regrid_annual`, `NA_THRESH`).
 
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`. Binning settings (e.g., `N_XBINS`, `N_YBINS`) exist there but they also can changed at the top of each run script. For consistent analysis, all run script should have the same binning settings.

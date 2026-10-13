@@ -29,8 +29,7 @@ MAP_KWARGS = {
     "evspsbl": {"cmap": "YlGnBu"},
     "lai":     {"cmap": "Greens"},
     "pr":      {"cmap": "Blues"},
-    "rns":     {"cmap": "YlOrRd", "vmin": None},  # Rn can be negative; quick_map's default vmin is 0
-    "rn":      {"cmap": "YlOrRd", "vmin": None},
+    "rn":      {"cmap": "YlOrRd", "vmin": None},  # Rn can be negative; quick_map's default vmin is 0
     "ai":      {"cmap": "BrBG_r"},
 }
 

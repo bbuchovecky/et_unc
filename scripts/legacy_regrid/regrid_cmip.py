@@ -1,7 +1,7 @@
 """
 regrid_cmip.py
 ==============
-DEPRECATED: bin_cmip.py regrids the native fields itself (`cmip.load_model`),
+DEPRECATED: bin_cmip.py regrids the native fields itself (`cmip.load_annual`),
 so no pipeline reads the files written here; only the check-cmip-grids and
 load-cmip notebooks do. Kept until it is decided whether those still need them.
 

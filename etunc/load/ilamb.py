@@ -1,16 +1,17 @@
 """
 etunc.load.ilamb
 ================
-Load the ILAMB observational products in PRODUCTS (ILAMB_DATA_ROOT) onto a
-common target grid (`etunc.grid.target_grid`), lon in [-180, 180] and lat
-ascending, within LAT_BNDS.
+Load the ILAMB observational products in PRODUCTS (ILAMB_DATA_ROOT), with
+lon in [-180, 180] and lat ascending, within LAT_BNDS.
 
-- `load_ilamb_annual`: annual means over complete years, taken *before*
-  products on another grid are bilinearly interpolated (as for binning). LAI
-  is m2/m2 and a missing LAI month counts as 0; ET, pr and rns are converted
-  to W/m2 and need all 12 months.
-- `load_ilamb`: monthly fields over a time slice, each month interpolated,
-  in native units or (`wm2=True`) converted to W/m2 first.
+- Annual means for binning, as in every load module: `load_native` (complete
+  years on the native grid, masked to land with `etunc.grid.land_mask`) and
+  `load_annual` = `etunc.grid.regrid_annual` of it (conservative). LAI is
+  m2/m2 and a missing LAI month counts as 0; ET, pr and rn are converted to
+  W/m2 and need all 12 months.
+- `load_ilamb`: monthly fields over a time slice, each month conservatively
+  regridded (or native with `res=None`), in native units or (`wm2=True`)
+  converted to W/m2 first.
 
 Both set undecoded fill values (|value| >= FILL_THRESH) to NaN.
 """
@@ -20,9 +21,12 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-from etunc.config import ILAMB_ROOT
-from etunc.grid import bilinear_regridder, format_grid, on_grid, target_grid
-from etunc.temporal import annual_mean, complete_years, period_str
+from etunc.config import ILAMB_ROOT, LAT_BNDS, NA_THRESH
+from etunc.grid import (
+    bounded_source_grid, conservative_regridder, format_grid, land_mask, on_grid, regrid_annual,
+    regrid_with_na_thres,
+)
+from etunc.temporal import annual_means, print_annual
 from etunc.units import flux_to_wm2
 
 
@@ -55,7 +59,7 @@ PRODUCTS = {
         "GPCCv2018": ("pr/GPCCv2018/pr.nc", "pr"),
         "GPCPv2.3":  ("pr/GPCPv2.3/pr.nc", "pr"),
     },
-    "rns": {
+    "rn": {
         "CERESed4.2": ("rns/CERESed4.2/rns.nc", "rns"),
         "CLASS":      ("rns/CLASS/rns.nc", "rns"),
         "GEWEX.SRB":  ("rns/GEWEX.SRB/rns_0.5x0.5.nc", "rns"),
@@ -70,43 +74,58 @@ def _open(variable: str, product: str) -> xr.DataArray:
     return format_grid(ds[name])
 
 
-def _off_grid(da: xr.DataArray, res: float | str) -> bool:
-    """True if `da` does not have the shape of `target_grid(res)` and needs regridding."""
-    # Shape only: a grid of the right shape but shifted coordinates is caught by `on_grid`
-    grid = target_grid(res)
-    return da.sizes["lat"] != grid.sizes["lat"] or da.sizes["lon"] != grid.sizes["lon"]
-
-
-def load_ilamb_annual(variable: str, product: str, res: float | str = 0.5) -> xr.DataArray:
-    """Annual means (year, lat, lon) of one product on `target_grid(res)` within LAT_BNDS."""
-    da = _open(variable, product)
-    # Drop partial first/last years: they would bias annual means toward the months present
-    da = da.sel(time=da.time.dt.year.isin(complete_years(da))).load()
+def _monthly(variable: str, product: str, time_slice: slice) -> xr.DataArray:
+    """Loaded monthly field over `time_slice` on the native grid, with fill values as NaN."""
+    da = _open(variable, product).sel(time=time_slice).load()
+    if da.sizes["time"] == 0:
+        raise FileNotFoundError(f"{variable}/{product}: no data in {time_slice}")
     # Fill values must be NaN before averaging, or a single ~1e37 month swamps the year
     with xr.set_options(keep_attrs=True):
-        da = da.where(np.abs(da) < FILL_THRESH)
+        return da.where(np.abs(da) < FILL_THRESH)
 
+
+def load_native(
+    variable: str, product: str, time_slice: slice = slice(None, None),
+) -> tuple[dict[str, xr.DataArray], xr.DataArray, xr.Dataset]:
+    """
+    Annual means {variable: (year, lat, lon)} of one product on its native
+    grid over the complete years in `time_slice`, masked to land
+    (`etunc.grid.land_mask` of the native grid). ET, pr and rn are in W/m2
+    and need all 12 months; LAI is m2/m2 and a missing month counts as 0.
+
+    Returns (annual means, native land mask, native grid), the input of
+    `etunc.grid.regrid_annual`.
+    """
+    da = _monthly(variable, product, time_slice)
     if variable == "lai":
         da.attrs["units"] = "m2/m2"
     else:
         da = flux_to_wm2(da)
-    # Key rule for which gridcell-years are binned: a missing LAI month (winter
-    # gaps at high latitudes) counts as 0, while ET, pr and rns need all 12 months
-    ann = annual_mean(da, require_all_months=(variable != "lai"))
+    # Natural Earth land, as the target-grid mask of the binning. Removes the ocean of the
+    # global pr and rn products (GPCP, CMAP, CERES, GEWEX) before it can enter coastal cells
+    native_mask = land_mask(da)
+    with xr.set_options(keep_attrs=True):
+        da = da.where(native_mask)
+    return annual_means({variable: da}), native_mask, bounded_source_grid(da)
 
-    if _off_grid(ann, res):
-        print(f"{variable}/{product}: regridding {ann.sizes['lat']}x{ann.sizes['lon']} -> {res} deg")
-        # Bilinear; target points outside the source grid are NaN. Regridding the
-        # annual mean (not each month) is deliberate: month-first would spread a
-        # NaN month to every neighboring target point (tests/test_load_ilamb.py)
-        ann = bilinear_regridder(ann, res)(ann, keep_attrs=True)
-    # Exact coordinate values so that fields from different products align
-    ann = on_grid(ann, res, f"{variable}/{product}").rename(variable)
 
-    print(
-        f"{variable:3} {product:12}: {ann.dims} {ann.shape} {period_str(ann.year.values)} "
-        f"[{float(ann.min()):0.3g}, {float(ann.max()):0.3g}] {ann.attrs['units']}"
-    )
+def load_annual(
+    variable: str,
+    product: str,
+    time_slice: slice,
+    res: float | str,
+    *,
+    mask: xr.DataArray | None = None,
+    na_thres: float = NA_THRESH,
+) -> dict[str, xr.DataArray]:
+    """
+    Annual means {variable: (year, lat, lon)} of one product on
+    `target_grid(res)` within LAT_BNDS, masked with `mask` if given:
+    `etunc.grid.regrid_annual` of `load_native`.
+    """
+    label = f"{variable}/{product}"
+    ann = regrid_annual(*load_native(variable, product, time_slice), res, mask=mask, na_thres=na_thres, label=label)
+    print_annual(ann[variable], f"{variable:3} {product:12}")
     return ann
 
 
@@ -114,28 +133,25 @@ def load_ilamb(
     variable: str,
     product: str,
     time_slice: slice,
-    res: float | str = 0.5,
+    res: float | str | None = 0.5,
     *,
     wm2: bool = False,
+    na_thres: float = NA_THRESH,
 ) -> xr.DataArray:
     """
-    Monthly field (time, lat, lon) of one product over `time_slice` on
-    `target_grid(res)` within LAT_BNDS, in native units or, with `wm2`,
-    converted to W/m2 (`flux_to_wm2`) before regridding. Partial years are
-    kept. Products on another grid are bilinearly interpolated month by month,
-    so a target cell next to a NaN source cell is NaN. Raises
-    FileNotFoundError if the product has no data in `time_slice`.
+    Monthly field (time, lat, lon) of one product over `time_slice` within
+    LAT_BNDS, in native units or, with `wm2`, converted to W/m2 (`flux_to_wm2`)
+    before regridding. Partial years are kept. With `res`, each month is
+    conservatively regridded onto `target_grid(res)` (`regrid_with_na_thres`:
+    NaN where more than `na_thres` of a target cell is missing); with
+    `res=None`, it stays on the native grid. Raises FileNotFoundError if the
+    product has no data in `time_slice`.
     """
     label = f"{variable}/{product}"
-    da = _open(variable, product).sel(time=time_slice).load()
-    if da.sizes["time"] == 0:
-        raise FileNotFoundError(f"{label}: no data in {time_slice}")
-    # Undecoded fill values (e.g. GPCCv2018) count as missing
-    with xr.set_options(keep_attrs=True):
-        da = da.where(np.abs(da) < FILL_THRESH)
+    da = _monthly(variable, product, time_slice)
     if wm2:
         da = flux_to_wm2(da)
-    if _off_grid(da, res):
-        print(f"{label}: regridding {da.sizes['lat']}x{da.sizes['lon']} -> {res}")
-        da = bilinear_regridder(da, res)(da, keep_attrs=True)
+    if res is None:
+        return da.sel(lat=LAT_BNDS)
+    da = regrid_with_na_thres(da, conservative_regridder(da, res), na_thres)
     return on_grid(da, res, label)
