@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import etunc.legacy.grid as legacy_grid
 import etunc.config as config
 import etunc.grid as rg
 import etunc.load.cmip as cmip
@@ -33,7 +34,7 @@ TIME_SLICE = slice("1995-01", "2014-12")
 TARGET_RES = 1.0
 TARGET_GRID = rg.target_grid(TARGET_RES)
 NA_THRES = 0.5
-SETTINGS = dict(variables=VARIABLES, experiment_id=EXPERIMENT_ID, na_thres=NA_THRES)
+SETTINGS = dict(variables=VARIABLES, experiment_id=EXPERIMENT_ID, na_thresh=NA_THRES)
 
 def test_sort_member_ids_numeric():
     """Member IDs sort numerically by r, i, p, f (r10 after r2), and invalid IDs raise."""
@@ -315,7 +316,7 @@ def test_load_annual_missing_lai_month_counts_as_zero(loaded):
 def test_load_annual_greenland_excluded(loaded):
     """Land in Greenland is excluded by the native mask, so it is NaN on the target grid."""
     ann, _ = loaded
-    native = rg.mask_greenland(land_fraction(1.0))
+    native = rg.landfrac_mask(land_fraction(1.0))
     assert not native.isel(lat=GREENLAND[0], lon=GREENLAND[1]).any()  # land in sftlf, excluded by the mask
     greenland = ann["et"].sel(lat=slice(72, 81), lon=slice(-45, -36))
     assert greenland.size > 0 and greenland.isnull().all()
@@ -351,7 +352,7 @@ def test_load_annual_missing_variable_raises(tmp_path):
 
 
 def test_load_annual_is_regrid_annual_of_load_native(loaded, tmp_path):
-    """load_annual is rg.regrid_annual(*load_native(...)): native annual means, then the conservative regrid."""
+    """load_annual is legacy_grid.regrid_annual(*load_native(...)): native annual means, then the conservative regrid."""
     ann, _ = loaded
     path = write_sftlf(tmp_path / "sftlf.nc")
     native, native_mask, src_grid = cmip.load_native(
@@ -361,14 +362,14 @@ def test_load_annual_is_regrid_annual_of_load_native(loaded, tmp_path):
     assert native["et"].dims == ("member", "year", "lat", "lon") and native["et"].sizes["lat"] == LAT_N.size
     assert native["et"].member_id.values.tolist() == MEMBERS
     assert native_mask.dtype == bool and src_grid.sizes["lat_b"] == LAT_N.size + 1
-    out = rg.regrid_annual(native, native_mask, src_grid, TARGET_RES, mask=target_mask(), na_thres=NA_THRES)
+    out = legacy_grid.regrid_annual(native, native_mask, src_grid, TARGET_RES, mask=target_mask(), na_thresh=NA_THRES)
     for k in ann:
         xr.testing.assert_identical(out[k], ann[k])
 
 
 def test_regrid_annual_na_thres_and_any_spacing(tmp_path):
     """
-    A higher na_thres keeps target cells that are only 25% land (with the land value); any spacing that divides
+    A higher na_thresh keeps target cells that are only 25% land (with the land value); any spacing that divides
     180 gives that grid's exact coords within LAT_BNDS.
     """
     path = write_sftlf(tmp_path / "sftlf.nc")
@@ -376,14 +377,14 @@ def test_regrid_annual_na_thres_and_any_spacing(tmp_path):
         StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, TIME_SLICE,
         variables=VARIABLES, experiment_id=EXPERIMENT_ID,
     )
-    loose = rg.regrid_annual(native, native_mask, src_grid, TARGET_RES, mask=target_mask(), na_thres=0.8)
+    loose = legacy_grid.regrid_annual(native, native_mask, src_grid, TARGET_RES, mask=target_mask(), na_thresh=0.8)
     edge = loose["pr"].isel(member=1).sel(year=1995, lat=11.5, lon=VALID_LON[1:])  # 25% land (lon 92.5: 19%, NaN)
     np.testing.assert_allclose(edge, EXPECTED["pr"], rtol=1e-10)
     assert loose["pr"].member_id.values.tolist() == MEMBERS
 
     g2 = rg.target_grid(2.0).sel(lat=config.LAT_BNDS)
     mask2 = xr.ones_like(g2.lat * g2.lon)
-    coarse = rg.regrid_annual(native, native_mask, src_grid, 2.0, mask=mask2, na_thres=NA_THRES)
+    coarse = legacy_grid.regrid_annual(native, native_mask, src_grid, 2.0, mask=mask2, na_thresh=NA_THRES)
     np.testing.assert_array_equal(coarse["et"].lat, g2.lat)
     np.testing.assert_array_equal(coarse["et"].lon, g2.lon)
 

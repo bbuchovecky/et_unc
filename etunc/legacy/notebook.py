@@ -1,6 +1,6 @@
 """
-etunc.legacy
-============
+etunc.legacy.notebook
+=====================
 Notebook-only code that no script uses, kept because the exploratory
 notebooks (binned_stats, cmip-et, check-cmip-*, load-cmip, cmip-regrid-res)
 still call it: the original ILAMB and CMIP loaders from the notebook era,
@@ -19,7 +19,7 @@ import xarray as xr
 
 from etunc.binning import ensure_bin_coords
 from etunc.config import ILAMB_ROOT, LAT_BNDS, LF_THRESH
-from etunc.grid import cell_area, equal_coords, mask_greenland
+from etunc.grid import cell_area, equal_coords, landfrac_mask
 from etunc.temporal import to_yyyymm
 from etunc.units import convert_units
 
@@ -68,7 +68,7 @@ def compute_cell_area(ds: xr.Dataset | xr.DataArray) -> tuple[xr.DataArray, xr.D
     area.attrs["long_name"] = "grid cell area"
     area.attrs["method"] = method
 
-    # Unlike `etunc.grid.land_mask`, Greenland and Iceland are kept
+    # Unlike `etunc.grid.landne_mask`, Greenland and Iceland are kept
     mask = xr.where(np.isnan(land.mask(lon_or_obj=area.lon, lat=area.lat)), 0, 1)
     la = area * mask
     la.attrs["units"] = "m2"
@@ -163,7 +163,7 @@ def load_cmip(
     """
     Load CMIP6 variables with CMIPESGFLoader, keeping models with all
     variables and grid variables. Every variable is put on the areacella grid,
-    masked with `mask_greenland`, and converted to W/m2 where applicable.
+    masked with `landfrac_mask`, and converted to W/m2 where applicable.
 
     Returns
     -------
@@ -190,7 +190,7 @@ def load_cmip(
         if lf.attrs.get("units") == "%":  # sftlf is in %, lf_thresh is a fraction
             lf = lf / 100
             lf.attrs["units"] = "1"
-        mask = mask_greenland(lf, lf_thresh)
+        mask = landfrac_mask(lf, lf_thresh)
         mask = mask.where(mask.notnull(), other=False)
         # Snapped to the areacella grid (round-off only, no regridding) and masked on the native grid
         for v, da in vardict.items():

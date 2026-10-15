@@ -23,7 +23,7 @@ Steps
    Earth land mask is then applied.
 3. Map the member-mean climatological ET, LAI, pr, Rn and AI.
 4. The binning inputs per member are annual mean ET and climatological LAI and
-   AI (`binning.prepare_inputs`). They are restricted to one common area mask:
+   AI (`lb.prepare_inputs`). They are restricted to one common area mask:
    land gridcells where ET (in any year), LAI and AI are valid in every member.
 5. Bin ET separately for each member with two sets of quantile edges:
    (a) "pooled_fppe": edges pooled across the members;
@@ -58,6 +58,8 @@ import xarray as xr
 import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
+from etunc.edges import EDGE_ATTRS
+import etunc.legacy.binning as lb  # old edges and inputs, until bin_all.py replaces this script
 import etunc.plotting as plotting
 import etunc.grid as rg
 import etunc.load.cesm as lc
@@ -152,7 +154,7 @@ def by_name(bs: xr.DataArray) -> xr.DataArray:
 def main():
     cfg.summarize()
     period = temporal.format_time_period(TIME_SLICE)
-    mask = rg.land_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
+    mask = rg.landne_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
 
     # ------------------------------------------------------------------
     # Load and regrid annual means, build binning inputs, and map
@@ -161,9 +163,9 @@ def main():
     print("=== Load FHIST PPE ===")
     ann = lc.load_annual(
         "fppe", MEMBERS, TIME_SLICE, TARGET_RES, variables=VARIABLES, frequency=FREQUENCY, stream=STREAM,
-        drop_outliers=DROP_OUTLIERS, mask=mask, na_thres=cfg.NA_THRESH,
+        drop_outliers=DROP_OUTLIERS, mask=mask, na_thresh=cfg.NA_THRESH,
     )
-    inputs = binning.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
+    inputs = lb.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
     inputs["et"] = inputs["et"].rename(ET_NAME)
     names = inputs["et"]["member_id"].values.tolist()
     nmem = len(names)
@@ -186,7 +188,7 @@ def main():
     # Binning inputs, restricted to the area valid in every member
     # ------------------------------------------------------------------
     print("\n=== Common area mask ===")
-    area = binning.common_area({"fppe": inputs}, mask, member_dim="member")
+    area = lb.common_area({"fppe": inputs}, mask, member_dim="member")
     with xr.set_options(keep_attrs=True):
         inputs = {k: da.where(area) for k, da in inputs.items()}
     fout = PROC_ROOT / f"fppe.area_mask.{GRID_TAG}.{period}.{mtag}.nc"
@@ -205,9 +207,9 @@ def main():
     edges = {"pooled_fppe": {}, "pooled_cmip": {}}
     for v in ("lai", "ai"):
         print(f"\n{v}")
-        edges["pooled_fppe"][v] = binning.pooled_bin_edges(
+        edges["pooled_fppe"][v] = lb.pooled_bin_edges(
             inputs[v], n_bins[v], name=v,
-            attrs={**binning.EDGE_ATTRS[v], "time_period": period, "grid": GRID_TAG,
+            attrs={**EDGE_ATTRS[v], "time_period": period, "grid": GRID_TAG,
                    "pooled_sources": ["fppe"], "members": names},
         )
         fstem = f"fppe.{v}_clim.{n_bins[v]}_quantiles_pooled.{GRID_TAG}.{mtag}.{period}"

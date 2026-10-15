@@ -1,9 +1,10 @@
 """
 etunc.config
 ============
-Paths and domain constants shared by the package and the scripts. Nothing
-else belongs here: no functions, no dataset-specific settings (those stay at
-the top of each script).
+Paths and domain constants shared by the package and the scripts, and the
+two functions that print them (`summarize`) and a script's own settings
+(`summarize_settings`) to the log. Dataset-specific settings stay at the top
+of each script.
 
 Every output root derives from ``WORK_ROOT``.
 """
@@ -28,7 +29,7 @@ ILAMB_ROOT = OBS_ROOT / "ilamb"
 OBS_REGRID_ROOT = OBS_ROOT / "regridded"
 CMIP_REGRID_ROOT = CAMPAIGN_ROOT / "cmip6" / "regridded"
 
-# CMIP6 catalogs from the external cmip-intake-esgf-fetch tool. The file paths in the  are on purgeable Derecho scratch.
+# CMIP6 catalogs from the external cmip-intake-esgf-fetch tool. The catalogs, and most file paths in them, are on purgeable Derecho scratch.
 # Moving them to campaign storage only needs CMIP_FETCH_ROOT changed here.
 CMIP_FETCH_ROOT = Path("/glade/derecho/scratch/bbuchovecky/cmip_intake_esgf_fetch")
 CMIP_CATALOG_ROOT = CMIP_FETCH_ROOT / "catalogs"
@@ -38,7 +39,7 @@ CMIP_FX_CATALOG = CMIP_CATALOG_ROOT / "cmip6_fx_glade.csv"  # one sftlf file per
 # ESGF_CACHE_CATALOG = CMIP_FETCH_ROOT / "manifests" / "esgf_cache_catalog.csv"  # I don't think this is necessary anymore
 
 
-# ------------------------------------------------------------------s
+# ------------------------------------------------------------------
 # Outputs
 # ------------------------------------------------------------------
 
@@ -51,6 +52,12 @@ BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
 # ------------------------------------------------------------------
 # Constants
 # ------------------------------------------------------------------
+
+# Pipeline settings shared by every family (docs/binning-workflow.md)
+TIME_SLICE = slice("1995-01", "2014-12")  # one period for every family
+MIN_YEARS = 3          # minimum complete years shared by the four products of an obs combination
+MIN_ANNUAL_ET = -1.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 5)
+FAMILIES = ("obs", "cmip", "fppe", "lens")  # families pooled by make_edges.py and binned by bin_all.py
 
 # Binning settings
 N_XBINS = 15         # aridity index
@@ -94,6 +101,13 @@ def summarize():
     print(f"{'FIG_ROOT':18} = {FIG_ROOT}")
     print(f"{'BIN_EDGES_ROOT':18} = {BIN_EDGES_ROOT}")
     print("\nConstants:")
+    print(f"{'TIME_SLICE':18} = {TIME_SLICE}")
+    print(f"{'MIN_YEARS':18} = {MIN_YEARS}")
+    print(f"{'MIN_ANNUAL_ET':18} = {MIN_ANNUAL_ET}")
+    print(f"{'FAMILIES':18} = {FAMILIES}")
+    print(f"{'N_XBINS':18} = {N_XBINS}")
+    print(f"{'N_YBINS':18} = {N_YBINS}")
+    print(f"{'TARGET_RES':18} = {TARGET_RES}")
     print(f"{'LAT_BNDS':18} = {LAT_BNDS}")
     print(f"{'NA_THRESH':18} = {NA_THRESH}")
     print(f"{'LF_THRESH':18} = {LF_THRESH}")
@@ -101,3 +115,18 @@ def summarize():
     print(f"{'LIQ_WATER_DENSITY':18} = {LIQ_WATER_DENSITY}")
     print(f"{'EARTH_RADIUS':18} = {EARTH_RADIUS}")
     print("\n######### config.py")
+
+
+def summarize_settings(namespace: dict):
+    """
+    Print the settings of a script: every UPPERCASE module-level name in
+    `namespace` (call with `globals()`) that holds a plain value (number,
+    string, path, slice, or a container of them), so the log of each run
+    records them. Larger objects such as grids are skipped.
+    """
+    plain = (bool, int, float, str, Path, slice, tuple, list, dict, type(None))
+    print("######### script settings")
+    for name, value in namespace.items():
+        if name.isupper() and isinstance(value, plain):
+            print(f"{name:18} = {value!r}")
+    print("#########")

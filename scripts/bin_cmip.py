@@ -23,7 +23,7 @@ Steps
    (MIROC-ES2H).
 3. Map each model's member-mean climatological ET, LAI, pr, Rn and AI.
 4. The binning inputs per member are annual mean ET and climatological LAI and
-   AI (`binning.prepare_inputs`). They are restricted to one common area mask: land
+   AI (`lb.prepare_inputs`). They are restricted to one common area mask: land
    gridcells where ET (in any year), LAI and AI are valid in every member of
    every model, so all models cover the same area.
 5. Bin ET separately for each member with two sets of quantile edges:
@@ -63,6 +63,8 @@ import xarray as xr
 import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
+from etunc.edges import EDGE_ATTRS
+import etunc.legacy.binning as lb  # old edges and inputs, until bin_all.py replaces this script
 import etunc.plotting as plotting
 import etunc.grid as rg
 import etunc.load.cmip as cmip
@@ -160,7 +162,7 @@ def plot_model_edges(
 def main():
     cfg.summarize()
     period = temporal.format_time_period(TIME_SLICE)
-    mask = rg.land_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
+    mask = rg.landne_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
     loader = CMIPESGFLoader(CATALOG)
 
     # ------------------------------------------------------------------
@@ -193,12 +195,12 @@ def main():
         try:
             ann = cmip.load_annual(
                 loader, sid, mids, sftlf[sid], TIME_SLICE, TARGET_RES, variables=VARIABLES,
-                experiment_id=EXPERIMENT_ID, mask=mask, na_thres=cfg.NA_THRESH,
+                experiment_id=EXPERIMENT_ID, mask=mask, na_thresh=cfg.NA_THRESH,
             )
         except ValueError as err:  # e.g. sftlf on a different grid than the data
             print(f"{sid}: {err}, skipping")
             continue
-        inputs[sid] = binning.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
+        inputs[sid] = lb.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
 
         # Maps of member-mean climatologies (each model's own area, before the common area mask)
         mtag = cmip.member_tag(mids)
@@ -224,7 +226,7 @@ def main():
     # Binning inputs, restricted to the area valid in every model
     # ------------------------------------------------------------------
     print("\n=== Common area mask ===")
-    area = binning.common_area(inputs, mask, member_dim="member")
+    area = lb.common_area(inputs, mask, member_dim="member")
     with xr.set_options(keep_attrs=True):
         inputs = {sid: {k: da.where(area) for k, da in inp.items()} for sid, inp in inputs.items()}
     fout = PROC_ROOT / f"cmip6.area_mask.all{nsid}.{GRID_TAG}.{period}.{runtag}.nc"
@@ -244,9 +246,9 @@ def main():
     pooled_edges = {}
     for v in ("lai", "ai"):
         print(f"\n{v}")
-        pooled_edges[v] = binning.pooled_bin_edges(
+        pooled_edges[v] = lb.pooled_bin_edges(
             {sid: inputs[sid][v].mean("member") for sid in sids}, n_bins[v], name=v,
-            attrs={**binning.EDGE_ATTRS[v], "time_period": period, "grid": GRID_TAG,
+            attrs={**EDGE_ATTRS[v], "time_period": period, "grid": GRID_TAG,
                    "members": [f"{sid}.{m}" for sid in sids for m in members[sid]]},
         )
         fstem = f"cmip6.{v}_clim.{n_bins[v]}_quantiles_pooled.{GRID_TAG}.all{nsid}.{period}"
@@ -271,9 +273,9 @@ def main():
         # This model's own edges, pooled over its members
         edges = {}
         for v in ("lai", "ai"):
-            edges[v] = binning.pooled_bin_edges(
+            edges[v] = lb.pooled_bin_edges(
                 inputs[sid][v], n_bins[v], name=v, verbose=False,
-                attrs={**binning.EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [sid], "members": mids},
+                attrs={**EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [sid], "members": mids},
             )
             model_edges[v][sid] = edges[v]
 

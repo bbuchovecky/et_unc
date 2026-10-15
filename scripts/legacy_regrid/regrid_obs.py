@@ -103,7 +103,7 @@ def main() -> None:
                     tot = {"files": 0, "skipped": 0, "load": 0.0, "regrid": 0.0, "save": 0.0}
                     for src, years in files.items():
                         t = lo.regrid_file(
-                            spec, var, src, years, version, freq, resolutions=RESOLUTIONS, na_thres=NA_THRES,
+                            spec, var, src, years, version, freq, resolutions=RESOLUTIONS, na_thresh=NA_THRES,
                             overwrite=OVERWRITE, complevel=COMPLEVEL, script=os.path.basename(__file__),
                         )
                         if t is None:

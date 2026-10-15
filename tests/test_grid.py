@@ -116,14 +116,14 @@ def test_cell_edges_from_bounds_and_midpoints():
         rg.cell_edges(centers, bnds[::-1])
 
 
-def test_bounded_source_grid():
+def test_bounded_src_grid():
     """Irregular lat: edges from `lat_bnds` when present, else midpoints; lat clipped to [-90, 90]."""
     lat, lon = np.array([-60.0, -20.0, 10.0, 70.0]), np.arange(0.0, 360, 90)
     ds = field(lat, lon).to_dataset(name="sftlf")
-    np.testing.assert_array_equal(rg.bounded_source_grid(ds).lat_b, [-80, -40, -5, 40, 90])
-    np.testing.assert_array_equal(rg.bounded_source_grid(ds).lon_b, [-45, 45, 135, 225, 315])
+    np.testing.assert_array_equal(rg.bounded_src_grid(ds).lat_b, [-80, -40, -5, 40, 90])
+    np.testing.assert_array_equal(rg.bounded_src_grid(ds).lon_b, [-45, 45, 135, 225, 315])
     ds["lat_bnds"] = (("lat", "bnds"), [[-90, -40], [-40, 0], [0, 30], [30, 90]])
-    np.testing.assert_array_equal(rg.bounded_source_grid(ds).lat_b, [-90, -40, 0, 30, 90])
+    np.testing.assert_array_equal(rg.bounded_src_grid(ds).lat_b, [-90, -40, 0, 30, 90])
 
 
 def test_bounded_conservative_regridder_conserves():
@@ -178,7 +178,7 @@ def test_bounded_conservative_regridder_cached():
 
 
 # ------------------------------------------------------------------
-# regrid_annual: the second stage of every load_annual
+# Native land mask + conservative regridding (steps 6-7 of the prep scripts)
 # ------------------------------------------------------------------
 
 def coast_case():
@@ -193,58 +193,44 @@ def coast_case():
     native_mask = xr.DataArray(np.broadcast_to(land_lon, (lat.size, lon.size)).copy(),
                                coords={"lat": lat, "lon": lon}, dims=("lat", "lon"))
     ann = xr.where(native_mask, 1.0, 100.0).expand_dims(year=[2000]).assign_attrs(units="W/m2")
-    return {"x": ann}, native_mask, rg.bounded_source_grid(native_mask)
+    return ann.rename("x"), native_mask, rg.bounded_src_grid(native_mask)
 
 
-def test_regrid_annual_coast_na_thres():
+def mask_and_regrid(ann, native_mask, src_grid, res, na_thresh):
+    """Steps 6-7 as the prep scripts write them: native land mask, conservative regridding, exact target grid."""
+    regridder = rg.bounded_conservative_regridder(src_grid, res)
+    out = rg.regrid_with_na_thresh(ann.where(native_mask), regridder, na_thresh)
+    return rg.on_grid(out, res, "test")
+
+
+def test_regrid_coast_na_thresh():
     """
     The native land mask keeps ocean values out: a target cell that is part
-    land is the mean of its land cells, or NaN if more than na_thres is not
-    land. Output on the exact target grid within LAT_BNDS, named by its key.
+    land is the mean of its land cells, or NaN if more than na_thresh is not
+    land. Output on the exact target grid, with name and attrs kept.
     """
-    out = rg.regrid_annual(*coast_case(), 10, na_thres=0.5)["x"]
+    out = mask_and_regrid(*coast_case(), 10, na_thresh=0.5)
     west, east = out.lon < 0, out.lon > 0
     np.testing.assert_allclose(out.where(west, drop=True), 1.0)  # 75% land: kept
     assert out.where(east, drop=True).isnull().all()             # 25% land: NaN
     assert out.name == "x" and out.attrs["units"] == "W/m2"
-    grid = rg.target_grid(10).sel(lat=config.LAT_BNDS)
+    grid = rg.target_grid(10)
     np.testing.assert_array_equal(out.lat, grid.lat)
     np.testing.assert_array_equal(out.lon, grid.lon)
 
-    loose = rg.regrid_annual(*coast_case(), 10, na_thres=0.8)["x"]
+    loose = mask_and_regrid(*coast_case(), 10, na_thresh=0.8)
     np.testing.assert_allclose(loose, 1.0)  # 25% land kept too, still without ocean values
 
 
-def test_regrid_annual_target_mask_and_member_id():
-    """The target `mask` is applied after regridding, and member_id on `member` is kept."""
-    ann, native_mask, src_grid = coast_case()
-    members = ["a", "b"]
-    ann = {"x": xr.concat([ann["x"], 2 * ann["x"]], dim="member").assign_coords(member_id=("member", members))}
-    grid = rg.target_grid(10).sel(lat=config.LAT_BNDS)
-    mask = xr.ones_like(grid.lat * grid.lon, dtype=bool).where(grid.lon < -150, False)
-    out = rg.regrid_annual(ann, native_mask, src_grid, 10, mask=mask)["x"]
-    assert out.dims == ("member", "year", "lat", "lon")
-    assert out.member_id.values.tolist() == members
-    assert out.where(~mask).isnull().all()
-    np.testing.assert_allclose(out.sel(member=1).where(mask, drop=True), 2.0)
-
-
-def test_regrid_annual_on_grid_source_is_identity():
+def test_regrid_on_grid_source_is_identity():
     """A source already on the target grid comes out unchanged (conservative regrid onto itself)."""
     grid = rg.target_grid(1.0)
     rng = np.random.default_rng(0)
     values = rng.uniform(0, 5, (2, grid.sizes["lat"], grid.sizes["lon"]))
     ann = xr.DataArray(values, dims=("year", "lat", "lon"), coords={"year": [2000, 2001], "lat": grid.lat, "lon": grid.lon})
     native_mask = xr.ones_like(ann.isel(year=0, drop=True), dtype=bool)
-    out = rg.regrid_annual({"x": ann}, native_mask, rg.bounded_source_grid(ann), 1.0)["x"]
-    np.testing.assert_allclose(out, ann.sel(lat=config.LAT_BNDS), rtol=1e-12)
-
-
-def test_regrid_annual_mask_off_grid_raises():
-    """A native mask on another grid than the annual means raises instead of silently misaligning."""
-    ann, native_mask, src_grid = coast_case()
-    with pytest.raises(ValueError, match="differ from the reference grid"):
-        rg.regrid_annual(ann, native_mask.assign_coords(lat=native_mask.lat + 1), src_grid, 10)
+    out = mask_and_regrid(ann, native_mask, rg.bounded_src_grid(ann), 1.0, na_thresh=0.5)
+    np.testing.assert_allclose(out, ann, rtol=1e-12)
 
 
 # ------------------------------------------------------------------
@@ -275,12 +261,12 @@ def test_format_grid():
     assert float(out.sel(lat=-45.0, lon=-180.0)) == float(da.sel(lat=-45.0, lon=180.0))
 
 
-def test_on_grid_snaps_and_cuts_to_lat_bnds():
-    """A field within round-off of the target grid gets its exact coords and is cut to LAT_BNDS."""
+def test_on_grid_snaps_to_exact_coords():
+    """A field within round-off of the target grid gets its exact coords (global; LAT_BNDS is cut separately)."""
     g = rg.target_grid(1.0)
     da = field(g.lat.values + 1e-6, g.lon.values - 1e-6)
     out = rg.on_grid(da, 1.0, "test")
-    xr.testing.assert_identical(out.lat, g.lat.sel(lat=config.LAT_BNDS))
+    xr.testing.assert_identical(out.lat, g.lat)
     xr.testing.assert_identical(out.lon, g.lon)
 
 

@@ -1,5 +1,5 @@
 """
-Tests for the obs regridding of regrid_obs.py: grid.regrid_with_na_thres and
+Tests for the obs regridding of regrid_obs.py: grid.regrid_with_na_thresh and
 load.obs.output_path / regrid_file (the shared grids are tested in test_grid.py),
 the in-memory `load_obs_regridded`, and the annual means for binning
 (`load_native`, `load_annual`; a synthetic land mask stands in for Natural
@@ -18,6 +18,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import etunc.legacy.grid as legacy_grid
+import etunc.legacy.temporal as legacy_temporal
 import etunc.config as lo_config
 import etunc.load.obs as lo
 import etunc.grid as rg
@@ -68,7 +70,7 @@ def coarse_cell(out, lat, lon):
 def test_constant_field_and_unmapped_nan(res):
     """A constant stays constant; target cells outside the source domain are NaN, not 0."""
     da = fine_field(np.full((20, 20), 3.0))  # 10-12N, 20-22E
-    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, res))
+    out = rg.regrid_with_na_thresh(da, rg.conservative_regridder(da, res))
     inside = out.sel(lat=slice(10, 12), lon=slice(20, 22))
     np.testing.assert_allclose(inside, 3.0, rtol=1e-6)
     assert int(out.notnull().sum()) == inside.size
@@ -81,7 +83,7 @@ def test_conserves_area_weighted_total(res):
     """The area-weighted total of a random field is the same before and after regridding."""
     rng = np.random.default_rng(0)
     da = fine_field(rng.uniform(0, 100, (20, 30)))  # 10-12N, 20-23E
-    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, res))
+    out = rg.regrid_with_na_thresh(da, rg.conservative_regridder(da, res))
     src = rg.source_grid(da)
     tgt = rg.target_grid(res)
     native_total = np.sum(da.values * cell_area(src.lat_b.values, src.lon_b.values))
@@ -97,7 +99,7 @@ def test_missing_fraction_threshold():
     data[:, :4] = np.nan          # cell (10.5, 20.5): 40% missing
     data[:, 10:16] = np.nan       # cell (10.5, 21.5): 60% missing
     da = fine_field(data)
-    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, 1.0))
+    out = rg.regrid_with_na_thresh(da, rg.conservative_regridder(da, 1.0))
     # ESMF uses great-circle cell edges, so equal-lon columns differ in area by ~1e-5
     np.testing.assert_allclose(coarse_cell(out, 10.5, 20.5), cols[4:].mean(), rtol=1e-4)
     assert np.isnan(coarse_cell(out, 10.5, 21.5))
@@ -109,7 +111,7 @@ def test_time_varying_missing_values():
     data[0, :, :3] = np.nan   # 30% missing -> kept
     data[1, :, :7] = np.nan   # 70% missing -> NaN
     da = xr.concat([fine_field(d) for d in data], dim="time")
-    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, 1.0))
+    out = rg.regrid_with_na_thresh(da, rg.conservative_regridder(da, 1.0))
     assert coarse_cell(out.isel(time=0), 10.5, 20.5) == pytest.approx(1.0)
     assert np.isnan(coarse_cell(out.isel(time=1), 10.5, 20.5))
 
@@ -180,7 +182,7 @@ def per_year(tmp_path):
     for year in (2000, 2001):
         time = pd.date_range(f"{year}-01", periods=12, freq="MS")
         data = rng.uniform(0, 100, (12, 20, 20)).astype("float32")
-        data[:, :7, :5] = np.nan  # part of one 1 deg cell missing (kept), most of another (NaN at na_thres=0.5)
+        data[:, :7, :5] = np.nan  # part of one 1 deg cell missing (kept), most of another (NaN at na_thresh=0.5)
         data[:, 12:, 10:17] = np.nan
         ds = xr.Dataset({"E": (("time", "lat", "lon"), data, {"units": "mm/month"})},
                         coords={"time": time, "lat": np.round(11.95 - 0.1 * np.arange(20), 4),
@@ -209,7 +211,7 @@ def test_load_obs_regridded_matches_regrid_file(monkeypatch, tmp_path, request, 
         saved = lo.load_obs(spec, var, slice("2000", "2001"), version=version, res=saved_res).load()
         xr.testing.assert_equal(mem, saved)
         assert mem.dtype == saved.dtype == np.float32
-        assert mem.attrs["res"] == saved_res and mem.attrs["na_thres"] == rg.NA_THRESH
+        assert mem.attrs["res"] == saved_res and mem.attrs["na_thresh"] == rg.NA_THRESH
         assert mem.attrs["dataset"] == spec.name and mem.attrs["version"] == version
 
 
@@ -234,7 +236,7 @@ def test_load_obs_regridded_missing_files(per_year):
 # ------------------------------------------------------------------
 
 def fake_land_mask(east_of=-1000.0):
-    """Stand-in for rg.land_mask (Natural Earth): land where lon > `east_of` (everywhere by default)."""
+    """Stand-in for rg.landne_mask (Natural Earth): land where lon > `east_of` (everywhere by default)."""
     return lambda grid: (grid["lat"] > -1000) & (grid["lon"] > east_of)
 
 
@@ -243,7 +245,7 @@ def expected_annual(spec, var, time_slice):
     da = lo.load_obs(spec, var, time_slice).load()
     da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
     da = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))
-    return temporal.annual_mean(da, require_all_months=True)
+    return legacy_temporal.annual_mean(da, require_all_months=True)
 
 
 @pytest.mark.parametrize("which", ["per_year", "sith_like"])
@@ -252,7 +254,7 @@ def test_load_native_annual_means(monkeypatch, request, which):
     Per-year and multi-year files give the native annual means in W/m2 (from mm/month, with each month's
     length) over complete years, read one year at a time.
     """
-    monkeypatch.setattr(lo, "land_mask", fake_land_mask())
+    monkeypatch.setattr(lo, "landne_mask", fake_land_mask())
     spec = request.getfixturevalue(which)
     spec, var = (spec[0], "ET") if which == "sith_like" else (spec, "E")
     native, native_mask, src_grid = lo.load_native(spec, var, slice(None, None))
@@ -270,7 +272,7 @@ def test_load_native_land_mask_partial_year_and_missing_month(monkeypatch, tmp_p
     The native land mask is applied, a partial year is dropped, and one missing month makes that native cell
     NaN for the year (it does not just leave out that month, as regridding each month first would).
     """
-    monkeypatch.setattr(lo, "land_mask", fake_land_mask(east_of=20.5))
+    monkeypatch.setattr(lo, "landne_mask", fake_land_mask(east_of=20.5))
     spec = lo.ObsDataset("yr", tmp_path / "yr", "{version}/{freq}/{var}/{var}_{year}.nc", ("v1",), {"monthly": "M"})
     for year, months in ((2000, 12), (2001, 6)):
         data = np.full((months, 10, 10), 31.0, dtype="float32")
@@ -294,7 +296,7 @@ def test_load_native_land_mask_partial_year_and_missing_month(monkeypatch, tmp_p
 
 def test_load_native_yearly(monkeypatch, tmp_path):
     """Yearly totals (mm/year) are the annual means, divided by each year's length (2000 is a leap year)."""
-    monkeypatch.setattr(lo, "land_mask", fake_land_mask())
+    monkeypatch.setattr(lo, "landne_mask", fake_land_mask())
     spec = lo.ObsDataset("yr", tmp_path / "yr", "{version}/{freq}/{var}/{var}_{year}.nc", ("v1",), {"yearly": "Y"})
     for year in (2000, 2001):
         ds = xr.Dataset({"E": (("time", "lat", "lon"), np.full((1, 4, 4), 365.0), {"units": "mm/year"})},
@@ -310,10 +312,10 @@ def test_load_native_yearly(monkeypatch, tmp_path):
 
 
 def test_load_annual_is_regrid_annual_of_load_native(monkeypatch, per_year):
-    """load_annual is rg.regrid_annual(*load_native(...)) onto the target grid within LAT_BNDS."""
-    monkeypatch.setattr(lo, "land_mask", fake_land_mask())
+    """load_annual is legacy_grid.regrid_annual(*load_native(...)) onto the target grid within LAT_BNDS."""
+    monkeypatch.setattr(lo, "landne_mask", fake_land_mask())
     out = lo.load_annual(per_year, "E", slice("2000", "2001"), 1.0)
-    expected = rg.regrid_annual(*lo.load_native(per_year, "E", slice("2000", "2001")), 1.0)
+    expected = legacy_grid.regrid_annual(*lo.load_native(per_year, "E", slice("2000", "2001")), 1.0)
     xr.testing.assert_identical(out["E"], expected["E"])
     grid = rg.target_grid(1.0).sel(lat=lo_config.LAT_BNDS)
     np.testing.assert_array_equal(out["E"].lat, grid.lat)
@@ -350,7 +352,7 @@ def test_global_area_weighted_mean_real_month(dataset, version, var, month, res)
     """
     da = lo.load_obs(dataset, var, slice(month, month), version=version, chunks=None).load()
     assert da.sizes["time"] == 1
-    out = rg.regrid_with_na_thres(da, rg.conservative_regridder(da, res))
+    out = rg.regrid_with_na_thresh(da, rg.conservative_regridder(da, res))
 
     src, tgt = rg.source_grid(da), rg.target_grid(res)
     native = area_mean(da.values[0], cell_area(src.lat_b.values, src.lon_b.values))

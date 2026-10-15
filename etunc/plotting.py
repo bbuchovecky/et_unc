@@ -19,7 +19,8 @@ import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
 import cartopy.crs as ccrs
 
-from etunc.binning import as_field_dict, edges_and_attrs, ensemble_spread, ensure_bin_coords, finite_flat
+from etunc.binning import edges_and_attrs, ensemble_spread, ensure_bin_coords
+from etunc.legacy.binning import as_field_dict, finite_flat  # for plot_input_hist only
 from etunc.config import DPI, LAT_BNDS, PROJECTION
 
 

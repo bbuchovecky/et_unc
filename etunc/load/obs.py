@@ -26,7 +26,7 @@ obs_et_availability.py).
 
 Annual means for binning, as in every load module: ``load_native`` (annual
 means of a water flux in W/m2 over complete years on the native grid, masked
-to land with ``etunc.grid.land_mask``, read one year at a time) and
+to land with ``etunc.grid.landne_mask``, read one year at a time) and
 ``load_annual`` = ``etunc.grid.regrid_annual`` of it (conservative, used by
 bin_obs.py).
 
@@ -96,11 +96,12 @@ import xarray as xr
 
 from etunc.config import NA_THRESH, OBS_ROOT, OBS_REGRID_ROOT
 from etunc.grid import (
-    RESOLUTIONS, approx_resolution, bounded_source_grid, conservative_regridder, land_mask, regrid_annual,
-    regrid_with_na_thres,
+    RESOLUTIONS, approx_resolution, bounded_src_grid, conservative_regridder, landne_mask, regrid_with_na_thresh,
 )
-from etunc.temporal import annual_means, complete_years, print_annual, yearly_to_annual
+from etunc.temporal import complete_years, yearly_to_annual
 from etunc.units import accumulation_to_flux, latent_heat_to_wm2
+from etunc.legacy.grid import regrid_annual
+from etunc.legacy.temporal import annual_means, print_annual
 
 RES_DIRS = {"0.5": "0.5deg", "1": "1deg"}  # res -> directory under OBS_REGRID_ROOT/<dataset dir>
 
@@ -509,12 +510,12 @@ def load_obs(
 
 
 def _regrid_blocks(
-    da_all: xr.DataArray, resolutions: Mapping[str, float | str], na_thres: float, progress: bool = False,
+    da_all: xr.DataArray, resolutions: Mapping[str, float | str], na_thresh: float, progress: bool = False,
 ) -> tuple[dict[str, xr.DataArray], dict[str, float]]:
     """
     Conservatively regrid `da_all` onto every grid in `resolutions` ({key:
     spacing}), loading one block of its dask time chunks at a time
-    (`regrid_with_na_thres`). Returns ({key: regridded (time, lat, lon)},
+    (`regrid_with_na_thresh`). Returns ({key: regridded (time, lat, lon)},
     {"load": s, "regrid": s}). `progress` prints the last year of each block.
     """
     if da_all.sizes["time"] == 0:
@@ -529,8 +530,8 @@ def _regrid_blocks(
         t["load"] += time.perf_counter() - t0
         t0 = time.perf_counter()
         for key, res in resolutions.items():
-            # na_thres decides which coastal cells keep a value: NaN if more than na_thres of the area is missing
-            pieces[key].append(regrid_with_na_thres(da, conservative_regridder(da, res), na_thres))
+            # na_thresh decides which coastal cells keep a value: NaN if more than na_thresh of the area is missing
+            pieces[key].append(regrid_with_na_thresh(da, conservative_regridder(da, res), na_thresh))
         t["regrid"] += time.perf_counter() - t0
         if progress:
             print(f" {da.time.dt.year.values[-1]}", end="", flush=True)
@@ -546,14 +547,14 @@ def load_obs_regridded(
     *,
     version: str | None = None,
     freq: str = "monthly",
-    na_thres: float = NA_THRESH,
+    na_thresh: float = NA_THRESH,
 ) -> xr.DataArray:
     """
     Load one variable from its native files and conservatively regrid it onto
     `target_grid(res)` in memory, without writing regridded files.
 
-    Each time step is regridded as `regrid_obs.py` does (`regrid_with_na_thres`,
-    NaN where more than `na_thres` of a target cell's area is missing), so the
+    Each time step is regridded as `regrid_obs.py` does (`regrid_with_na_thresh`,
+    NaN where more than `na_thresh` of a target cell's area is missing), so the
     result equals ``load_obs(..., res=...)`` on the files it wrote. Files are
     read one at a time (per-year files whole, multi-year files in blocks of
     their on-disk time chunks), so only one block is in memory at native
@@ -563,13 +564,13 @@ def load_obs_regridded(
     ----------
     dataset, var, time_slice, version, freq : as in `load_obs`.
     res : grid spacing [deg] or tag of `target_grid` (0.5, 1.0, "0.5deg", ...).
-    na_thres : maximum fraction of missing source area in a target cell.
+    na_thresh : maximum fraction of missing source area in a target cell.
 
     Returns
     -------
     Loaded DataArray (time, lat, lon) on `target_grid(res)`, with attrs
     ``dataset``, ``version``, ``frequency``, ``res`` (spacing, e.g. "0.5"),
-    ``regrid_method`` and ``na_thres``.
+    ``regrid_method`` and ``na_thresh``.
     """
     spec, version = _resolve(dataset, version, freq)
     files = find_files(spec, var, time_slice, version=version, freq=freq)
@@ -598,7 +599,7 @@ def load_obs_regridded(
     pieces = []
     for file_slice, chunks in reads:
         da_all = load_obs(spec, var, file_slice, version=version, freq=freq, chunks=chunks)
-        out, t_file = _regrid_blocks(da_all, {"out": spacing}, na_thres)
+        out, t_file = _regrid_blocks(da_all, {"out": spacing}, na_thresh)
         pieces.append(out["out"])
         for k, v in t_file.items():
             t[k] += v
@@ -607,54 +608,54 @@ def load_obs_regridded(
 
     da = xr.concat(pieces, dim="time").sel(time=time_slice)
     da.attrs.update(res=f"{spacing:g}", regrid_method="xesmf conservative, skipna=True, unmapped_to_nan=True",
-                    na_thres=na_thres)
+                    na_thresh=na_thresh)
     print(f"{spec.name} {version} {freq} {var}: regridded {len(reads)} files to {spacing:g} deg "
           f"(load {t['load']:.1f}s, regrid {t['regrid']:.1f}s)")
     return da
 
 
 def _load_named(
-    name: str, var: str, time_slice: slice, regrid_res: float | str | None, na_thres: float, kwargs: dict,
+    name: str, var: str, time_slice: slice, regrid_res: float | str | None, na_thresh: float, kwargs: dict,
 ) -> xr.DataArray:
     """`load_obs` of a registered dataset, or `load_obs_regridded` if `regrid_res` is given."""
     if regrid_res is None:
         return load_obs(name, var, time_slice, **kwargs)
     if kwargs.pop("res", "native") != "native":
         raise ValueError("Give either regrid_res (regrid in memory) or res (saved regridded files), not both")
-    return load_obs_regridded(name, var, time_slice, regrid_res, na_thres=na_thres, **kwargs)
+    return load_obs_regridded(name, var, time_slice, regrid_res, na_thresh=na_thresh, **kwargs)
 
 
 def load_gleam(
     var: str, time_slice: slice = slice(None, None), *,
-    regrid_res: float | str | None = None, na_thres: float = NA_THRESH, **kwargs,
+    regrid_res: float | str | None = None, na_thresh: float = NA_THRESH, **kwargs,
 ) -> xr.DataArray:
     """
     GLEAM v4.3 variable (E, Et, Ec, Es, Ei, Eb, Ew, Ep); see `load_obs` for kwargs.
     With `regrid_res`, regridded in memory by `load_obs_regridded`.
     """
-    return _load_named("gleam", var, time_slice, regrid_res, na_thres, kwargs)
+    return _load_named("gleam", var, time_slice, regrid_res, na_thresh, kwargs)
 
 
 def load_pml(
     var: str, time_slice: slice = slice(None, None), *,
-    regrid_res: float | str | None = None, na_thres: float = NA_THRESH, **kwargs,
+    regrid_res: float | str | None = None, na_thresh: float = NA_THRESH, **kwargs,
 ) -> xr.DataArray:
     """
     PML-V2.2 variable (ET, Ec, Es, Ei, E, Ew, PET, GPP); see `load_obs` for kwargs.
     With `regrid_res`, regridded in memory by `load_obs_regridded`.
     """
-    return _load_named("pml", var, time_slice, regrid_res, na_thres, kwargs)
+    return _load_named("pml", var, time_slice, regrid_res, na_thresh, kwargs)
 
 
 def load_sith(
     var: str, time_slice: slice = slice(None, None), *,
-    regrid_res: float | str | None = None, na_thres: float = NA_THRESH, **kwargs,
+    regrid_res: float | str | None = None, na_thresh: float = NA_THRESH, **kwargs,
 ) -> xr.DataArray:
     """
     SiTHv2 variable (ET, Tr, Es, Ei, En); see `load_obs` for kwargs.
     With `regrid_res`, regridded in memory by `load_obs_regridded`.
     """
-    return _load_named("sith", var, time_slice, regrid_res, na_thres, kwargs)
+    return _load_named("sith", var, time_slice, regrid_res, na_thresh, kwargs)
 
 
 # ------------------------------------------------------------------
@@ -672,7 +673,7 @@ def load_native(
     """
     Annual means {var: (year, lat, lon)} [W/m2] of a water flux (mm per day,
     month or year, e.g. ET or E) on the native grid over the complete years
-    in `time_slice`, masked to land (`etunc.grid.land_mask` of the native
+    in `time_slice`, masked to land (`etunc.grid.landne_mask` of the native
     grid). Monthly products need all 12 months for a valid annual mean; for
     yearly products the yearly total is the annual mean. Read one year at a
     time, so only one native year is in memory.
@@ -704,7 +705,7 @@ def load_native(
         ann = annual_means({var: da})[var] if freq == "monthly" else yearly_to_annual(da)
         if native_mask is None:
             # Natural Earth land, as the target-grid mask of the binning
-            native_mask = land_mask(ann)
+            native_mask = landne_mask(ann)
         with xr.set_options(keep_attrs=True):
             pieces.append(ann.where(native_mask))
         del da
@@ -712,7 +713,7 @@ def load_native(
     if not pieces:
         raise ValueError(f"{spec.name} {version} {freq} {var}: no complete year in {time_slice}")
     ann = xr.concat(pieces, dim="year").rename(var)
-    return {var: ann}, native_mask, bounded_source_grid(ann)
+    return {var: ann}, native_mask, bounded_src_grid(ann)
 
 
 def load_annual(
@@ -724,7 +725,7 @@ def load_annual(
     version: str | None = None,
     freq: str = "monthly",
     mask: xr.DataArray | None = None,
-    na_thres: float = NA_THRESH,
+    na_thresh: float = NA_THRESH,
 ) -> dict[str, xr.DataArray]:
     """
     Annual means {var: (year, lat, lon)} [W/m2] of a water flux on
@@ -734,7 +735,7 @@ def load_annual(
     spec, version = _resolve(dataset, version, freq)
     label = f"{spec.name} {version}"
     native = load_native(spec, var, time_slice, version=version, freq=freq)
-    ann = regrid_annual(*native, res, mask=mask, na_thres=na_thres, label=label)
+    ann = regrid_annual(*native, res, mask=mask, na_thresh=na_thresh, label=label)
     print_annual(ann[var], f"{var:3} {label}")
     return ann
 
@@ -801,7 +802,7 @@ def regrid_file(
     spec: ObsDataset, var: str, src: Path, years: tuple[int, int], version: str, freq: str,
     *,
     resolutions: Mapping[str, float] = RESOLUTIONS,
-    na_thres: float = NA_THRESH,
+    na_thresh: float = NA_THRESH,
     overwrite: bool = True,
     complevel: int = 4,
     script: str = "regrid_obs.py",
@@ -809,7 +810,7 @@ def regrid_file(
     """
     Conservatively regrid one source file, covering `years` (first, last), to
     every grid in `resolutions` ({tag: spacing}), and write each to
-    `output_path` (`regrid_with_na_thres`). A multi-year file is read in
+    `output_path` (`regrid_with_na_thresh`). A multi-year file is read in
     blocks of its on-disk time chunks. Existing outputs are skipped unless
     `overwrite`. `script` is recorded in the "regrid_script" attr. Returns
     timings, or None if skipped.
@@ -830,7 +831,7 @@ def regrid_file(
                          chunks=None if first == last else {})
     if da_all.sizes["time"] == 0:
         raise ValueError(f"{src} has no time steps in {label}")
-    regridded, t = _regrid_blocks(da_all, resolutions, na_thres, progress=first != last)
+    regridded, t = _regrid_blocks(da_all, resolutions, na_thresh, progress=first != last)
     t["save"] = 0.0
     print(f" load {t['load']:.1f}s", end="", flush=True)
 
@@ -850,7 +851,7 @@ def regrid_file(
         # Unit fixes and decoding applied by load_obs before regridding
         out.attrs["load_preprocess"] = spec.preprocess.__name__ if spec.preprocess is not None else "none"
         out.attrs["regrid_method"] = "xesmf conservative, skipna=True, unmapped_to_nan=True"
-        out.attrs["na_thres"] = na_thres
+        out.attrs["na_thresh"] = na_thresh
         out.attrs["regrid_script"] = script
         out.attrs["regrid_date"] = regrid_date
         out.attrs.update(code_provenance())

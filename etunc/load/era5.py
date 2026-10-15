@@ -28,9 +28,10 @@ from typing import Sequence
 import xarray as xr
 
 from etunc.config import LF_THRESH, NA_THRESH
-from etunc.grid import bounded_source_grid, check_same_grid, format_grid, mask_greenland, regrid_annual
-from etunc.temporal import annual_means, print_annual
+from etunc.grid import bounded_src_grid, check_same_grid, format_grid, landfrac_mask
 from etunc.units import convert_units, net_radiation_era5
+from etunc.legacy.grid import regrid_annual
+from etunc.legacy.temporal import annual_means, print_annual
 
 
 GDEX_ROOTS = {
@@ -188,7 +189,7 @@ def load_native(
     landfrac = land_fraction()
     # Sets the area ERA5 contributes, as sftlf does for CMIP6. Masking on the native grid keeps
     # ocean values out of the area-weighted means of coastal target cells (ERA5 is global)
-    native_mask = mask_greenland(landfrac, LF_THRESH)
+    native_mask = landfrac_mask(landfrac, LF_THRESH)
 
     monthly = {}
     for v in variables:
@@ -202,7 +203,7 @@ def load_native(
         da = da.assign_coords(lat=landfrac.lat, lon=landfrac.lon)
         with xr.set_options(keep_attrs=True):
             monthly[v] = da.where(native_mask)
-    return annual_means(monthly), native_mask, bounded_source_grid(landfrac)
+    return annual_means(monthly), native_mask, bounded_src_grid(landfrac)
 
 
 def load_annual(
@@ -211,14 +212,14 @@ def load_annual(
     res: float | str,
     *,
     mask: xr.DataArray | None = None,
-    na_thres: float = NA_THRESH,
+    na_thresh: float = NA_THRESH,
 ) -> dict[str, xr.DataArray]:
     """
     Annual means {variable: (year, lat, lon)} [W/m2] of `variables` on
     `target_grid(res)` within LAT_BNDS, masked with `mask` if given:
     `etunc.grid.regrid_annual` of `load_native`.
     """
-    ann = regrid_annual(*load_native(variables, time_slice), res, mask=mask, na_thres=na_thres, label="ERA5")
+    ann = regrid_annual(*load_native(variables, time_slice), res, mask=mask, na_thresh=na_thresh, label="ERA5")
     for v, da in ann.items():
         print_annual(da, f"{v:3} {'ERA5':12}")
     return ann

@@ -1,5 +1,5 @@
 """
-Tests for etunc/temporal.py helpers used by the drivers. Run from the project
+Tests for etunc/temporal.py: annual means, climatologies and time-period helpers. Run from the project
 root with:
 
     python -m pytest tests/test_temporal.py
@@ -32,41 +32,67 @@ def test_complete_years():
 
 
 @pytest.mark.parametrize("require_all_months", [True, False])
-def test_annual_mean_missing_month(require_all_months):
+def test_aggregate_year_missing_month(require_all_months, capsys):
     """
-    A NaN month counts as 0 in the days-weighted annual mean; with `require_all_months` that year is NaN
-    instead. A year with no valid month is NaN either way.
+    A NaN month counts as 0 in the days-weighted annual mean (LAI rule); with `require_all_months` (ET, P, Rn)
+    that gridcell-year is NaN instead. A year with no valid month is NaN either way, and the number of
+    gridcell-years with 1-11 valid months is printed and stored in attrs.
     """
     times = pd.date_range("2000-01-01", "2002-12-01", freq="MS")
     values = np.full(len(times), 2.0)
     values[3] = np.nan          # 2000-04 missing
     values[24:] = np.nan        # 2002 entirely missing
-    ann = temporal.annual_mean(monthly(times, values), require_all_months=require_all_months)
+    ann = temporal.aggregate(monthly(times, values), "year", require_all_months=require_all_months, label="x")
     assert ann.dims == ("year", "lat", "lon") and ann.attrs["units"] == "W/m2"
+    assert ann.attrs["n_partial_gridcell_years"] == 2  # 2000 at both gridcells
     np.testing.assert_allclose(ann.sel(year=2001), 2.0)
     assert ann.sel(year=2002).isnull().all()
     if require_all_months:
         assert ann.sel(year=2000).isnull().all()
     else:
         np.testing.assert_allclose(ann.sel(year=2000), 2.0 * (366 - 30) / 366)  # April (30 days) as 0, leap year
+    assert "x: annual means of 3 complete years; 2 gridcell-years with 1-11 valid months" in capsys.readouterr().out
 
 
-def test_annual_means_keys_and_complete_years():
+def test_aggregate_year_days_weighted_and_complete_years():
     """
-    annual_means drops partial years, counts a missing month as 0 only for "lai" (every other key needs all 12
-    months), puts lat/lon last and returns loaded data.
+    Annual means weight each month by its days, drop partial years from the time axis, keep extra dims, and
+    return loaded data even for dask input.
     """
     times = pd.date_range("2000-01-01", "2001-06-01", freq="MS")  # 2001 is partial
-    values = np.full(len(times), 2.0)
-    values[3] = np.nan  # 2000-04 missing
-    field = monthly(times, values).transpose("lat", "time", "lon").expand_dims(member=[0]).chunk()
-    ann = temporal.annual_means({"lai": field, "et": field})
-    for k in ("lai", "et"):
-        assert ann[k].dims == ("member", "year", "lat", "lon")
-        assert ann[k].year.values.tolist() == [2000]
-        assert ann[k].chunks is None  # loaded
-    np.testing.assert_allclose(ann["lai"], 2.0 * (366 - 30) / 366)
-    assert ann["et"].isnull().all()
+    days = times.days_in_month.to_numpy(dtype=float)
+    field = monthly(times, days).transpose("lat", "time", "lon").expand_dims(member=[0]).chunk()
+    ann = temporal.aggregate(field, "year")
+    assert ann.dims == ("member", "year", "lat", "lon")
+    assert ann.year.values.tolist() == [2000]
+    assert ann.chunks is None  # loaded
+    d = days[:12]
+    np.testing.assert_allclose(ann, np.sum(d * d) / np.sum(d))
+
+
+def test_aggregate_clim_reports_missing_years(capsys):
+    """
+    The climatology is the mean over years, skipping a gridcell's NaN years; gridcells with some but not all
+    years valid are counted.
+    """
+    ann = xr.DataArray([[1.0, 2.0], [3.0, np.nan], [5.0, np.nan]], dims=("year", "lat"),
+                       coords={"year": [2000, 2001, 2002]}, name="lai")
+    clim = temporal.aggregate(ann, "clim")
+    np.testing.assert_allclose(clim, [3.0, 2.0])
+    assert clim.attrs == {"n_years": 3, "n_gridcells_missing_years": 1}
+    assert "lai: climatology of 3 years; 1 gridcells have missing years (fewest valid years: 1)" in \
+        capsys.readouterr().out
+
+
+def test_aggregate_errors():
+    """'year' needs `time`, 'clim' needs `year`, and other modes raise."""
+    times = pd.date_range("2000-01-01", "2000-12-01", freq="MS")
+    with pytest.raises(ValueError, match="time"):
+        temporal.aggregate(monthly(times).isel(time=0), "year")
+    with pytest.raises(ValueError, match="year"):
+        temporal.aggregate(monthly(times), "clim")
+    with pytest.raises(ValueError, match="Unknown"):
+        temporal.aggregate(monthly(times), "year_max")
 
 
 def test_period_str_and_shared_years():

@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import etunc.legacy.grid as legacy_grid
 import etunc.config as config
 import etunc.grid as rg
 import etunc.load.era5 as le
@@ -123,7 +124,7 @@ def test_load_annual(gdex, variable, expected):
 
 def test_load_annual_is_regrid_annual_of_load_native(gdex):
     """
-    load_annual is rg.regrid_annual(*load_native(...)) for every variable at
+    load_annual is legacy_grid.regrid_annual(*load_native(...)) for every variable at
     once; load_native gives complete years on the native grid, masked to land,
     and an open-ended time slice covers every year on GDEX.
     """
@@ -134,7 +135,7 @@ def test_load_annual_is_regrid_annual_of_load_native(gdex):
     assert native["et"].year.values.tolist() == [2000, 2001]
     assert native_mask.dtype == bool
     assert native["pr"].where(~native_mask).isnull().all()  # ocean is NaN
-    out = rg.regrid_annual(native, native_mask, src_grid, RES)
+    out = legacy_grid.regrid_annual(native, native_mask, src_grid, RES)
     ann = le.load_annual(variables, slice("2000", "2001"), RES)
     for v in variables:
         xr.testing.assert_identical(ann[v], out[v])

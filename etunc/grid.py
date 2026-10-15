@@ -30,34 +30,35 @@ conservative_regridder : first-order conservative from a regular 1-D lat/lon
     Used for the monthly obs fields (`load_obs_regridded`, `load_ilamb`).
 bounded_conservative_regridder : first-order conservative from any 1-D
     lat/lon grid (e.g. Gaussian), with cell edges from CF bounds or midpoints
-    (`bounded_source_grid`), cached per source grid. Used by `regrid_annual`.
+    (`bounded_src_grid`), cached per source grid. Used by the prep scripts
+    (step 7 of docs/binning-workflow.md).
 make_regridder : any xESMF method from an arbitrary source grid (1-D or 2-D
     lat/lon, edges inferred by xESMF if absent).
 
 All but `make_regridder` set target cells outside the source domain to NaN
-(`unmapped_to_nan=True`).
+(`unmapped_to_nan=True`). `regrid_with_na_thresh` applies a conservative
+regridder skipping NaN (NaN where more than NA_THRESH of a target cell is
+missing).
 
-Annual means for binning
-------------------------
-Every load module (`etunc.load.ilamb`, `.era5`, `.obs`, `.cmip`, `.cesm`) has
-`load_native` (annual means on the native grid, native land mask, native grid)
-and `load_annual` = `regrid_annual(*load_native(...), res)`. `regrid_annual`
-is the one rule that puts them on a target grid: native land mask, then
-conservative regridding that skips NaN (`regrid_with_na_thres`, `NA_THRESH`),
-then `on_grid`.
+Land masks and area masks
+-------------------------
+`greenland_mask` (no Greenland/Iceland), `landfrac_mask` (models and ERA5:
+land fraction > LF_THRESH) and `landne_mask` (obs: Natural Earth land) are
+the native land masks of step 6. `valid_area` and `common_area` build the
+area mask shared by every family (step 12).
 """
 from __future__ import annotations
 
 import warnings
 
-from typing import Iterable
+from typing import Iterable, Mapping
 
 import numpy as np
 import regionmask as regmask
 import xarray as xr
 import xesmf as xe
 
-from etunc.config import EARTH_RADIUS, LAT_BNDS, LF_THRESH, NA_THRESH
+from etunc.config import EARTH_RADIUS, LF_THRESH, NA_THRESH
 
 
 RESOLUTIONS = {"0.5deg": 0.5, "1deg": 1.0}  # grid tag (output directory name) -> spacing [deg]
@@ -154,7 +155,7 @@ def cell_edges(centers: np.ndarray, bnds: np.ndarray | None = None, name: str = 
     return edges
 
 
-def bounded_source_grid(ds: xr.Dataset | xr.DataArray) -> xr.Dataset:
+def bounded_src_grid(ds: xr.Dataset | xr.DataArray) -> xr.Dataset:
     """
     Grid of `ds` (1-D lat/lon, any spacing) with cell edges for xESMF, taken
     from the CF bounds variables (`lat_bnds`/`lon_bnds`, or the coord's
@@ -198,9 +199,9 @@ def conservative_regridder(da: xr.DataArray, res: float | str) -> xe.Regridder:
 def bounded_conservative_regridder(ds: xr.Dataset | xr.DataArray, res: float | str) -> xe.Regridder:
     """
     Conservative regridder from the 1-D grid of `ds` (edges from
-    `bounded_source_grid`) onto `target_grid(res)`, cached per grid.
+    `bounded_src_grid`) onto `target_grid(res)`, cached per grid.
     """
-    src = bounded_source_grid(ds)
+    src = bounded_src_grid(ds)
     # Keyed on the centers and edges, so the products and members on one grid share a weight matrix
     key = (_any_spacing(res), *(src[c].values.tobytes() for c in ("lat", "lon", "lat_b", "lon_b")))
     if key not in _BOUNDED:
@@ -210,62 +211,21 @@ def bounded_conservative_regridder(ds: xr.Dataset | xr.DataArray, res: float | s
     return _BOUNDED[key]
 
 
-def regrid_with_na_thres(da: xr.DataArray, regridder: xe.Regridder, na_thres: float = NA_THRESH) -> xr.DataArray:
+def regrid_with_na_thresh(da: xr.DataArray, regridder: xe.Regridder, na_thresh: float = NA_THRESH) -> xr.DataArray:
     """
     Apply a conservative `regridder` skipping NaN: each target cell is the
     area-weighted mean of its valid source cells, and NaN where more than
-    `na_thres` of its area is missing. Keeps the dtype and attrs (minus
+    `na_thresh` of its area is missing. Keeps the dtype and attrs (minus
     "grid_mapping") and sets standard lat/lon attrs.
     """
     # skipna renormalizes by the valid source area, so a coastal target cell is the mean of
-    # its land source cells rather than diluted by ocean NaN; na_thres sets how much missing
+    # its land source cells rather than diluted by ocean NaN; na_thresh sets how much missing
     # area is tolerated, and so how far the regridded land extends along the coasts
-    out = regridder(da, skipna=True, na_thres=na_thres, keep_attrs=True)
+    out = regridder(da, skipna=True, na_thres=na_thresh, keep_attrs=True)  # xESMF spells it na_thres
     out = out.astype(da.dtype)  # xESMF returns float64 even for float32 input
     out.attrs.pop("grid_mapping", None)  # PML's "crs" variable is not carried over
     out["lat"].attrs = dict(LAT_ATTRS)
     out["lon"].attrs = dict(LON_ATTRS)
-    return out
-
-
-def regrid_annual(
-    ann: dict[str, xr.DataArray],
-    native_mask: xr.DataArray,
-    src_grid: xr.Dataset | xr.DataArray,
-    res: float | str,
-    *,
-    mask: xr.DataArray | None = None,
-    na_thres: float = NA_THRESH,
-    label: str = "",
-) -> dict[str, xr.DataArray]:
-    """
-    Second stage of every `load_annual`: native annual means `ann` ({key:
-    ([member,] year, lat, lon)}, from a `load_native`) masked with the native
-    land mask `native_mask`, conservatively regridded onto `target_grid(res)`
-    within LAT_BNDS, and masked with the target `mask` if given. Each target
-    cell is the area-weighted mean of its valid (land) source cells, and NaN
-    where more than `na_thres` of its area is missing. A `member_id` coord on
-    `member` is kept.
-    """
-    regridder = bounded_conservative_regridder(src_grid, res)
-    out = {}
-    for k, a in ann.items():
-        name = f"{label}/{k}" if label else k
-        check_same_grid(a, native_mask, name)
-        with xr.set_options(keep_attrs=True):
-            # Mask snapped to the coords of `a`, so `.where` cannot misalign on round-off. A no-op
-            # where `load_native` masked already; here it guarantees that only land is averaged
-            a = a.where(native_mask.assign_coords(lat=a.lat, lon=a.lon))
-        member_id = a["member_id"].values if "member_id" in a.coords else None
-        a = regrid_with_na_thres(a.reset_coords(drop=True), regridder, na_thres)
-        # Exact target coords, so datasets line up under the exact-join alignment of the binning
-        a = on_grid(a, res, name)
-        if member_id is not None:
-            a = a.assign_coords(member_id=("member", member_id))
-        if mask is not None:
-            with xr.set_options(keep_attrs=True):
-                a = a.where(mask)
-        out[k] = a.rename(k)
     return out
 
 
@@ -360,15 +320,14 @@ def check_same_grid(
 
 def on_grid(da: xr.DataArray, res: float | str, label: str) -> xr.DataArray:
     """
-    `da` with the exact lat/lon of `target_grid(res)`, cut to LAT_BNDS, after
-    checking that it is on that grid (`check_same_grid`). Products whose
-    coordinates differ only by float round-off then line up cell for cell.
+    `da` with the exact lat/lon of `target_grid(res)`, after checking that it
+    is on that grid (`check_same_grid`). Products whose coordinates differ
+    only by float round-off then line up cell for cell.
     """
     grid = target_grid(res)
     check_same_grid(da, grid, label)
     # Overwrite with the exact grid values: `bin_stats` aligns with join="exact"
-    da = da.assign_coords(lat=grid.lat, lon=grid.lon)
-    return da.sel(lat=LAT_BNDS)
+    return da.assign_coords(lat=grid.lat, lon=grid.lon)
 
 
 def format_grid(da: xr.DataArray) -> xr.DataArray:
@@ -376,22 +335,30 @@ def format_grid(da: xr.DataArray) -> xr.DataArray:
     return da.assign_coords(lon=((da.lon + 180) % 360) - 180).sortby("lon").sortby("lat")
 
 
-def mask_greenland(landfrac: xr.DataArray, lf_thresh: float = LF_THRESH) -> xr.DataArray:
-    """Land mask: True where landfrac > lf_thresh, excluding Greenland/Iceland (AR6 region 0)."""
-    mask = regmask.defined_regions.ar6.land.mask(landfrac.lon, landfrac.lat)
-    # Strictly greater: a cell at exactly lf_thresh is not land. NaN landfrac is not land either
-    return xr.where((mask == 0) & (landfrac > lf_thresh), False, landfrac > lf_thresh)
+def greenland_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
+    """True everywhere except Greenland/Iceland (AR6 land region 0), by cell center."""
+    # Cells outside every AR6 region (ocean) are NaN in the region mask and stay True
+    return regmask.defined_regions.ar6.land.mask(grid.lon, grid.lat) != 0
 
 
-def land_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
+def landfrac_mask(landfrac: xr.DataArray, lf_thresh: float = LF_THRESH) -> xr.DataArray:
     """
-    Natural Earth land mask without Greenland/Iceland. (Same Natural Earth
-    mask as `etunc.legacy.compute_cell_area`, which keeps Greenland/Iceland.)
+    Land mask of a model or reanalysis: True where landfrac > lf_thresh,
+    excluding Greenland/Iceland (`greenland_mask`).
+    """
+    # Strictly greater: a cell at exactly lf_thresh is not land. NaN landfrac is not land either
+    return (landfrac > lf_thresh) & greenland_mask(landfrac)
+
+
+def landne_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
+    """
+    Land mask of an observational product without a land fraction: Natural
+    Earth land, excluding Greenland/Iceland (`greenland_mask`).
     """
     # Binary by cell center: a coastal cell is land only if its center is on land, with no
-    # fractional coverage. This mask sets the land area binned by bin_obs and bin_cmip
+    # fractional coverage
     land = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask(grid.lon, grid.lat)
-    return mask_greenland(xr.where(land.notnull(), 1.0, 0.0))
+    return land.notnull() & greenland_mask(grid)
 
 
 def product_mask(da: xr.DataArray, land: xr.DataArray, min_frac: float, label: str) -> xr.Dataset:
@@ -418,6 +385,39 @@ def product_mask(da: xr.DataArray, land: xr.DataArray, min_frac: float, label: s
         # Compare counts rather than fractions, so 1.0 means exactly "every month"
         "product_mask": land & (n_valid >= min_frac * n_months),
     })
+
+
+# ------------------------------------------------------------------
+# Area masks shared by datasets
+# ------------------------------------------------------------------
+
+def valid_area(inputs: xr.Dataset | Mapping[str, xr.DataArray], member_dim: str = "member") -> xr.DataArray:
+    """
+    Gridcells where ET (in any year), LAI and AI of the binning `inputs` are
+    all valid, in every member along `member_dim` (if present).
+    """
+    # ET only needs one valid year (its missing years stay NaN samples); LAI and AI must
+    # be valid, and np.isfinite also drops the inf AI of zero-precipitation gridcells
+    valid = inputs["et"].notnull().any("year") & inputs["lai"].notnull() & np.isfinite(inputs["ai"])
+    return valid.all(member_dim) if member_dim in valid.dims else valid
+
+
+def common_area(valid_areas: Mapping[str, xr.DataArray]) -> xr.DataArray:
+    """
+    Gridcells valid in every one of `valid_areas` ({label: (lat, lon) bool},
+    e.g. one per family from `valid_area`), so that all of them are binned
+    over the same area. Prints, for each label, its own valid gridcells and
+    area and how much of them the common area loses.
+    """
+    area = xr.concat(list(valid_areas.values()), dim="label", join="exact").all("label")
+    cell_km2 = xr.DataArray(cell_area(area.lat.values, area.lon.values) / 1e6, coords=area.coords)
+    common_n, common_km2 = int(area.sum()), float(cell_km2.where(area).sum())
+    for label, valid in valid_areas.items():
+        n, km2 = int(valid.sum()), float(cell_km2.where(valid).sum())
+        print(f"{label:8}: {n:6} valid gridcells ({km2:0.4g} km2); the common area loses "
+              f"{n - common_n:6} gridcells ({km2 - common_km2:0.4g} km2, {100 * (1 - common_km2 / km2):0.1f}%)")
+    print(f"common  : {common_n:6} gridcells ({common_km2:0.4g} km2)")
+    return area.rename("area_mask")
 
 
 # ------------------------------------------------------------------

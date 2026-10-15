@@ -22,7 +22,7 @@ Steps
 2. Map the climatological ET, LAI, pr, Rn and AI: member mean, standard
    deviation and range (max - min) of each gridcell (one map for one member).
 3. The binning inputs per member are annual mean ET and climatological LAI and
-   AI (`binning.prepare_inputs`). They are restricted to one common area mask:
+   AI (`lb.prepare_inputs`). They are restricted to one common area mask:
    land gridcells where ET (in any year), LAI and AI are valid in every member.
 4. Bin ET separately for each member with quantile edges pooled over all
    members ("pooled_lens"). The per-member statistics are then pooled over members.
@@ -57,6 +57,8 @@ import xarray as xr
 import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
+from etunc.edges import EDGE_ATTRS
+import etunc.legacy.binning as lb  # old edges and inputs, until bin_all.py replaces this script
 import etunc.plotting as plotting
 import etunc.grid as rg
 import etunc.load.cesm as lc
@@ -133,7 +135,7 @@ def save_clim_map(da: xr.DataArray, variable: str, period: str, mtag: str):
 def main():
     cfg.summarize()
     period = temporal.format_time_period(TIME_SLICE)
-    mask = rg.land_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
+    mask = rg.landne_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
 
     # ------------------------------------------------------------------
     # Load and regrid annual means, build binning inputs, and map climatologies
@@ -141,12 +143,12 @@ def main():
     print("=== Load LENS2 ===")
     ann = lc.load_annual(
         "lens", MEMBERS, TIME_SLICE, TARGET_RES, variables=VARIABLES, frequency=FREQUENCY, stream=STREAM,
-        bb=BB, mask=mask, na_thres=cfg.NA_THRESH,
+        bb=BB, mask=mask, na_thresh=cfg.NA_THRESH,
     )
     ens = ann["et"]["member_id"].values.tolist()
     nmem, mtag = len(ens), cmip.member_tag(ens)
     print(f"LENS2 ({BB}): {nmem} member(s)")
-    inputs = binning.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
+    inputs = lb.prepare_inputs(et=ann["et"], lai=ann["lai"], precip=ann["pr"], rn=ann["rn"], mask=mask)
 
     # Maps of the climatologies' member mean, std and range (before the common area mask)
     clim = {
@@ -164,7 +166,7 @@ def main():
     # Binning inputs, restricted to the area valid in every member
     # ------------------------------------------------------------------
     print("\n=== Common area mask ===")
-    area = binning.common_area({"CESM2-LE": inputs}, mask, member_dim="member")
+    area = lb.common_area({"CESM2-LE": inputs}, mask, member_dim="member")
     with xr.set_options(keep_attrs=True):
         inputs = {k: da.where(area) for k, da in inputs.items()}
     fout = PROC_ROOT / f"{DATASET}.area_mask.{GRID_TAG}.{period}.{mtag}.nc"
@@ -184,9 +186,9 @@ def main():
     edges = {}
     for v in ("lai", "ai"):
         print(f"\n{v}")
-        edges[v] = binning.pooled_bin_edges(
+        edges[v] = lb.pooled_bin_edges(
             {"CESM2-LE": inputs[v]}, n_bins[v], name=v,
-            attrs={**binning.EDGE_ATTRS[v], **attrs, "members": ens},
+            attrs={**EDGE_ATTRS[v], **attrs, "members": ens},
         )
         fstem = f"{DATASET}.{v}_clim.{n_bins[v]}_quantiles_pooled.{GRID_TAG}.{mtag}.{period}"
         fout = BIN_EDGES_ROOT / f"{fstem}.nc"

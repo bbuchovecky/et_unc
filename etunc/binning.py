@@ -1,323 +1,46 @@
 """
 etunc.binning
 =============
-Bin evapotranspiration (ET) in a 2-D space of climatological leaf area index
-(LAI, y-axis) and aridity index (AI = Rn / L*P, x-axis), and plot intermediate
-diagnostics. Dataset-agnostic: works for CMIP6 models, CESM ensembles (FHIST
-PPE, GOGA2, LENS2), and observations, as long as each dataset's fields share a
-lat/lon grid.
+Statistics of annual mean ET in 2-D bins of climatological leaf area index
+(LAI, y-axis) and aridity index (AI = Rn / L*P, x-axis), and their
+post-processing. The full pipeline, from loading to binning, is described in
+docs/binning-workflow.md and written out step by step in the scripts.
 
-Pipeline
---------
-1. Load monthly fields and a land mask on one grid (``etunc.load``, or your own
-   loader). Water fluxes should be energy fluxes [W/m2] (``etunc.units``).
-2. Build the binning inputs per dataset/model (``prepare_inputs``):
-   annual mean ET, climatological LAI, climatological AI.
-3. Build bin edges pooled across every dataset that should share bins
-   (``pooled_bin_edges``).
-4. Compute per-bin statistics of ET (``bin_stats`` for one dataset, optionally
-   per member; ``bin_stats_by_source`` for a dict of models).
-5. Post-process and plot (``drop_zero_width_bins``, ``test_significance``,
-   ``frac_valid``, ``ensemble_spread``; ``etunc.plotting``).
-
-Example
--------
->>> import etunc.binning as binning
->>> import etunc.units as units
->>> inputs = {
-...     sid: binning.prepare_inputs(
-...         et=d["evspsbl"], lai=d["lai"], precip=d["pr"],
-...         rn=units.net_radiation_cmip(d["rsds"], d["rsus"], d["rlds"], d["rlus"]),
-...         mask=d["mask"], time_slice=slice("1995-01", "2014-12"),
-...     )
-...     for sid, d in cmip.items()
-... }
->>> y_edges = binning.pooled_bin_edges({s: i["lai"] for s, i in inputs.items()}, 15, name="lai")
->>> x_edges = binning.pooled_bin_edges({s: i["ai"] for s, i in inputs.items()}, 15, name="ai")
->>> bs = binning.bin_stats_by_source(inputs, y_edges, x_edges, dim="source_id")
->>> import etunc.plotting as plotting
->>> plotting.plot_bin_summary(binning.drop_zero_width_bins(bs), dim="source_id")
+- `drop_et_outliers`: the plausibility filter on annual mean ET (step 5).
+- `bin_stats`: statistics of every (year, gridcell) ET sample, binned by its
+  gridcell's climatological LAI and AI (step 14), optionally per member.
+- Post-processing: `pool_members`, `drop_zero_width_bins`, `frac_count`,
+  `frac_valid`, `test_significance`, `ensemble_spread`.
 """
 
 from __future__ import annotations
 
 from typing import Literal, Mapping
-import warnings
 
 import numpy as np
 import xarray as xr
-
-from etunc.temporal import Aggregation, aggregate
 
 
 # Order of the `stats` dimension returned by `bin_stats`
 STATS = ("mean", "var_pop", "var_samp", "count", "count_pos")
 
 
-BinStrategy = Literal["quantile", "linear"]
-
-# Attributes of the LAI and AI bin edges written by the drivers
-EDGE_ATTRS = {
-    "lai": {"long_name": "leaf area index bin edges", "units": "m2/m2", "variable": "leaf area index"},
-    "ai":  {"long_name": "aridity index bin edges", "units": "1", "variable": "aridity index (Rn/L*P)"},
-}
-
-
 # ------------------------------------------------------------------
-# Binning inputs
+# ET outlier filter
 # ------------------------------------------------------------------
 
-def compute_aridity_index(
-    precip_wm2: xr.DataArray,
-    rn: xr.DataArray,
-    clip: bool = False,
-) -> xr.DataArray:
+def drop_et_outliers(et: xr.DataArray, min_annual_et: float, label: str | None = None) -> xr.DataArray:
     """
-    Compute the aridity index, AI = Rn / (L*P).
-
-    Parameters
-    ----------
-    precip_wm2 : xr.DataArray
-        Mean precipitation expressed as an energy flux, L*P [W/m2].
-    rn : xr.DataArray
-        Mean net surface radiation [W/m2], used as a proxy for
-        PET (PET ~ Rn) per the Budyko framework.
-    clip : bool, optional
-        If True, floor `rn` at zero before dividing.
+    Annual mean ET `et` [W/m2] with gridcell-years below `min_annual_et` set
+    to NaN (step 5). Strongly negative annual ET is not physical (e.g. GLEAM
+    v4.3b at high latitudes in winter). Prints how many gridcell-years are dropped.
     """
-    if clip:
-        rn = rn.clip(min=0)
-    # P = 0 gives inf (or NaN for 0/0), which `valid_area` and the binning drop.
-    # Without `clip`, a negative mean Rn (e.g. ice, high latitudes) gives a negative AI
-    ai = rn / precip_wm2
-    ai = ai.rename("ai")
-    ai.attrs = {
-        "long_name": "Budyko dryness index (Rn / L*P)",
-        "units": "1",
-        "description": (
-            "computed from mean net surface radiation and "
-            f"precipitation{' (Rn floor at zero)' if clip else ''}"
-        ),
-    }
-    return ai
-
-
-def prepare_inputs(
-    et: xr.DataArray,
-    lai: xr.DataArray,
-    precip: xr.DataArray,
-    rn: xr.DataArray,
-    *,
-    mask: xr.DataArray | None = None,
-    time_slice: slice | None = None,
-    lai_agg: Aggregation = "clim",
-    clip_rn: bool = False,
-) -> dict[str, xr.DataArray]:
-    """
-    Build the binning inputs for one dataset from monthly fields on one grid.
-
-    Parameters
-    ----------
-    et, lai, precip, rn : monthly fields with a `time` dim (precip and rn may
-        already be time means). ET, precip and rn in W/m2.
-    mask : land mask (True/1 = keep) applied to every output.
-    time_slice : applied to each input that has a `time` dim before aggregating.
-        Pre-slice the inputs yourself if they need different periods (e.g. obs).
-    lai_agg : how LAI is aggregated (see `aggregate`).
-    clip_rn : floor Rn at zero in the aridity index.
-
-    Returns
-    -------
-    {"et": annual mean ET, "lai": aggregated LAI, "ai": climatological AI}
-    """
-    def _prep(da):
-        if time_slice is not None and "time" in da.dims:
-            da = da.sel(time=time_slice)
-        return da
-
-    # ET that already has a `year` dim (e.g. from `temporal.annual_mean`) passes through
-    # unchanged. Monthly ET goes through `compute_annual_mean`, which counts NaN months as 0
-    out = {
-        "et": aggregate(_prep(et), "year").rename("et"),
-        "lai": aggregate(_prep(lai), lai_agg).rename("lai"),
-        # Ratio of the climatological means, not the mean of annual ratios
-        "ai": compute_aridity_index(
-            aggregate(_prep(precip), "clim"), aggregate(_prep(rn), "clim"), clip=clip_rn
-        ),
-    }
-    if mask is not None:
-        out = {k: v.where(mask == 1) for k, v in out.items()}
-    return out
-
-
-def valid_area(inputs: Mapping[str, xr.DataArray], member_dim: str | None = None) -> xr.DataArray:
-    """
-    Gridcells where ET (in any year), LAI and AI are all valid; with
-    `member_dim`, valid in every member along it.
-    """
-    # ET only needs one valid year (its missing years stay NaN samples); LAI and AI must
-    # be valid, and np.isfinite also drops the inf AI of zero-precipitation gridcells
-    valid = inputs["et"].notnull().any("year") & inputs["lai"].notnull() & np.isfinite(inputs["ai"])
-    return valid.all(member_dim) if member_dim is not None else valid
-
-
-def common_area(
-    inputs: Mapping[str, Mapping[str, xr.DataArray]],
-    mask: xr.DataArray,
-    member_dim: str | None = None,
-    label_width: int = 16,
-) -> xr.DataArray:
-    """
-    Land gridcells (`mask` == 1) valid (`valid_area`) in every dataset of
-    `inputs` ({label: {"et", "lai", "ai"}}, e.g. every combination or model),
-    so that all datasets cover the same area. The mask is static: ET years
-    that are NaN inside this area stay NaN, so per-year data availability is
-    kept. Prints each dataset's valid gridcells, labels padded to `label_width`.
-    """
-    area = mask == 1
-    for label, inp in inputs.items():
-        valid = valid_area(inp, member_dim)
-        print(f"{label:{label_width}}: {int(valid.sum()):.4e} valid gridcells")
-        area = area & valid
-    print(f"common area: {int(area.sum()):.4e} of {int((mask == 1).sum()):.4e} land gridcells")
-    return area.rename("area_mask")
-
-
-# ------------------------------------------------------------------
-# Bin edges
-# ------------------------------------------------------------------
-
-def build_edges(
-    values: np.ndarray,
-    n_bins: int,
-    strategy: BinStrategy = "quantile",
-    value_range: tuple[float, float] | None = None,
-    collapse_duplicates: bool = False,
-) -> np.ndarray:
-    """
-    Build `n_bins + 1` bin edges from an array of values (NaN tolerated).
-
-    strategy : "quantile" -> edges at equally spaced quantiles of the finite data
-               "linear"   -> edges linearly spaced over `value_range`
-                             (default: finite data min/max)
-    collapse_duplicates : for "quantile", remove duplicate edges produced by
-        tied values (e.g. many LAI = 0), reducing the number of bins.
-
-    Duplicate quantile edges are kept by default. With searchsorted(side='right')
-    in the binning, a spike value (e.g. LAI = 0) goes to the *last* of the
-    zero-width bins at that value, so the spike lands in one bin and the bins
-    before it stay empty (see `drop_zero_width_bins`).
-    """
-    values = np.asarray(values).ravel()
-    finite = values[np.isfinite(values)]
-    if finite.size == 0:
-        raise ValueError("Binning variable contains no finite values.")
-
-    if strategy == "quantile":
-        # Quantiles of gridcell values, not area-weighted: small high-latitude cells count
-        # as much as large tropical ones. Linear interpolation, so edges can fall between values
-        edges = np.quantile(finite, np.linspace(0.0, 1.0, n_bins + 1))
-        if collapse_duplicates:
-            edges = np.unique(edges)
-            if edges.size < 2:
-                raise ValueError(
-                    "Quantile edges collapsed to a single value; cannot form bins. "
-                    "Use fewer bins or disable collapse_duplicates."
-                )
-    elif strategy == "linear":
-        lo, hi = value_range if value_range is not None else (finite.min(), finite.max())
-        edges = np.linspace(float(lo), float(hi), n_bins + 1)
-    else:
-        raise ValueError(f"Unknown bin strategy {strategy!r}. Choose 'quantile' or 'linear'.")
-
-    return edges
-
-
-def as_field_dict(fields: xr.DataArray | Mapping[str, xr.DataArray]) -> dict[str, xr.DataArray]:
-    """One DataArray (keyed by its name) or a mapping of them, as a {label: DataArray} dict."""
-    if isinstance(fields, xr.DataArray):
-        return {fields.name or "field": fields}
-    return dict(fields)
-
-
-def finite_flat(da: xr.DataArray) -> np.ndarray:
-    """Finite values of `da`, flattened over every dim."""
-    flat = np.asarray(da.values, dtype=float).ravel()
-    return flat[np.isfinite(flat)]
-
-
-def pooled_bin_edges(
-    fields: xr.DataArray | Mapping[str, xr.DataArray],
-    n_bins: int,
-    *,
-    name: str,
-    strategy: BinStrategy = "quantile",
-    value_range: tuple[float, float] | None = None,
-    collapse_duplicates: bool = False,
-    attrs: Mapping | None = None,
-    zero_warn_frac: float = 0.10,
-    verbose: bool = True,
-) -> xr.DataArray:
-    """
-    Bin edges from the finite values of all `fields` pooled together (over
-    every dim, including member/time), so all datasets share bin definitions.
-    Mask the fields beforehand (`prepare_inputs` does).
-
-    Parameters
-    ----------
-    fields : one DataArray or {label: DataArray}, e.g. {source_id: lai_clim}
-    n_bins : number of bins requested
-    name : name of the returned edges DataArray (e.g. "lai", "ai")
-    attrs : extra attributes (e.g. units, long_name, time_period)
-    zero_warn_frac : warn when more than this fraction of a field is exactly 0
-
-    Returns
-    -------
-    xr.DataArray with dim `edge` (n_bins + 1 values unless duplicates collapsed)
-    """
-    fields = as_field_dict(fields)
-
-    flat_list = []
-    for label, da in fields.items():
-        flat = finite_flat(da)
-        flat_list.append(flat)
-        if flat.size == 0:
-            warnings.warn(f"{label}: no finite values")
-            continue
-        zero_frac = np.sum(flat == 0) / flat.size
-        if verbose:
-            print(
-                f"{label:20}: {da.dims} {da.shape} -> {flat.size:.3e} finite "
-                f"[{flat.min():0.3e}, {flat.max():0.3e}] zeros={zero_frac * 100:0.3f}%"
-            )
-        if zero_frac > zero_warn_frac:
-            warnings.warn(f"{label}: {zero_frac * 100:0.3f}% of values are 0 (> {zero_warn_frac * 100:g}%)")
-
-    # Every finite value counts once, so each field weighs in proportion to its size: a field
-    # with more gridcells (finer grid, larger valid area), members or years pulls the edges
-    # towards its own distribution
-    pooled = np.concatenate(flat_list)
-    edges = build_edges(pooled, n_bins, strategy, value_range, collapse_duplicates)
-    n_eff = len(edges) - 1
-    if verbose:
-        print(f"pooled: {pooled.size:.3e} values -> {n_eff} bins\nedges: {edges}")
-
-    return xr.DataArray(
-        data=edges,
-        dims=["edge"],
-        coords=dict(edge=np.arange(n_eff + 1)),
-        name=name,
-        attrs={
-            "long_name": f"{name} bin edges",
-            "strategy": strategy,
-            "n_bins": n_eff,
-            "n_bins_requested": n_bins,
-            "collapse_duplicate_quantile_bins": int(collapse_duplicates),
-            "pool_edges": 1,
-            "pooled_sources": list(fields.keys()),
-            **(attrs or {}),
-        },
-    )
+    outlier = et < min_annual_et
+    n = int(outlier.sum())
+    print(f"{label or et.name}: {n} gridcell-years with annual ET < {min_annual_et} W/m2 set to NaN"
+          + (f" (min {float(et.min()):0.3g})" if n else ""))
+    with xr.set_options(keep_attrs=True):
+        return et.where(~outlier)
 
 
 # ------------------------------------------------------------------
@@ -527,44 +250,6 @@ def bin_stats(
         member_coords = {c: target[c] for c in target.coords if target[c].dims == (member_dim,)}
         out = out.assign_coords(member_coords)
     return out
-
-
-def bin_stats_by_source(
-    inputs: Mapping[str, Mapping[str, xr.DataArray]],
-    y_edges: xr.DataArray | np.ndarray,
-    x_edges: xr.DataArray | np.ndarray,
-    *,
-    dim: str = "source_id",
-    target: str = "et",
-    y: str = "lai",
-    x: str = "ai",
-    masks: Mapping[str, xr.DataArray] | None = None,
-    verbose: bool = True,
-    **kwargs,
-) -> xr.DataArray:
-    """
-    `bin_stats` for each source (e.g. CMIP6 model) on its own grid, concatenated along `dim`.
-
-    Parameters
-    ----------
-    inputs : {source: {"et": ..., "lai": ..., "ai": ...}}, e.g. from `prepare_inputs`
-    target, y, x : keys of the target and binning variables in each inputs[source]
-    masks : optional {source: mask}
-    **kwargs : passed to `bin_stats` (e.g. y_name, x_name, name, attrs)
-    """
-    results = []
-    for src, fields in inputs.items():
-        bs = bin_stats(
-            fields[target], fields[y], fields[x], y_edges, x_edges,
-            mask=None if masks is None else masks[src],
-            **kwargs,
-        )
-        if verbose:
-            print(f"{src:20}: {int(bs.sel(stats='count').sum()):.3e} samples binned")
-        results.append(bs)
-    # Attrs that differ between sources (e.g. per-source `attrs`) are dropped
-    out = xr.concat(results, dim=dim, combine_attrs="drop_conflicts")
-    return out.assign_coords({dim: list(inputs.keys())})
 
 
 def pool_members(bs: xr.DataArray) -> xr.DataArray:

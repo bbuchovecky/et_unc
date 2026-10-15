@@ -1,8 +1,9 @@
 """
 etunc.temporal
 ==============
-Time handling: annual means and other temporal aggregations of monthly
-fields, and the time-period strings used in file names.
+Time handling: annual means and climatologies of the binning pipeline
+(`aggregate`, steps 4 and 10 of docs/binning-workflow.md), complete and shared
+years, and the time-period strings used in file names.
 """
 
 from __future__ import annotations
@@ -12,9 +13,6 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-
-Aggregation = Literal["mon", "year", "clim", "year_max", "clim_max"]
 
 
 # ------------------------------------------------------------------
@@ -45,52 +43,6 @@ def period_str(years) -> str:
 # Aggregation
 # ------------------------------------------------------------------
 
-def compute_annual_mean(da: xr.DataArray) -> xr.DataArray:
-    """Days-in-month weighted annual mean of a monthly field; `time` -> `year`."""
-    days_in_month = da.time.dt.days_in_month
-    # Weights sum to 1 over the months *in the time axis*, so a year with time steps
-    # missing averages only the months it has (see `complete_years`)
-    weights = days_in_month.groupby('time.year') / days_in_month.groupby('time.year').sum()
-    # The NaN-skipping sum counts a NaN month as 0 (biased low) and gives 0, not NaN,
-    # for an all-NaN year. `annual_mean` masks both cases
-    with xr.set_options(keep_attrs=True):
-        return (da * weights).groupby('time.year').sum()
-
-
-def aggregate(da: xr.DataArray, how: Aggregation = "clim") -> xr.DataArray:
-    """
-    Temporal aggregation of a monthly field.
-
-    how : "mon"      -> unchanged
-          "year"     -> annual mean (`year` dim)
-          "clim"     -> time mean of the annual means
-          "year_max" -> annual maximum of monthly values (`year` dim)
-          "clim_max" -> maximum of the mean seasonal cycle
-
-    A field without `time` is assumed to be aggregated already: "clim" then
-    averages over `year` if present and otherwise returns `da` unchanged.
-    """
-    if "time" not in da.dims:
-        if how == "clim":
-            return da.mean("year", keep_attrs=True) if "year" in da.dims else da
-        if how == "year" and "year" in da.dims:
-            return da
-        raise ValueError(f"aggregate(how={how!r}) needs a monthly `time` dimension; got {da.dims}")
-
-    if how == "mon":
-        return da
-    if how == "year":
-        return compute_annual_mean(da)
-    if how == "clim":
-        # Every year weighs equally (NaN years skipped)
-        return compute_annual_mean(da).mean("year", keep_attrs=True)
-    if how == "year_max":
-        return da.groupby("time.year").max(keep_attrs=True)
-    if how == "clim_max":
-        return da.groupby("time.month").mean(keep_attrs=True).max("month", keep_attrs=True)
-    raise ValueError(f"Unknown aggregation {how!r}")
-
-
 def complete_years(da: xr.DataArray) -> list[int]:
     """Years with all 12 months in the time axis."""
     # Checks the time axis only, not the values: an all-NaN month still counts
@@ -98,44 +50,77 @@ def complete_years(da: xr.DataArray) -> list[int]:
     return [int(y) for y in np.unique(years) if np.unique(months[years == y]).size == 12]
 
 
-def annual_mean(da: xr.DataArray, require_all_months: bool) -> xr.DataArray:
+def aggregate(
+    da: xr.DataArray,
+    how: Literal["year", "clim"],
+    *,
+    require_all_months: bool = True,
+    label: str | None = None,
+) -> xr.DataArray:
     """
-    Annual mean via `aggregate`, which counts missing months as 0. With
-    `require_all_months`, years with any missing month are NaN instead;
-    otherwise only years without any valid month are NaN.
+    Temporal aggregation of the binning pipeline (docs/binning-workflow.md).
+
+    how="year" (step 4): days-in-month weighted annual means of a monthly
+        field, `time` -> `year`, over complete calendar years only (all 12
+        months in the time axis; partial first/last years are dropped).
+        require_all_months=True (ET, P, Rn): a gridcell-year with any
+        missing month is NaN, since a missing month would bias the flux.
+        require_all_months=False (LAI): a missing month counts as LAI = 0
+        (winter gaps at high latitudes); only gridcell-years without any
+        valid month are NaN.
+    how="clim" (step 10): mean over `year` of annual means. Every year
+        weighs equally, and a gridcell's missing (NaN) years are skipped, so
+        its climatology covers fewer years.
+
+    Prints a one-line report of what the rule did (`label`, default the
+    name of `da`) and stores the counts in the attrs of the result.
     """
-    # The loaders pass require_all_months=False only for LAI, so a missing LAI month counts
-    # as LAI = 0. ET, pr and Rn need all 12 months, since a 0 would bias the flux low
-    n_valid = da.notnull().groupby("time.year").sum()
-    with xr.set_options(keep_attrs=True):
-        ann = aggregate(da, "year")
-        return ann.where(n_valid == 12 if require_all_months else n_valid > 0)
+    label = label or da.name or "field"
 
+    if how == "year":
+        if "time" not in da.dims:
+            raise ValueError(f"{label}: aggregate(how='year') needs a monthly `time` dimension; got {da.dims}")
+        years = complete_years(da)
+        dropped = sorted(set(da.time.dt.year.values.tolist()) - set(years))
+        da = da.sel(time=da.time.dt.year.isin(years))
+        # Days-in-month weights that sum to 1 over the 12 months of each year
+        days = da.time.dt.days_in_month
+        weights = days.groupby("time.year") / days.groupby("time.year").sum()
+        # Weighted sum and valid-month count in one pass (one read of lazy data). The
+        # NaN-skipping sum counts a missing month as 0
+        ds = xr.Dataset({
+            "sum": (da * weights).groupby("time.year").sum(keep_attrs=True),
+            "n_valid": da.notnull().groupby("time.year").sum(),
+        }).load()
+        n_valid = ds["n_valid"]
+        with xr.set_options(keep_attrs=True):
+            out = ds["sum"].where(n_valid == 12 if require_all_months else n_valid > 0).rename(da.name)
+        if {"lat", "lon"} <= set(out.dims):
+            out = out.transpose(..., "lat", "lon")  # ([member,] year, lat, lon), as the binning expects
+        n_partial = int(((n_valid > 0) & (n_valid < 12)).sum())
+        rule = "set to NaN" if require_all_months else "missing months counted as 0"
+        print(f"{label}: annual means of {len(years)} complete years"
+              + (f" (incomplete years dropped: {dropped})" if dropped else "")
+              + f"; {n_partial} gridcell-years with 1-11 valid months, {rule}")
+        out.attrs.update(n_partial_gridcell_years=n_partial, partial_years=rule)
+        return out
 
-def annual_means(monthly: dict[str, xr.DataArray]) -> dict[str, xr.DataArray]:
-    """
-    Loaded annual means ([member,] year, lat, lon) of monthly binning
-    variables {key: (..., time, lat, lon)} over complete years only, as every
-    `load_native` takes them. A missing month counts as 0 for "lai", while
-    every other key (ET, pr, Rn) needs all 12 months.
-    """
-    out = {}
-    for k, da in monthly.items():
-        # Drop partial first/last years: they would bias annual means toward the months present
-        da = da.sel(time=da.time.dt.year.isin(complete_years(da)))
-        # Key rule for which gridcell-years are binned: a missing LAI month (winter gaps at
-        # high latitudes) counts as 0, while ET, pr and Rn need all 12 months
-        ann = annual_mean(da, require_all_months=(k != "lai"))
-        out[k] = ann.transpose(..., "lat", "lon").load()
-    return out
+    if how == "clim":
+        if "year" not in da.dims:
+            raise ValueError(f"{label}: aggregate(how='clim') needs a `year` dimension; got {da.dims}")
+        n_years = da.sizes["year"]
+        n_valid = da.notnull().sum("year")
+        missing = (n_valid > 0) & (n_valid < n_years)
+        n_missing = int(missing.sum())
+        out = da.mean("year", keep_attrs=True)
+        report = f"{label}: climatology of {n_years} years; {n_missing} gridcells have missing years"
+        if n_missing:
+            report += f" (fewest valid years: {int(n_valid.where(missing).min())})"
+        print(report)
+        out.attrs.update(n_years=n_years, n_gridcells_missing_years=n_missing)
+        return out
 
-
-def print_annual(da: xr.DataArray, label: str) -> None:
-    """One-line summary of annual means `da` (year, lat, lon): dims, shape, period, range and units."""
-    print(
-        f"{label}: {da.dims} {da.shape} {period_str(da.year.values)} "
-        f"[{float(da.min()):0.3g}, {float(da.max()):0.3g}] {da.attrs.get('units', '?')}"
-    )
+    raise ValueError(f"Unknown aggregation {how!r}; use 'year' or 'clim'")
 
 
 def shared_years(*anns: xr.DataArray) -> list[int]:

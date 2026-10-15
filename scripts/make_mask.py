@@ -19,7 +19,7 @@ Steps
 -----
 1. Load the monthly field of each product over TIME_SLICE on the common RES
    grid (`rg.target_grid`), restricted to `config.LAT_BNDS` and the land mask
-   (Natural Earth without Greenland/Iceland, `rg.land_mask`).
+   (Natural Earth without Greenland/Iceland, `rg.landne_mask`).
    - ILAMB products are read with `il.load_ilamb` (lon in [-180, 180], lat
      ascending, undecoded fill values removed) and conservatively regridded
      to RES each month (`NA_THRESH`).
@@ -137,7 +137,7 @@ def load_gridded(variable: str, label: str) -> xr.DataArray:
     # file are simply absent from the time axis (find_files warns about them).
     # The result is already in memory, so the reductions do not re-read it.
     da = lo.load_obs_regridded(dataset, var, TIME_SLICE, RES, version=version, freq="monthly")
-    return rg.on_grid(da, RES, f"{variable}/{label}")
+    return rg.on_grid(da, RES, f"{variable}/{label}").sel(lat=config.LAT_BNDS)
 
 
 def product_loaders() -> dict[str, tuple[str, partial]]:
@@ -202,7 +202,7 @@ def main():
     period = temporal.format_time_period(TIME_SLICE)  # e.g. "198201-202512", for file names
 
     # Land gridcells of GRID (Natural Earth, without Greenland/Iceland)
-    land = (rg.land_mask(GRID) == 1).rename("land")
+    land = (rg.landne_mask(GRID) == 1).rename("land")
     n_land = int(land.sum())
     print(f"{period}, {RES}: {n_land} land gridcells\n")
 

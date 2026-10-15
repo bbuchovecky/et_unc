@@ -8,7 +8,7 @@ Run from the project root with:
     python -m pytest tests/test_load_ilamb.py
 
 Small synthetic ILAMB-style NetCDF files only, with a synthetic land mask in
-place of Natural Earth (`etunc.grid.land_mask`); takes a few seconds.
+place of Natural Earth (`etunc.grid.landne_mask`); takes a few seconds.
 """
 
 import numpy as np
@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import etunc.legacy.grid as legacy_grid
 import etunc.config as config
 import etunc.grid as rg
 import etunc.load.ilamb as il
@@ -62,7 +63,7 @@ def availability_ilamb(product):
 
 
 def fake_land_mask(grid):
-    """Stand-in for rg.land_mask (Natural Earth): land where lon > LAND_WEST."""
+    """Stand-in for rg.landne_mask (Natural Earth): land where lon > LAND_WEST."""
     return (grid["lat"] > -1000) & (grid["lon"] > LAND_WEST)  # (lat, lon) bool
 
 
@@ -90,7 +91,7 @@ def write_product(root, variable, product, name, da, units):
 def ilamb_root(tmp_path, monkeypatch):
     """ILAMB_DATA_ROOT in tmp_path, with fake 1 deg "FAKE" lai, pr and et products, and the synthetic land mask."""
     monkeypatch.setattr(il, "ILAMB_DATA_ROOT", tmp_path)
-    monkeypatch.setattr(il, "land_mask", fake_land_mask)
+    monkeypatch.setattr(il, "landne_mask", fake_land_mask)
     for variable in il.PRODUCTS:
         monkeypatch.setitem(il.PRODUCTS, variable, dict(il.PRODUCTS[variable]))
     write_product(tmp_path, "lai", "FAKE", "lai", field(LAI, [(*LAI_GAP, np.nan)]), "1")
@@ -179,13 +180,13 @@ def test_load_annual_masks_ocean_before_regridding(ilamb_root):
     A global product (as GPCP or CERES) is masked to land on its native grid,
     so ocean values never enter a coastal target cell: the half-land 1 deg
     cell [-1, 0] keeps the land value, the ocean cell next to it is NaN.
-    (na_thres 0.6: at exactly half land, great-circle cell sides decide 0.5.)
+    (na_thresh 0.6: at exactly half land, great-circle cell sides decide 0.5.)
     """
     lat05, lon05 = np.arange(89.75, -90, -0.5), np.arange(0.25, 360, 0.5)
     land05 = ((lon05 + 180) % 360) - 180 > LAND_WEST
     da = field(PR, lat=lat05, lon=lon05).where(xr.DataArray(land05, dims="lon", coords={"lon": lon05}), 100 * PR)
     write_product(ilamb_root, "pr", "GLOBAL", "pr", da, "mm/day")
-    ann = il.load_annual("pr", "GLOBAL", ALL, 1.0, na_thres=0.6)["pr"]
+    ann = il.load_annual("pr", "GLOBAL", ALL, 1.0, na_thresh=0.6)["pr"]
     wm2 = PR / 86400 * config.LATENT_HEAT_VAPORIZATION
     np.testing.assert_allclose(ann.sel(lon=-0.5), wm2, rtol=1e-12)  # half land, no ocean value
     assert ann.sel(lon=-1.5).isnull().all()
@@ -207,7 +208,7 @@ def test_load_annual_flux_needs_all_months(ilamb_root):
 
 
 def test_load_annual_is_regrid_annual_of_load_native(ilamb_root):
-    """load_annual is rg.regrid_annual(*load_native(...)); load_native is native, land-masked and complete years."""
+    """load_annual is legacy_grid.regrid_annual(*load_native(...)); load_native is native, land-masked and complete years."""
     native, native_mask, src_grid = il.load_native("pr", "FAKE")
     assert list(native) == ["pr"]
     assert native["pr"].dims == ("year", "lat", "lon") and native["pr"].sizes["lon"] == LON_1DEG.size
@@ -215,7 +216,7 @@ def test_load_annual_is_regrid_annual_of_load_native(ilamb_root):
     assert native["pr"].lon.min() < 0 and (np.diff(native["pr"].lat) > 0).all()  # formatted grid
     assert native["pr"].where(~native_mask).isnull().all()
     assert native_mask.dtype == bool and src_grid.sizes["lat_b"] == LAT_1DEG.size + 1
-    out = rg.regrid_annual(native, native_mask, src_grid, RES)
+    out = legacy_grid.regrid_annual(native, native_mask, src_grid, RES)
     xr.testing.assert_identical(il.load_annual("pr", "FAKE", ALL, RES)["pr"], out["pr"])
 
 

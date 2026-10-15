@@ -1,12 +1,9 @@
 """
-Tests for the code split out of binned_et.py: etunc.units, etunc.temporal,
-etunc.binning, etunc.plotting, the coordinate checks in etunc.grid and
-etunc.legacy. Run from the project root with:
+Tests for etunc.units, etunc.binning, etunc.plotting, the aridity index of
+etunc.edges, and the coordinate checks, land masks and area masks of
+etunc.grid. Run from the project root with:
 
     python -m pytest tests/test_binning.py
-
-The data loaders (load_cmip, load_cesm_*, load_ilamb_obs) and compute_cell_area
-need external data/libraries and are not tested here.
 """
 
 import numpy as np
@@ -24,7 +21,7 @@ import etunc.temporal as temporal
 import etunc.grid as rg
 import etunc.binning as binning
 import etunc.plotting as plotting
-import etunc.legacy as legacy
+import etunc.edges as bin_edges
 
 
 # ------------------------------------------------------------------
@@ -58,18 +55,32 @@ def mask(rng):
     return xr.DataArray(rng.random((len(LAT), len(LON))) > 0.3, dims=("lat", "lon"), coords={"lat": LAT, "lon": LON})
 
 
+def make_inputs(rng, mask, members=None):
+    """Binning inputs as the prep scripts build them: annual mean ET and climatological LAI and AI, masked."""
+    def clim(scale):
+        return temporal.aggregate(temporal.aggregate(monthly(rng, scale, members), "year"), "clim")
+    inp = {
+        "et": temporal.aggregate(monthly(rng, 20, members), "year").rename("et"),
+        "lai": clim(1).rename("lai"),
+        "ai": bin_edges.compute_aridity_index(clim(40), clim(30)),
+    }
+    return {k: v.where(mask) for k, v in inp.items()}
+
+
+def quantile_edges(da, n_bins, name):
+    """Equally weighted quantile edges of all finite values of `da`."""
+    values = da.values[np.isfinite(da.values)]
+    return bin_edges.pooled_bin_edges(values, np.ones(values.size), n_bins, name=name)
+
+
 @pytest.fixture
 def inputs(rng, mask):
-    return binning.prepare_inputs(
-        et=monthly(rng, 20), lai=monthly(rng, 1), precip=monthly(rng, 40), rn=monthly(rng, 30), mask=mask
-    )
+    return make_inputs(rng, mask)
 
 
 @pytest.fixture
 def edges(inputs):
-    y = binning.pooled_bin_edges(inputs["lai"], 5, name="lai", verbose=False)
-    x = binning.pooled_bin_edges(inputs["ai"], 4, name="ai", verbose=False)
-    return y, x
+    return quantile_edges(inputs["lai"], 5, "lai"), quantile_edges(inputs["ai"], 4, "ai")
 
 
 def brute_force_stats(target, y, x, y_edges, x_edges):
@@ -100,18 +111,6 @@ def brute_force_stats(target, y, x, y_edges, x_edges):
 def test_format_time_period():
     """A time slice is formatted as YYYYMM-YYYYMM."""
     assert temporal.format_time_period(slice("1950-01", "2014-12")) == "195001-201412"
-
-
-def test_safe_squeeze_and_get_one_mid(rng):
-    """
-    safe_squeeze drops a length-1 dim and ignores a missing one; get_one_mid returns the member_id, or
-    "onemember" without a member dim.
-    """
-    da = monthly(rng, members=1)
-    assert "member" not in legacy.safe_squeeze(da, "member").dims
-    assert legacy.safe_squeeze(da, "nonexistent").dims == da.dims
-    assert legacy.get_one_mid(da) == "r1i1p1f1"
-    assert legacy.get_one_mid(da.isel(member=0)) == "onemember"
 
 
 def test_equal_coords_and_check_same_grid(inputs):
@@ -191,87 +190,27 @@ def test_latent_heat_to_wm2_unknown_units():
         units.latent_heat_to_wm2(xr.DataArray([1.0], attrs={"units": "mm d-1"}))
 
 
-def test_mask_greenland():
-    """Land above the threshold is True except in Greenland; land below the threshold is False."""
+def test_landfrac_and_greenland_masks():
+    """
+    landfrac_mask is True where land fraction > threshold, except in Greenland (greenland_mask False there);
+    land at or below the threshold, and NaN land fraction, is False.
+    """
     lat = np.array([-10.0, 72.0])
     lon = np.array([-60.0, -40.0])  # Amazon, Greenland
     lf = xr.DataArray(np.ones((2, 2)), dims=("lat", "lon"), coords={"lat": lat, "lon": lon})
-    mask = rg.mask_greenland(lf, 0.5)
+    assert not bool(rg.greenland_mask(lf).sel(lat=72, lon=-40))
+    assert bool(rg.greenland_mask(lf).sel(lat=-10, lon=-60))
+    mask = rg.landfrac_mask(lf, 0.5)
+    assert mask.dtype == bool
     assert bool(mask.sel(lat=-10, lon=-60))
     assert not bool(mask.sel(lat=72, lon=-40))
-    assert not bool(rg.mask_greenland(lf * 0.2, 0.5).sel(lat=-10, lon=-60))
-
-
-def test_filter_all_variables_available(rng):
-    """Only sources with every requested variable, all on matching grids, are kept."""
-    a = monthly(rng)
-    data = {
-        "good": {"x": a, "y": a},
-        "missing": {"x": a},
-        "badgrid": {"x": a, "y": a.isel(lat=slice(1, None))},
-    }
-    out = legacy.filter_all_variables_available(data, ["x", "y"], coords=("lat", "lon"), verbose=False)
-    assert list(out) == ["good"]
+    assert not bool(rg.landfrac_mask(lf * 0.5, 0.5).sel(lat=-10, lon=-60))
+    assert not bool(rg.landfrac_mask(lf * np.nan, 0.5).sel(lat=-10, lon=-60))
 
 
 # ------------------------------------------------------------------
 # Preprocessing
 # ------------------------------------------------------------------
-
-def test_compute_annual_mean_is_days_weighted():
-    """The annual mean weights each month by its number of days (2000 is a leap year)."""
-    da = xr.DataArray(TIME.days_in_month.astype(float), dims="time", coords={"time": TIME})
-    ann = temporal.compute_annual_mean(da)
-    d = TIME.days_in_month[:12].to_numpy(dtype=float)  # 2000 (leap year)
-    assert ann.dims == ("year",)
-    np.testing.assert_allclose(ann.sel(year=2000), np.sum(d * d) / np.sum(d))
-
-
-def test_compute_annual_mean_constant(rng):
-    """The annual mean of a constant field is that constant."""
-    da = xr.full_like(monthly(rng), 3.0)
-    np.testing.assert_allclose(temporal.compute_annual_mean(da), 3.0)
-
-
-@pytest.mark.parametrize(
-    "how, dims",
-    [
-        ("mon", ("time", "lat", "lon")),
-        ("year", ("year", "lat", "lon")),
-        ("clim", ("lat", "lon")),
-        ("year_max", ("year", "lat", "lon")),
-        ("clim_max", ("lat", "lon")),
-    ],
-)
-def test_aggregate_dims(rng, how, dims):
-    """Each aggregation mode returns the expected dims."""
-    assert temporal.aggregate(monthly(rng), how).dims == dims
-
-
-def test_aggregate_values():
-    """year_max, clim_max and clim give the right values for a known seasonal cycle plus trend."""
-    # Seasonal cycle 0..11 every year, plus 12 * year index
-    vals = np.tile(np.arange(12.0), 3) + np.repeat([0.0, 12.0, 24.0], 12)
-    da = xr.DataArray(vals, dims="time", coords={"time": TIME})
-    np.testing.assert_allclose(temporal.aggregate(da, "year_max"), [11, 23, 35])
-    np.testing.assert_allclose(temporal.aggregate(da, "clim_max"), 11 + 12)  # max of mean seasonal cycle
-    np.testing.assert_allclose(temporal.aggregate(da, "clim"), temporal.compute_annual_mean(da).mean())
-
-
-def test_aggregate_preaggregated(rng):
-    """
-    For fields already aggregated, "clim" averages over year or passes through; modes that need time, and
-    unknown modes, raise.
-    """
-    clim = temporal.aggregate(monthly(rng), "clim")
-    xr.testing.assert_identical(temporal.aggregate(clim, "clim"), clim)
-    ann = temporal.aggregate(monthly(rng), "year")
-    xr.testing.assert_allclose(temporal.aggregate(ann, "clim"), ann.mean("year"))
-    with pytest.raises(ValueError, match="time"):
-        temporal.aggregate(clim, "year_max")
-    with pytest.raises(ValueError, match="Unknown"):
-        temporal.aggregate(monthly(rng), "decadal")
-
 
 def test_net_radiation_sign_conventions():
     """CMIP, CESM and ERA5 net radiation each follow their source's flux sign convention."""
@@ -285,91 +224,18 @@ def test_compute_aridity_index():
     """AI = Rn / P, named "ai"; clip=True sets negative values to 0."""
     p = xr.DataArray([100.0, 100.0])
     rn = xr.DataArray([150.0, -20.0])
-    np.testing.assert_allclose(binning.compute_aridity_index(p, rn), [1.5, -0.2])
-    np.testing.assert_allclose(binning.compute_aridity_index(p, rn, clip=True), [1.5, 0.0])
-    assert binning.compute_aridity_index(p, rn).name == "ai"
+    np.testing.assert_allclose(bin_edges.compute_aridity_index(p, rn), [1.5, -0.2])
+    np.testing.assert_allclose(bin_edges.compute_aridity_index(p, rn, clip=True), [1.5, 0.0])
+    assert bin_edges.compute_aridity_index(p, rn).name == "ai"
 
 
-def test_prepare_inputs(rng, mask):
-    """
-    ET becomes annual means within time_slice and LAI and AI climatologies, all masked; lai_agg="year" keeps
-    annual LAI.
-    """
-    et, lai, pr, rn = (monthly(rng, s) for s in (20, 1, 40, 30))
-    out = binning.prepare_inputs(et, lai, pr, rn, mask=mask, time_slice=slice("2000-01", "2001-12"))
-    assert out["et"].dims == ("year", "lat", "lon")
-    assert list(out["et"].year.values) == [2000, 2001]
-    assert out["lai"].dims == ("lat", "lon")
-    assert out["ai"].dims == ("lat", "lon")
-    for da in out.values():
-        assert da.where(~mask).isnull().all()
-        assert da.where(mask).notnull().sum() > 0
-    expected_ai = temporal.aggregate(rn.sel(time=slice("2000-01", "2001-12")), "clim") / temporal.aggregate(
-        pr.sel(time=slice("2000-01", "2001-12")), "clim"
-    )
-    xr.testing.assert_allclose(out["ai"], expected_ai.where(mask).rename("ai"), check_dim_order=True)
-
-    out_ann = binning.prepare_inputs(et, lai, pr, rn, lai_agg="year")
-    assert out_ann["lai"].dims == ("year", "lat", "lon")
-
-
-# ------------------------------------------------------------------
-# Bin edges
-# ------------------------------------------------------------------
-
-def test_build_edges_quantile_ignores_nan(rng):
-    """Quantile edges ignore NaN and inf values."""
-    vals = rng.random(1000)
-    with_nan = np.append(vals, [np.nan, np.inf])
-    edges = binning.build_edges(with_nan, 4)
-    np.testing.assert_allclose(edges, np.quantile(vals, [0, 0.25, 0.5, 0.75, 1]))
-
-
-def test_build_edges_linear():
-    """Linear edges span the given range, or the data range when none is given."""
-    np.testing.assert_allclose(binning.build_edges(np.array([0.3, 0.7]), 4, "linear", (0, 2)), [0, 0.5, 1, 1.5, 2])
-    np.testing.assert_allclose(binning.build_edges(np.array([1.0, 3.0]), 2, "linear"), [1, 2, 3])
-
-
-def test_build_edges_duplicates():
-    """Duplicate quantile edges from many zeros are kept by default and merged with collapse_duplicates=True."""
-    vals = np.concatenate([np.zeros(600), np.linspace(1, 2, 400)])
-    kept = binning.build_edges(vals, 4)
-    assert len(kept) == 5 and kept[0] == kept[1] == kept[2] == 0
-    collapsed = binning.build_edges(vals, 4, collapse_duplicates=True)
-    assert len(collapsed) == 3 and np.all(np.diff(collapsed) > 0)
-
-
-def test_build_edges_errors():
-    """All-NaN data, edges that collapse to a single value, and unknown strategies raise."""
-    with pytest.raises(ValueError, match="no finite"):
-        binning.build_edges(np.array([np.nan, np.nan]), 3)
-    with pytest.raises(ValueError, match="collapsed"):
-        binning.build_edges(np.zeros(10), 3, collapse_duplicates=True)
-    with pytest.raises(ValueError, match="Unknown bin strategy"):
-        binning.build_edges(np.arange(10.0), 3, strategy="log")
-
-
-def test_pooled_bin_edges_pools_all_fields(rng):
-    """Edges are built from the values of all fields together (NaN dropped), with name, dims and attrs set."""
-    a = xr.DataArray(rng.random((3, 4)), dims=("lat", "lon"))
-    b = xr.DataArray(rng.random((2, 5, 6)) + 1, dims=("member", "lat", "lon"))
-    b[0, 0, 0] = np.nan
-    edges = binning.pooled_bin_edges({"a": a, "b": b}, 5, name="lai", attrs={"units": "m2/m2"}, verbose=False)
-    pooled = np.concatenate([a.values.ravel(), b.values.ravel()])
-    np.testing.assert_allclose(edges.values, binning.build_edges(pooled, 5))
-    assert edges.dims == ("edge",) and edges.name == "lai"
-    assert edges.attrs["strategy"] == "quantile"
-    assert edges.attrs["n_bins"] == 5
-    assert edges.attrs["pooled_sources"] == ["a", "b"]
-    assert edges.attrs["units"] == "m2/m2"
-
-
-def test_pooled_bin_edges_warns_on_zeros():
-    """A warning is raised when many values are exactly 0."""
-    da = xr.DataArray(np.concatenate([np.zeros(50), np.arange(1.0, 51)]))
-    with pytest.warns(UserWarning, match="are 0"):
-        binning.pooled_bin_edges(da, 3, name="lai", verbose=False)
+def test_drop_et_outliers(capsys):
+    """Gridcell-years below the threshold become NaN, attrs are kept, and the count is printed."""
+    et = xr.DataArray([[5.0, -3.0], [-1.0, 0.5]], dims=("year", "lat"), name="et", attrs={"units": "W/m2"})
+    out = binning.drop_et_outliers(et, -1.0)
+    np.testing.assert_array_equal(out.isnull(), [[False, True], [False, False]])  # -1 itself is kept
+    assert out.attrs["units"] == "W/m2"
+    assert "et: 1 gridcell-years with annual ET < -1.0 W/m2 set to NaN" in capsys.readouterr().out
 
 
 # ------------------------------------------------------------------
@@ -487,10 +353,7 @@ def test_bin_stats_mask(inputs, edges, mask):
 def test_bin_stats_per_member(rng, mask, edges):
     """member_dim bins each member separately (same as binning it alone); without it, all members are pooled."""
     y_edges, x_edges = edges
-    inp = binning.prepare_inputs(
-        monthly(rng, 20, members=3), monthly(rng, 1, members=3),
-        monthly(rng, 40, members=3), monthly(rng, 30, members=3), mask=mask,
-    )
+    inp = make_inputs(rng, mask, members=3)
     bs = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, member_dim="member")
     assert bs.dims == ("member", "stats", "y_bin", "x_bin")
     assert list(bs.member_id.values) == ["r1i1p1f1", "r2i1p1f1", "r3i1p1f1"]
@@ -508,10 +371,7 @@ def test_bin_stats_per_member(rng, mask, edges):
 def test_pool_members_matches_binning_pooled_samples(rng, mask, edges):
     """Pooling per-member statistics gives the statistics of all members' samples binned together."""
     y_edges, x_edges = edges
-    inp = binning.prepare_inputs(
-        monthly(rng, 20, members=3), monthly(rng, 1, members=3),
-        monthly(rng, 40, members=3), monthly(rng, 30, members=3), mask=mask,
-    )
+    inp = make_inputs(rng, mask, members=3)
     bs = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, member_dim="member", name="et")
     pooled = binning.pool_members(bs)
     direct = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, name="et")
@@ -530,21 +390,10 @@ def test_bin_stats_rejects_mismatched_grids(inputs, edges):
         binning.bin_stats(inputs["et"], shifted, inputs["ai"], y_edges, x_edges)
 
 
-def test_bin_stats_by_source(inputs, edges):
-    """Per-source results are concatenated along `dim`, each matching bin_stats on that source alone."""
-    y_edges, x_edges = edges
-    other = {k: v * 2 for k, v in inputs.items()}
-    bs = binning.bin_stats_by_source({"A": inputs, "B": other}, y_edges, x_edges, dim="sid", verbose=False)
-    assert bs.dims == ("sid", "stats", "y_bin", "x_bin")
-    assert list(bs.sid.values) == ["A", "B"]
-    single = binning.bin_stats(inputs["et"], inputs["lai"], inputs["ai"], y_edges, x_edges)
-    np.testing.assert_allclose(bs.sel(sid="A").values, single.values, equal_nan=True)
-
-
 def test_valid_and_common_area(capsys):
     """
-    valid_area needs ET in some year plus LAI and a finite AI (in every member with member_dim); common_area
-    is the land cells valid in every dataset, and prints one line per dataset.
+    valid_area needs ET in some year plus LAI and a finite AI, in every member; common_area is the cells
+    valid in every dataset, and prints each dataset's valid cells and what the common area loses.
     """
     coords = {"lat": [0.0, 1.0], "lon": [0.0, 1.0, 2.0]}
     et = xr.DataArray(np.ones((2, 2, 2, 3)), dims=("member", "year", "lat", "lon"), coords=coords)
@@ -554,55 +403,20 @@ def test_valid_and_common_area(capsys):
     et[0, 0, 0, 1] = np.nan                 # one missing year only: still valid
     lai[1, 0, 2] = np.nan                   # LAI missing in member 1 only
     ai[:, 1, 0] = np.inf                    # AI not finite
-    inp = {"et": et, "lai": lai, "ai": ai}
+    inp = xr.Dataset({"et": et, "lai": lai, "ai": ai})
 
-    per_member = binning.valid_area(inp)
-    assert per_member.dims == ("member", "lat", "lon")
-    np.testing.assert_array_equal(per_member.sel(member=0), [[False, True, True], [False, True, True]])
-    np.testing.assert_array_equal(per_member.sel(member=1), [[False, True, False], [False, True, True]])
-    all_members = binning.valid_area(inp, member_dim="member")
+    all_members = rg.valid_area(inp)
+    assert all_members.dims == ("lat", "lon")
     np.testing.assert_array_equal(all_members, [[False, True, False], [False, True, True]])
+    np.testing.assert_array_equal(rg.valid_area(inp.isel(member=0)), [[False, True, True], [False, True, True]])
 
-    land = xr.DataArray([[1, 1, 1], [1, 0, 1]], dims=("lat", "lon"), coords=coords)
-    no_lai_at_lat1 = {**inp, "lai": inp["lai"].where(inp["lai"].lat == 0)}
-    area = binning.common_area({"A": inp, "B": no_lai_at_lat1}, land, member_dim="member")
+    other = rg.valid_area(inp.assign(lai=inp["lai"].where(inp.lat == 0)))
+    area = rg.common_area({"A": all_members, "B": other})
     assert area.name == "area_mask"
     np.testing.assert_array_equal(area, [[False, True, False], [False, False, False]])
     out = capsys.readouterr().out
-    assert out.count("valid gridcells") == 2 and "common area: 1.0000e+00 of 5.0000e+00" in out
-
-
-def test_open_bin_stats_roundtrip(tmp_path, inputs, edges):
-    """A saved bin_stats file opens back unchanged."""
-    bs = binning.bin_stats(inputs["et"], inputs["lai"], inputs["ai"], *edges, name="et")
-    bs.to_netcdf(tmp_path / "bs.nc")
-    opened = legacy.open_bin_stats(tmp_path / "bs.nc")
-    xr.testing.assert_allclose(opened, bs)
-
-
-def test_open_bin_stats_legacy_file(tmp_path):
-    """Notebook-era files with edges only in attrs get their bin coords rebuilt."""
-    # Older notebook output: no y_bin/x_bin coords, edges only in attrs
-    old = xr.DataArray(
-        np.ones((4, 3, 2)),
-        name="evspsbl",
-        dims=("stats", "y_bin", "x_bin"),
-        coords={"stats": ["mean", "var_pop", "var_samp", "count"]},
-        attrs={"y_bin_edges": [0.0, 0.0, 1.0, 2.0], "x_bin_edges": [0.0, 0.5, 1.0]},
-    )
-    old.to_netcdf(tmp_path / "legacy.nc")
-    opened = legacy.open_bin_stats(tmp_path / "legacy.nc")
-    np.testing.assert_array_equal(opened.y_bin, [0, 1, 2])
-    np.testing.assert_allclose(opened.y_bin_lower, [0, 0, 1])
-    np.testing.assert_allclose(opened.x_bin_upper, [0.5, 1.0])
-
-
-def test_open_bin_stats_multiple_vars_needs_var(tmp_path):
-    """A file with several variables needs var= to choose one."""
-    xr.Dataset({"a": ("x", [1.0]), "b": ("x", [2.0])}).to_netcdf(tmp_path / "two.nc")
-    with pytest.raises(ValueError, match="pass `var`"):
-        legacy.open_bin_stats(tmp_path / "two.nc")
-    assert legacy.open_bin_stats(tmp_path / "two.nc", var="b").name == "b"
+    assert "A       :      3 valid gridcells" in out and "loses      2 gridcells" in out
+    assert "common  :      1 gridcells" in out
 
 
 # ------------------------------------------------------------------
@@ -709,10 +523,7 @@ def test_plot_bin_field_hatch_and_ticks(tmp_path):
 def test_plot_bin_summary_and_facets(tmp_path, rng, mask, edges):
     """plot_bin_summary and plot_bin_facets run on per-member stats and save their figures."""
     y_edges, x_edges = edges
-    inp = binning.prepare_inputs(
-        monthly(rng, 20, members=2), monthly(rng, 1, members=2),
-        monthly(rng, 40, members=2), monthly(rng, 30, members=2), mask=mask,
-    )
+    inp = make_inputs(rng, mask, members=2)
     bs = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, member_dim="member")
     assert len(plotting.plot_bin_summary(bs, dim="member").axes) == 6  # 3 panels + 3 colorbars
     plotting.plot_bin_summary(bs.isel(member=0), fout=tmp_path / "summary.png")
@@ -829,14 +640,3 @@ def test_plot_mask_agreement_counts_common_mask(highlight_common, mask):
     assert fig.axes[0].collections[0].cmap.N == 4
     plt.close(fig)
 
-
-def test_legacy_align_dicts():
-    """align_dicts drops models whose data and grid lat/lon differ (any grid variable, or only `grid_var`)."""
-    a = xr.DataArray(np.zeros((2, 3)), dims=("lat", "lon"), coords={"lat": [0.0, 1.0], "lon": [0.0, 1.0, 2.0]})
-    b = a.assign_coords(lat=[0.0, 1.5])
-    data = {"A": {"x": a}, "B": {"x": a}, "C": {"x": a}}
-    grids = {"A": {"g": a, "h": a}, "B": {"g": a, "h": b}}
-    d, g = legacy.align_dicts(data, grids)
-    assert list(d) == ["A"] and list(g) == ["A"]          # B: h differs; C: no grid
-    d, _ = legacy.align_dicts(data, grids, grid_var="g")
-    assert list(d) == ["A", "B"]

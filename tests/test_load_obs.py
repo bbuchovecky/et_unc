@@ -229,10 +229,10 @@ def test_wrappers_regrid_res(monkeypatch, loader, name):
     calls = []
     monkeypatch.setattr(lo, "load_obs_regridded", lambda *a, **kw: calls.append(("regridded", a, kw)))
     monkeypatch.setattr(lo, "load_obs", lambda *a, **kw: calls.append(("load_obs", a, kw)))
-    loader("ET", slice("2001", "2002"), regrid_res=0.5, na_thres=0.3, version="v1")
+    loader("ET", slice("2001", "2002"), regrid_res=0.5, na_thresh=0.3, version="v1")
     loader("ET", slice("2001", "2002"), version="v1", res="1")
     assert calls == [
-        ("regridded", (name, "ET", slice("2001", "2002"), 0.5), {"na_thres": 0.3, "version": "v1"}),
+        ("regridded", (name, "ET", slice("2001", "2002"), 0.5), {"na_thresh": 0.3, "version": "v1"}),
         ("load_obs", (name, "ET", slice("2001", "2002")), {"version": "v1", "res": "1"}),
     ]
     with pytest.raises(ValueError, match="not both"):

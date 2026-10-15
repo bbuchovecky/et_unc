@@ -5,7 +5,7 @@ Load the ILAMB observational products in PRODUCTS (ILAMB_DATA_ROOT), with
 lon in [-180, 180] and lat ascending, within LAT_BNDS.
 
 - Annual means for binning, as in every load module: `load_native` (complete
-  years on the native grid, masked to land with `etunc.grid.land_mask`) and
+  years on the native grid, masked to land with `etunc.grid.landne_mask`) and
   `load_annual` = `etunc.grid.regrid_annual` of it (conservative). LAI is
   m2/m2 and a missing LAI month counts as 0; ET, pr and rn are converted to
   W/m2 and need all 12 months.
@@ -23,11 +23,11 @@ import xarray as xr
 
 from etunc.config import ILAMB_ROOT, LAT_BNDS, NA_THRESH
 from etunc.grid import (
-    bounded_source_grid, conservative_regridder, format_grid, land_mask, on_grid, regrid_annual,
-    regrid_with_na_thres,
+    bounded_src_grid, conservative_regridder, format_grid, landne_mask, on_grid, regrid_with_na_thresh,
 )
-from etunc.temporal import annual_means, print_annual
 from etunc.units import flux_to_wm2
+from etunc.legacy.grid import regrid_annual
+from etunc.legacy.temporal import annual_means, print_annual
 
 
 ILAMB_DATA_ROOT = ILAMB_ROOT / "ILAMB-Data"
@@ -90,7 +90,7 @@ def load_native(
     """
     Annual means {variable: (year, lat, lon)} of one product on its native
     grid over the complete years in `time_slice`, masked to land
-    (`etunc.grid.land_mask` of the native grid). ET, pr and rn are in W/m2
+    (`etunc.grid.landne_mask` of the native grid). ET, pr and rn are in W/m2
     and need all 12 months; LAI is m2/m2 and a missing month counts as 0.
 
     Returns (annual means, native land mask, native grid), the input of
@@ -103,10 +103,10 @@ def load_native(
         da = flux_to_wm2(da)
     # Natural Earth land, as the target-grid mask of the binning. Removes the ocean of the
     # global pr and rn products (GPCP, CMAP, CERES, GEWEX) before it can enter coastal cells
-    native_mask = land_mask(da)
+    native_mask = landne_mask(da)
     with xr.set_options(keep_attrs=True):
         da = da.where(native_mask)
-    return annual_means({variable: da}), native_mask, bounded_source_grid(da)
+    return annual_means({variable: da}), native_mask, bounded_src_grid(da)
 
 
 def load_annual(
@@ -116,7 +116,7 @@ def load_annual(
     res: float | str,
     *,
     mask: xr.DataArray | None = None,
-    na_thres: float = NA_THRESH,
+    na_thresh: float = NA_THRESH,
 ) -> dict[str, xr.DataArray]:
     """
     Annual means {variable: (year, lat, lon)} of one product on
@@ -124,7 +124,7 @@ def load_annual(
     `etunc.grid.regrid_annual` of `load_native`.
     """
     label = f"{variable}/{product}"
-    ann = regrid_annual(*load_native(variable, product, time_slice), res, mask=mask, na_thres=na_thres, label=label)
+    ann = regrid_annual(*load_native(variable, product, time_slice), res, mask=mask, na_thresh=na_thresh, label=label)
     print_annual(ann[variable], f"{variable:3} {product:12}")
     return ann
 
@@ -136,14 +136,14 @@ def load_ilamb(
     res: float | str | None = 0.5,
     *,
     wm2: bool = False,
-    na_thres: float = NA_THRESH,
+    na_thresh: float = NA_THRESH,
 ) -> xr.DataArray:
     """
     Monthly field (time, lat, lon) of one product over `time_slice` within
     LAT_BNDS, in native units or, with `wm2`, converted to W/m2 (`flux_to_wm2`)
     before regridding. Partial years are kept. With `res`, each month is
-    conservatively regridded onto `target_grid(res)` (`regrid_with_na_thres`:
-    NaN where more than `na_thres` of a target cell is missing); with
+    conservatively regridded onto `target_grid(res)` (`regrid_with_na_thresh`:
+    NaN where more than `na_thresh` of a target cell is missing); with
     `res=None`, it stays on the native grid. Raises FileNotFoundError if the
     product has no data in `time_slice`.
     """
@@ -153,5 +153,5 @@ def load_ilamb(
         da = flux_to_wm2(da)
     if res is None:
         return da.sel(lat=LAT_BNDS)
-    da = regrid_with_na_thres(da, conservative_regridder(da, res), na_thres)
-    return on_grid(da, res, label)
+    da = regrid_with_na_thresh(da, conservative_regridder(da, res), na_thresh)
+    return on_grid(da, res, label).sel(lat=LAT_BNDS)

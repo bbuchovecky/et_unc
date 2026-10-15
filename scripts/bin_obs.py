@@ -37,7 +37,7 @@ Steps
 3. Each (ET, LAI, pr, rn) combination uses the complete years shared by all
    four products, and is skipped if there are fewer than MIN_YEARS. Binning
    inputs are annual mean ET and climatological LAI and AI
-   (`binning.prepare_inputs`), restricted to one common area mask: land gridcells
+   (`lb.prepare_inputs`), restricted to one common area mask: land gridcells
    where ET (in any year), LAI and AI are valid in *every* combination, so
    all ET products cover the same area. The mask is static; ET years that
    are missing inside it stay NaN, so per-year availability still differs
@@ -82,6 +82,8 @@ import xarray as xr
 import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
+from etunc.edges import EDGE_ATTRS, compute_aridity_index
+import etunc.legacy.binning as lb  # old edges and inputs, until bin_all.py replaces this script
 import etunc.plotting as plotting
 import etunc.grid as rg
 import etunc.load.era5 as le
@@ -193,9 +195,9 @@ def combo_inputs(
     years: list[int],
     mask: xr.DataArray,
 ) -> dict[str, xr.DataArray]:
-    """`binning.prepare_inputs` for one (et, lai, pr, rn) combination over `years`, on land gridcells."""
+    """`lb.prepare_inputs` for one (et, lai, pr, rn) combination over `years`, on land gridcells."""
     fields = {v: ann[v][p].sel(year=years) for v, p in zip(FACTORS, combo)}
-    return binning.prepare_inputs(
+    return lb.prepare_inputs(
         et=fields["et"], lai=fields["lai"], precip=fields["pr"], rn=fields["rn"], mask=mask,
     )
 
@@ -302,7 +304,7 @@ def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | Non
 
 def main():
     cfg.summarize()
-    mask = rg.land_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
+    mask = rg.landne_mask(TARGET_GRID).sel(lat=cfg.LAT_BNDS)
 
     # ------------------------------------------------------------------
     # Annual means of every product: {variable: {product: (year, lat, lon)}}
@@ -349,7 +351,7 @@ def main():
         if not years:
             print(f"{pr_p}-{rn_p}: no shared years, skipping AI map")
             continue
-        ai = binning.compute_aridity_index(
+        ai = compute_aridity_index(
             temporal.aggregate(ann["pr"][pr_p].sel(year=years), "clim"),
             temporal.aggregate(ann["rn"][rn_p].sel(year=years), "clim"),
         )
@@ -378,7 +380,7 @@ def main():
     # ------------------------------------------------------------------
     print("\n=== Common area mask ===")
     inputs = {cid: combo_inputs(ann, combo, years, mask) for cid, (combo, years) in combos.items()}
-    area = binning.common_area(inputs, mask, label_width=50)
+    area = lb.common_area(inputs, mask, label_width=50)
     with xr.set_options(keep_attrs=True):
         inputs = {cid: {k: da.where(area) for k, da in inp.items()} for cid, inp in inputs.items()}
     fout = PROC_ROOT / f"obs.area_mask.all{ncombo}.{span}.nc"
@@ -397,9 +399,9 @@ def main():
     pooled_edges = {}
     for v in ("lai", "ai"):
         print(f"\n{v}")
-        pooled_edges[v] = binning.pooled_bin_edges(
+        pooled_edges[v] = lb.pooled_bin_edges(
             {cid: inp[v] for cid, inp in inputs.items()}, n_bins[v], name=v,
-            attrs={**binning.EDGE_ATTRS[v], "time_period": span},
+            attrs={**EDGE_ATTRS[v], "time_period": span},
         )
         fstem = f"obs.{v}_clim.{n_bins[v]}_quantiles_pooled.all{ncombo}.{span}"
         fout = BIN_EDGES_ROOT / f"{fstem}.nc"
@@ -422,9 +424,9 @@ def main():
 
         edges = {}
         for v in ("lai", "ai"):
-            edges[v] = binning.pooled_bin_edges(
+            edges[v] = lb.pooled_bin_edges(
                 inp[v], n_bins[v], name=v, verbose=False,
-                attrs={**binning.EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [cid]},
+                attrs={**EDGE_ATTRS[v], **attrs, "pool_edges": 0, "pooled_sources": [cid]},
             )
             combo_edges[v].append(edges[v])
 

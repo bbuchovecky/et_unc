@@ -40,9 +40,10 @@ import numpy as np
 import xarray as xr
 
 from etunc.config import LAT_BNDS, LF_THRESH, NA_THRESH
-from etunc.grid import bounded_source_grid, check_same_grid, mask_greenland, regrid_annual
-from etunc.temporal import annual_means, print_annual
+from etunc.grid import bounded_src_grid, check_same_grid, landfrac_mask
 from etunc.units import convert_units, net_radiation_cesm
+from etunc.legacy.grid import regrid_annual
+from etunc.legacy.temporal import annual_means, print_annual
 
 
 CESM2_COMPONENT_MAP = {
@@ -634,7 +635,7 @@ def load_native(
     # Sets the area the ensemble contributes: native cells with LANDFRAC > LF_THRESH, minus
     # Greenland/Iceland. Masking on the native grid keeps ocean and ice-sheet values
     # out of the area-weighted means of the regridding
-    native_mask = mask_greenland(grid["LANDFRAC"], LF_THRESH)
+    native_mask = landfrac_mask(grid["LANDFRAC"], LF_THRESH)
 
     if source == "lens":
         fields = _lens_fields(variables, members, time_slice, frequency, stream, bb)
@@ -657,7 +658,7 @@ def load_native(
     }
     with xr.set_options(keep_attrs=True):
         monthly = {k: da.where(native_mask) for k, da in monthly.items()}
-    return annual_means(monthly), native_mask, bounded_source_grid(grid)
+    return annual_means(monthly), native_mask, bounded_src_grid(grid)
 
 
 def load_annual(
@@ -672,7 +673,7 @@ def load_annual(
     bb: str = "cmip6",
     drop_outliers: Sequence[int] = (13, 28),
     mask: xr.DataArray | None = None,
-    na_thres: float = NA_THRESH,
+    na_thresh: float = NA_THRESH,
 ) -> dict[str, xr.DataArray]:
     """
     Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
@@ -683,7 +684,7 @@ def load_annual(
         source, members, time_slice, variables=variables, frequency=frequency, stream=stream, bb=bb,
         drop_outliers=drop_outliers,
     )
-    ann = regrid_annual(*native, res, mask=mask, na_thres=na_thres, label=source)
+    ann = regrid_annual(*native, res, mask=mask, na_thresh=na_thresh, label=source)
     for k, da in ann.items():
         print_annual(da, f"{k:3} {source}")
     return ann

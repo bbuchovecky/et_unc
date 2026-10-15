@@ -25,11 +25,10 @@ import pandas as pd
 import xarray as xr
 
 from etunc.config import LF_THRESH, NA_THRESH
-from etunc.grid import (
-    bounded_source_grid, check_coords, check_same_grid, make_regridder, mask_greenland, regrid_annual,
-)
-from etunc.temporal import annual_means, print_annual
+from etunc.grid import bounded_src_grid, check_coords, check_same_grid, landfrac_mask, make_regridder
 from etunc.units import convert_units, net_radiation_cmip
+from etunc.legacy.grid import regrid_annual
+from etunc.legacy.temporal import annual_means, print_annual
 
 
 class CMIPESGFLoader:
@@ -640,7 +639,7 @@ def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
     # sftlf should be in %, but some files store a fraction labelled "%" (E3SM-1-0), so check the values
     if float(lf.max()) > 1.5:
         lf = lf / 100
-    return lf.assign_attrs(units="1"), bounded_source_grid(ds)
+    return lf.assign_attrs(units="1"), bounded_src_grid(ds)
 
 
 # ------------------------------------------------------------------
@@ -672,7 +671,7 @@ def load_native(
     # Sets the area each model contributes: native cells with sftlf > LF_THRESH, minus
     # Greenland/Iceland. Masking on the native grid keeps ocean and ice-sheet values
     # out of the area-weighted means of the regridding
-    native_mask = mask_greenland(lf, LF_THRESH)
+    native_mask = landfrac_mask(lf, LF_THRESH)
 
     data = loader.load_data(
         variables, experiment_id, source_id=sid, member_id=members, time_slice=time_slice, verbose=False,
@@ -713,7 +712,7 @@ def load_annual(
     variables: Sequence[str],
     experiment_id: str,
     mask: xr.DataArray | None = None,
-    na_thres: float = NA_THRESH,
+    na_thresh: float = NA_THRESH,
 ) -> dict[str, xr.DataArray]:
     """
     Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
@@ -722,7 +721,7 @@ def load_annual(
     """
     ann = regrid_annual(
         *load_native(loader, sid, members, sftlf_path, time_slice, variables=variables, experiment_id=experiment_id),
-        res, mask=mask, na_thres=na_thres, label=sid,
+        res, mask=mask, na_thresh=na_thresh, label=sid,
     )
     for k, da in ann.items():
         print_annual(da, f"{k:3} {sid:16}")
@@ -776,7 +775,7 @@ def regrid_to_target(da: xr.DataArray, res: float | str = 1.0, verbose: bool = F
             regridder = make_regridder(src, res, "conservative")
             if verbose:
                 print(f"Target: lon={regridder.shape_out[1]}, lat={regridder.shape_out[0]}")
-            # No skipna/na_thres, unlike `regrid_annual`: a target cell that overlaps any
+            # No skipna/na_thresh, unlike `regrid_annual`: a target cell that overlaps any
             # NaN source cell (e.g. ocean in land variables) is NaN
             return regridder(da, keep_attrs=True)
 

@@ -113,7 +113,7 @@ def load_gridded(label: str) -> xr.DataArray:
         raise FileNotFoundError(f"{label}: no monthly {var} files under {lo.get_dataset(dataset).root}")
     da = lo.load_obs_regridded(dataset, var, TIME_SLICE, TARGET_RES, version=version, freq="monthly")
     da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
-    return temporal.on_month_axis(rg.on_grid(da, TARGET_RES, label), MONTHS)
+    return temporal.on_month_axis(rg.on_grid(da, TARGET_RES, label).sel(lat=config.LAT_BNDS), MONTHS)
 
 
 # ------------------------------------------------------------------
@@ -127,7 +127,7 @@ def availability(et: xr.DataArray, land: xr.DataArray) -> tuple[xr.Dataset, xr.D
     """
     et = et.where(land)
     valid = et.notnull()
-    ann = temporal.annual_mean(et, require_all_months=True)
+    ann = temporal.aggregate(et, "year", require_all_months=True)
     complete = ann.notnull()
     ds = xr.Dataset({
         "n_valid_months": valid.sum("time").where(land),
@@ -327,7 +327,7 @@ def plot_box_annual_et(ann: xr.DataArray, common: xr.DataArray, title: str, fout
 
 def main():
     period = temporal.format_time_period(TIME_SLICE)
-    land = (rg.land_mask(TARGET_GRID).sel(lat=config.LAT_BNDS) == 1).rename("land")
+    land = (rg.landne_mask(TARGET_GRID).sel(lat=config.LAT_BNDS) == 1).rename("land")
     n_land = int(land.sum())
     print(f"{period}: {len(MONTHS)} months, {n_land} land gridcells\n")
 
