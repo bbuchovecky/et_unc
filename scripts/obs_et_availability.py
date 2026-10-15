@@ -3,7 +3,7 @@ obs_et_availability.py
 ======================
 Compare the data availability of every observational ET product (ILAMB
 products, PML-V2.2, GLEAM v4.3, and SiTHv2 once its monthly files exist) over one
-period, with the masking and processing of `bin_obs.py`.
+period, with the masking and processing of `prep_obs.py`.
 
 Processing
 ----------
@@ -18,10 +18,10 @@ Processing
 - Every product is put on one monthly time axis over `TIME_SLICE`, so months
   outside a product's record count as missing, and restricted to `config.LAT_BNDS`
   and the land mask (Natural Earth, without Greenland/Iceland).
-- A gridcell-year is valid when all 12 months are valid (`temporal.annual_mean` with
+- A gridcell-year is valid when all 12 months are valid (`temporal.aggregate` with
   `require_all_months=True`), as for ET in the binning. The bin mask of a
   product is the land gridcells with at least one valid gridcell-year (the ET
-  part of `binning.valid_area`; LAI and AI are not used).
+  part of `grid.valid_area`; LAI and AI are not used).
 
 Counts are numbers of 0.5 deg gridcells, not areas.
 
@@ -326,6 +326,8 @@ def plot_box_annual_et(ann: xr.DataArray, common: xr.DataArray, title: str, fout
 # ------------------------------------------------------------------
 
 def main():
+    config.summarize()
+    config.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     land = (rg.landne_mask(TARGET_GRID).sel(lat=config.LAT_BNDS) == 1).rename("land")
     n_land = int(land.sum())

@@ -199,6 +199,8 @@ def plot_product_masks(ds: xr.Dataset, title: str, fout: Path):
 # ------------------------------------------------------------------
 
 def main():
+    config.summarize()
+    config.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)  # e.g. "198201-202512", for file names
 
     # Land gridcells of GRID (Natural Earth, without Greenland/Iceland)

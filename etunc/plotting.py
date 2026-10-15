@@ -21,7 +21,7 @@ import cartopy.crs as ccrs
 
 from etunc.binning import edges_and_attrs, ensemble_spread, ensure_bin_coords
 from etunc.legacy.binning import as_field_dict, finite_flat  # for plot_input_hist only
-from etunc.config import DPI, LAT_BNDS, PROJECTION
+from etunc.config import DPI, HIST_BINS, LAT_BNDS, PROJECTION
 
 
 # quick_map style of each variable's climatology map (obs and CMIP6 names)
@@ -121,11 +121,12 @@ def save_map(da: xr.DataArray, variable: str, fout: str | Path, title: str = "")
     `quick_map` of a climatology of `variable` with its MAP_KWARGS style and a
     "<variable> [<units>]" colorbar label, saved to `fout` (printed).
     """
-    quick_map(
+    fig = quick_map(
         da, fout, title=title,
         cbar_kwargs={"label": f"{variable} [{da.attrs.get('units', '?')}]"}, **MAP_KWARGS[variable],
     )
     print(fout)
+    return fig
 
 
 def save_ensemble_map(
@@ -140,9 +141,11 @@ def save_ensemble_map(
     Three stacked maps of a climatology of `variable` with an ensemble dim
     `dim`: the mean along `dim` (MAP_KWARGS style), the standard deviation
     (ddof=0, as `binning.ensemble_spread`) and the range (max - min), each
-    gridcell over the members with a value there. Saved (path printed) if
-    `fout` is given.
+    gridcell over the members with a value there; a single map (`save_map`)
+    if there is only one member. Saved (path printed) if `fout` is given.
     """
+    if da.sizes[dim] == 1:
+        return save_map(da.squeeze(dim, drop=True), variable, fout, title=title)
     units = da.attrs.get("units", "?")
     panels = {
         "ensemble mean": (da.mean(dim), {"vmin": 0, **MAP_KWARGS[variable]}),
@@ -265,6 +268,89 @@ def plot_input_hist(
     if len(flats) <= 12:
         ax.legend(fontsize=7, ncols=2)
     return finish(fig, fout)
+
+
+def plot_clim_hist(
+    fields: Mapping[str, xr.DataArray | tuple[np.ndarray, np.ndarray]],
+    bins: np.ndarray,
+    *,
+    pooled: tuple[np.ndarray, np.ndarray] | None = None,
+    edges: xr.DataArray | np.ndarray | None = None,
+    xlabel: str = "",
+    ax=None,
+    title: str = "",
+    fout: str | Path | None = None,
+):
+    """
+    Density histograms of climatological LAI or AI on fixed `bins`
+    (`config.HIST_BINS`), one line per field of `fields` ({label: DataArray}
+    of equally weighted values, e.g. one per source, or {label: (values,
+    weights)}), so histograms of different figures share their bin widths.
+    Values outside `bins` are counted in the end bins; the largest
+    fraction outside is printed and noted on the figure. `pooled` = (values,
+    weights) adds the weighted distribution of all values (e.g. from
+    `edges.hierarchical_weights`) as a thick black line, and `edges` the bin
+    edges as vertical lines.
+    """
+    def density(x, w=None):
+        h, _ = np.histogram(np.clip(x, bins[0], bins[-1]), bins, weights=w)
+        return h / h.sum() / np.diff(bins)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 4), layout="constrained")
+    else:
+        fig = ax.figure
+    many = len(fields) > 12  # thin grey lines without a legend
+    outside = {}
+    for label, field in fields.items():
+        if isinstance(field, tuple):
+            x, w = field
+        else:
+            x = np.asarray(field.values, dtype=float).ravel()
+            x, w = x[np.isfinite(x)], None
+        outside[label] = np.average((x < bins[0]) | (x > bins[-1]), weights=w)
+        style = {"color": "0.5", "lw": 0.6, "alpha": 0.6} if many else {"lw": 1.2, "label": label}
+        ax.stairs(density(x, w), bins, **style)
+    if pooled is not None:
+        ax.stairs(density(*pooled), bins, color="k", lw=2, label="pooled (weighted)")
+    if edges is not None:
+        for e in edges_and_attrs(edges)[0]:
+            ax.axvline(min(max(e, bins[0]), bins[-1]), color="tab:red", lw=0.7, ls="--")
+
+    worst = max(outside, key=outside.get)
+    note = f"outside [{bins[0]:g}, {bins[-1]:g}], counted in the end bins: up to {100 * outside[worst]:.2f}% ({worst})"
+    print(f"{title or xlabel}: values {note}")
+    ax.text(0.99, 0.97, note, transform=ax.transAxes, ha="right", va="top", fontsize=7)
+    ax.set_xlim(bins[0], bins[-1])
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("density")
+    ax.set_title(title)
+    if not many or pooled is not None:
+        ax.legend(fontsize=7, ncols=2, loc="center right")
+    return finish(fig, fout)
+
+
+def save_clim_diagnostics(
+    inputs: xr.Dataset, fig_dir: Path, family: str, grid: str, period: str, title: str = "",
+):
+    """
+    Diagnostics of the binning inputs of one family (written by the prep
+    scripts): maps of the climatological ET, LAI, P, Rn and AI (mean,
+    standard deviation and range over members; one map for one member), and
+    histograms of climatological LAI and AI on `config.HIST_BINS`, one line
+    per source. Saved as fig_dir/<family>.<var>.<grid>.{map,hist}.<period>.png.
+    """
+    title = f"{title}, {inputs.attrs.get('time_period', period)}"
+    clim = {"et": inputs["et"].mean("year", keep_attrs=True), **{v: inputs[v] for v in ("lai", "pr", "rn", "ai")}}
+    for var, da in clim.items():
+        save_ensemble_map(da, var, fig_dir / f"{family}.{var}.{grid}.map.{period}.png", title=title)
+    sources = list(dict.fromkeys(inputs["source"].values.tolist()))
+    for var in ("lai", "ai"):
+        fields = {s: inputs[var].where(inputs["source"] == s) for s in sources}
+        fout = fig_dir / f"{family}.{var}_clim.{grid}.hist.{period}.png"
+        plot_clim_hist(fields, HIST_BINS[var], xlabel=f"climatological {var}", title=f"{title}, {len(sources)} sources",
+                       fout=fout)
+        print(fout)
 
 
 def plot_edges(edges: xr.DataArray, fout: str | Path | None = None, title: str = ""):

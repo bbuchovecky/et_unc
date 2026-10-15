@@ -6,7 +6,7 @@ Statistics of annual mean ET in 2-D bins of climatological leaf area index
 post-processing. The full pipeline, from loading to binning, is described in
 docs/binning-workflow.md and written out step by step in the scripts.
 
-- `drop_et_outliers`: the plausibility filter on annual mean ET (step 5).
+- `drop_et_outliers`: the plausibility filter on annual mean ET (step 6).
 - `bin_stats`: statistics of every (year, gridcell) ET sample, binned by its
   gridcell's climatological LAI and AI (step 14), optionally per member.
 - Post-processing: `pool_members`, `drop_zero_width_bins`, `frac_count`,
@@ -20,6 +20,8 @@ from typing import Literal, Mapping
 import numpy as np
 import xarray as xr
 
+from etunc.config import LAT_BNDS
+
 
 # Order of the `stats` dimension returned by `bin_stats`
 STATS = ("mean", "var_pop", "var_samp", "count", "count_pos")
@@ -32,13 +34,15 @@ STATS = ("mean", "var_pop", "var_samp", "count", "count_pos")
 def drop_et_outliers(et: xr.DataArray, min_annual_et: float, label: str | None = None) -> xr.DataArray:
     """
     Annual mean ET `et` [W/m2] with gridcell-years below `min_annual_et` set
-    to NaN (step 5). Strongly negative annual ET is not physical (e.g. GLEAM
+    to NaN (step 6). Strongly negative annual ET is not physical (e.g. GLEAM
     v4.3b at high latitudes in winter). Prints how many gridcell-years are dropped.
     """
     outlier = et < min_annual_et
     n = int(outlier.sum())
+    # Before step 8 the field still covers Antarctica, where ice can give negative annual ET
+    n_binned = int(outlier.sel(lat=slice(LAT_BNDS.start, LAT_BNDS.stop)).sum()) if "lat" in et.dims else n
     print(f"{label or et.name}: {n} gridcell-years with annual ET < {min_annual_et} W/m2 set to NaN"
-          + (f" (min {float(et.min()):0.3g})" if n else ""))
+          + (f" ({n_binned} within LAT_BNDS; min {float(et.min()):0.3g})" if n else ""))
     with xr.set_options(keep_attrs=True):
         return et.where(~outlier)
 
@@ -268,7 +272,9 @@ def pool_members(bs: xr.DataArray) -> xr.DataArray:
         [pooled_mean.where(n > 0), pooled_var.where(n > 0), var_samp, n, count_pos.sum("member")], dim="stats",
     ).assign_coords(stats=list(STATS)).transpose("stats", "y_bin", "x_bin")
     out = out.drop_vars([c for c in out.coords if "member" in out[c].dims or c == "member_id"], errors="ignore")
-    out.attrs = {**bs.attrs, "members": list(bs["member_id"].values)}
+    # Members named by member_id if present (CMIP6), else by the member labels
+    names = bs["member_id"] if "member_id" in bs.coords else bs["member"]
+    out.attrs = {**bs.attrs, "members": [str(m) for m in names.values]}
     return out.rename(bs.name)
 
 

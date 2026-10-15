@@ -44,8 +44,8 @@ Land masks and area masks
 -------------------------
 `greenland_mask` (no Greenland/Iceland), `landfrac_mask` (models and ERA5:
 land fraction > LF_THRESH) and `landne_mask` (obs: Natural Earth land) are
-the native land masks of step 6. `valid_area` and `common_area` build the
-area mask shared by every family (step 12).
+the native land masks of step 5, applied with `mask_to_land`. `valid_area`
+and `common_area` build the area mask shared by every family (step 12).
 """
 from __future__ import annotations
 
@@ -215,14 +215,17 @@ def regrid_with_na_thresh(da: xr.DataArray, regridder: xe.Regridder, na_thresh: 
     """
     Apply a conservative `regridder` skipping NaN: each target cell is the
     area-weighted mean of its valid source cells, and NaN where more than
-    `na_thresh` of its area is missing. Keeps the dtype and attrs (minus
-    "grid_mapping") and sets standard lat/lon attrs.
+    `na_thresh` of its area is missing. Keeps the dtype, attrs (minus
+    "grid_mapping") and coords along the other dims (e.g. `member_id` on
+    `member`), and sets standard lat/lon attrs.
     """
+    # Coords that are neither dims nor spatial (e.g. member_id) are set aside, and put back after
+    other = {c: da[c] for c in da.coords if c not in da.dims and not {"lat", "lon"} & set(da[c].dims)}
     # skipna renormalizes by the valid source area, so a coastal target cell is the mean of
     # its land source cells rather than diluted by ocean NaN; na_thresh sets how much missing
     # area is tolerated, and so how far the regridded land extends along the coasts
-    out = regridder(da, skipna=True, na_thres=na_thresh, keep_attrs=True)  # xESMF spells it na_thres
-    out = out.astype(da.dtype)  # xESMF returns float64 even for float32 input
+    out = regridder(da.drop_vars(list(other)), skipna=True, na_thres=na_thresh, keep_attrs=True)  # xESMF: na_thres
+    out = out.astype(da.dtype).assign_coords(other)  # xESMF returns float64 even for float32 input
     out.attrs.pop("grid_mapping", None)  # PML's "crs" variable is not carried over
     out["lat"].attrs = dict(LAT_ATTRS)
     out["lon"].attrs = dict(LON_ATTRS)
@@ -333,6 +336,18 @@ def on_grid(da: xr.DataArray, res: float | str, label: str) -> xr.DataArray:
 def format_grid(da: xr.DataArray) -> xr.DataArray:
     """Longitude in [-180, 180] and latitude ascending."""
     return da.assign_coords(lon=((da.lon + 180) % 360) - 180).sortby("lon").sortby("lat")
+
+
+def mask_to_land(da: xr.DataArray, land: xr.DataArray, label: str) -> xr.DataArray:
+    """
+    `da` set to NaN outside the native land mask `land` (step 5), after
+    checking that both are on the same grid (`check_same_grid`), so a mask
+    from another file (e.g. sftlf from another experiment) cannot misalign.
+    """
+    check_same_grid(da, land, label)
+    with xr.set_options(keep_attrs=True):
+        # Mask snapped to the coords of `da`, so `.where` cannot misalign on round-off
+        return da.where(land.assign_coords(lat=da.lat, lon=da.lon))
 
 
 def greenland_mask(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:

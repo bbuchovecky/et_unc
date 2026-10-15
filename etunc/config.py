@@ -1,9 +1,10 @@
 """
 etunc.config
 ============
-Paths and domain constants shared by the package and the scripts, and the
-two functions that print them (`summarize`) and a script's own settings
-(`summarize_settings`) to the log. Dataset-specific settings stay at the top
+Paths and domain constants shared by the package and the scripts, the
+paths of the files passed between the pipeline scripts (`inputs_path`,
+`area_mask_path`), and the two functions that print the constants
+(`summarize`) and a script's own settings (`summarize_settings`) to the log. Dataset-specific settings stay at the top
 of each script.
 
 Every output root derives from ``WORK_ROOT``.
@@ -14,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import cartopy.crs as ccrs
+import numpy as np
 
 
 # ------------------------------------------------------------------
@@ -44,9 +46,19 @@ CMIP_FX_CATALOG = CMIP_CATALOG_ROOT / "cmip6_fx_glade.csv"  # one sftlf file per
 # ------------------------------------------------------------------
 
 WORK_ROOT = Path("/glade/work/bbuchovecky/et_unc")
-PROC_ROOT = WORK_ROOT / "proc"              # binned stats in PROC_ROOT/<dataset>/qbin/
+PROC_ROOT = WORK_ROOT / "proc"              # binned stats in PROC_ROOT/<family>/qbin/
 FIG_ROOT = WORK_ROOT / "fig"
 BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
+
+
+def inputs_path(family: str, grid: str, period: str) -> Path:
+    """Binning inputs of one family, written by scripts/prep_<family>.py."""
+    return PROC_ROOT / family / f"{family}.inputs.{grid}.{period}.nc"
+
+
+def area_mask_path(grid: str, period: str) -> Path:
+    """Common area mask of all families, written by scripts/make_edges.py."""
+    return PROC_ROOT / "all" / f"all.area_mask.{grid}.{period}.nc"
 
 
 # ------------------------------------------------------------------
@@ -56,7 +68,7 @@ BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
 # Pipeline settings shared by every family (docs/binning-workflow.md)
 TIME_SLICE = slice("1995-01", "2014-12")  # one period for every family
 MIN_YEARS = 3          # minimum complete years shared by the four products of an obs combination
-MIN_ANNUAL_ET = -1.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 5)
+MIN_ANNUAL_ET = -1.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
 FAMILIES = ("obs", "cmip", "fppe", "lens")  # families pooled by make_edges.py and binned by bin_all.py
 
 # Binning settings
@@ -77,6 +89,13 @@ LF_THRESH = 0.5            # gridcell land fraction threshold (land where strict
 LATENT_HEAT_VAPORIZATION = 2.45e6  # J/kg
 LIQ_WATER_DENSITY = 1e3            # kg/m3
 EARTH_RADIUS = 6.371e6             # m, as in ILAMB, so cell areas match ILAMB's
+
+# Fixed histogram bins of climatological LAI and AI, so every histogram figure has the same
+# bin widths; values outside are counted in the end bins
+HIST_BINS = {
+    "lai": np.linspace(0, 8, 81),    # 0.1 m2/m2
+    "ai": np.linspace(-1, 10, 111),  # 0.1
+}
 
 PROJECTION = ccrs.PlateCarree()
 DPI = 120

@@ -230,12 +230,16 @@ def test_compute_aridity_index():
 
 
 def test_drop_et_outliers(capsys):
-    """Gridcell-years below the threshold become NaN, attrs are kept, and the count is printed."""
-    et = xr.DataArray([[5.0, -3.0], [-1.0, 0.5]], dims=("year", "lat"), name="et", attrs={"units": "W/m2"})
+    """
+    Gridcell-years below the threshold become NaN, attrs are kept, and the count is printed with the number
+    inside LAT_BNDS (here 0: the outlier is at -70, in Antarctica).
+    """
+    et = xr.DataArray([[5.0, -3.0], [-1.0, 0.5]], dims=("year", "lat"), coords={"lat": [10.0, -70.0]},
+                      name="et", attrs={"units": "W/m2"})
     out = binning.drop_et_outliers(et, -1.0)
     np.testing.assert_array_equal(out.isnull(), [[False, True], [False, False]])  # -1 itself is kept
     assert out.attrs["units"] == "W/m2"
-    assert "et: 1 gridcell-years with annual ET < -1.0 W/m2 set to NaN" in capsys.readouterr().out
+    assert "et: 1 gridcell-years with annual ET < -1.0 W/m2 set to NaN (0 within LAT_BNDS" in capsys.readouterr().out
 
 
 # ------------------------------------------------------------------
@@ -639,4 +643,38 @@ def test_plot_mask_agreement_counts_common_mask(highlight_common, mask):
     assert f"common mask (all 3 products): {expected} of {int(land.sum())} land cells" in fig.axes[0].get_title()
     assert fig.axes[0].collections[0].cmap.N == 4
     plt.close(fig)
+
+
+def test_plot_clim_hist_fixed_bins_and_outside_note(capsys):
+    """
+    One line per field (plus the weighted pooled line) on the given fixed bins; values outside the bins go
+    to the end bins, and the largest fraction outside is printed and noted.
+    """
+    bins = np.linspace(0, 2, 5)
+    fields = {"a": xr.DataArray([0.1, 0.6, 1.1, 1.6]), "b": xr.DataArray([0.1, 0.1, 5.0, np.nan])}
+    values, weights = np.array([0.1, 1.6]), np.array([0.5, 0.5])
+    fig = plotting.plot_clim_hist(fields, bins, pooled=(values, weights), edges=np.array([0.5]), xlabel="lai")
+    ax = fig.axes[0]
+    steps = [p for p in ax.patches if p.get_label() in ("a", "b", "pooled (weighted)")]
+    assert [p.get_label() for p in steps] == ["a", "b", "pooled (weighted)"]
+    np.testing.assert_allclose(steps[1].get_data().values, [2 / 3 / 0.5, 0, 0, 1 / 3 / 0.5])  # 5.0 in the last bin
+    assert "up to 33.33% (b)" in capsys.readouterr().out
+    assert ax.get_xlim() == (0.0, 2.0)
+    plt.close(fig)
+
+
+def test_save_clim_diagnostics_writes_maps_and_hists(tmp_path, inputs, capsys):
+    """Five climatology maps and two histograms per family, named <family>.<var>.<grid>.{map,hist}.<period>.png."""
+    members = [f"m{i}" for i in range(3)]
+    ds = xr.concat([xr.Dataset({**inputs, "pr": inputs["lai"], "rn": inputs["lai"]})] * 3, dim="member")
+    ds = ds.assign_coords(member=members, source=("member", ["s1", "s1", "s2"]))
+    plotting.save_clim_diagnostics(ds, tmp_path, "fam", "1deg", "200001-200212", title="Fam")
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert names == sorted(
+        [f"fam.{v}.1deg.map.200001-200212.png" for v in ("et", "lai", "pr", "rn", "ai")]
+        + [f"fam.{v}_clim.1deg.hist.200001-200212.png" for v in ("lai", "ai")]
+    )
+    plotting.save_clim_diagnostics(ds.isel(member=[0]), tmp_path / "one", "fam", "1deg", "200001-200212")
+    assert len(list((tmp_path / "one").iterdir())) == 7  # one member: single maps
+    plt.close("all")
 

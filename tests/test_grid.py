@@ -222,6 +222,26 @@ def test_regrid_coast_na_thresh():
     np.testing.assert_allclose(loose, 1.0)  # 25% land kept too, still without ocean values
 
 
+def test_regrid_keeps_member_coords():
+    """Coords along other dims (member_id on member) survive the regridding unchanged."""
+    ann, native_mask, src_grid = coast_case()
+    ens = xr.concat([ann, 2 * ann], dim="member").assign_coords(member_id=("member", ["a", "b"]))
+    out = mask_and_regrid(ens, native_mask, src_grid, 10, na_thresh=0.5)
+    assert out.dims == ("member", "year", "lat", "lon")
+    assert out.member_id.values.tolist() == ["a", "b"]
+    np.testing.assert_allclose(out.sel(member=1).where(out.lon < 0, drop=True), 2.0)
+
+
+def test_mask_to_land_checks_grid():
+    """mask_to_land sets cells outside land to NaN (keeping attrs) and raises if the mask is on another grid."""
+    ann, native_mask, _ = coast_case()
+    out = rg.mask_to_land(ann, native_mask, "x")
+    assert out.where(~native_mask).isnull().all() and out.attrs["units"] == "W/m2"
+    np.testing.assert_allclose(out.where(native_mask, drop=True), 1.0)
+    with pytest.raises(ValueError, match="differ from the reference grid"):
+        rg.mask_to_land(ann, native_mask.assign_coords(lat=native_mask.lat + 1), "shifted")
+
+
 def test_regrid_on_grid_source_is_identity():
     """A source already on the target grid comes out unchanged (conservative regrid onto itself)."""
     grid = rg.target_grid(1.0)
