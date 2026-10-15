@@ -20,7 +20,7 @@ import xarray as xr
 from etunc.binning import ensure_bin_coords
 from etunc.config import ILAMB_ROOT, LAT_BNDS, LF_THRESH
 from etunc.grid import cell_area, equal_coords, landfrac_mask
-from etunc.temporal import to_yyyymm
+from etunc.legacy.temporal import to_yyyymm
 from etunc.units import convert_units
 
 

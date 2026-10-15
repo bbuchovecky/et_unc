@@ -12,6 +12,7 @@ pipeline was restructured (docs/binning-workflow.md):
   interpolation (every finite value counts once). The maintained edges are
   in `etunc.edges` (hierarchically weighted).
 - `bin_stats_by_source`: `bin_stats` for a dict of models.
+- `frac_count`: fraction of the samples in each bin.
 """
 
 from __future__ import annotations
@@ -286,3 +287,7 @@ def bin_stats_by_source(
     return out.assign_coords({dim: list(inputs.keys())})
 
 
+def frac_count(bs: xr.DataArray) -> xr.DataArray:
+    """Fraction of all samples (per member/source) falling in each bin."""
+    count = bs.sel(stats="count")
+    return count / count.sum(dim=["y_bin", "x_bin"])

@@ -22,16 +22,18 @@ All of these paths are set in `etunc/config.py`.
 | Path | What it holds |
 | --- | --- |
 | `etunc/` | The library (`import etunc.binning as binning`, ...). No module runs anything on import. |
-| `etunc/config.py` | Paths and domain constants (`LAT_BNDS`, `LF_THRESH`, L = 2.45e6 J/kg, ...) |
+| `etunc/config.py` | Paths, domain and pipeline constants (`TIME_SLICE`, `LAT_BNDS`, `LF_THRESH`, `NA_THRESH`, `MIN_ANNUAL_ET`, `FAMILIES`, L = 2.45e6 J/kg, ...), and the paths of the files passed between the pipeline scripts |
 | `etunc/units.py` | Unit conversions to W/m², net radiation for each data source |
-| `etunc/temporal.py` | Annual means (complete years, missing-month rules), aggregation, period strings |
-| `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders, `regrid_annual` (the one regridding rule of every loader), grid checks and snapping, land masks, cell areas |
-| `etunc/binning.py` | The binning pipeline: inputs, quantile edges, bin statistics, post-processing |
-| `etunc/plotting.py` | Maps, edge and histogram plots, bin heatmaps |
-| `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH), `cmip`, `cesm`, `era5`. Each has `load_native` (annual means on the native grid, land-masked) and `load_annual` (= `grid.regrid_annual` of it) |
-| `etunc/legacy.py` | Older loaders and helpers that only the notebooks still use |
+| `etunc/temporal.py` | Annual means and climatologies (`aggregate`: complete years, missing-month rules, missing-year report), shared years, period strings |
+| `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders (`regrid_with_na_thresh`), grid checks and snapping, native land masks (`landfrac_mask`, `landne_mask`, `mask_to_land`), the common area mask (`valid_area`, `common_area`), cell areas |
+| `etunc/edges.py` | Aridity index, hierarchical weights and weighted quantile edges, saved edges |
+| `etunc/binning.py` | ET outlier filter, bin statistics, post-processing |
+| `etunc/plotting.py` | Maps, LAI/AI histograms, edge plots, bin heatmaps |
+| `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH), `cmip`, `cesm`, `era5`. Each `load_native` returns raw monthly fields on the native grid in native units; the model loaders also have `load_land_fraction` |
+| `etunc/legacy/` | Unmaintained, untested code kept for the notebooks and `scripts/legacy_regrid/`: the former annual loaders, replaced functions, notebook-era helpers |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
-| `scripts/` | Runnable pipelines, configured by the constants at the top of each file |
+| `docs/binning-workflow.md` | The binning pipeline step by step, with every assumption and choice |
+| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_all.py`), configured by the constants at the top of each file |
 | `scripts/download/` | Download scripts for the obs products |
 | `notebooks/` | Exploratory and analysis notebooks |
 | `tests/` | pytest suite (synthetic data, no glade data needed) |
@@ -64,28 +66,31 @@ without reinstalling. Add or change a dependency with `pixi add <pkg>` (or edit
 
 ## Running
 
+The binning pipeline (described step by step in `docs/binning-workflow.md`) has three stages:
+
 ```bash
-pixi run python scripts/bin_obs.py               # bin ET of every obs product combination (0.5°)
-pixi run python scripts/bin_cmip.py              # bin ET of CMIP6 historical models (1°)
-pixi run python scripts/bin_lens.py              # bin ET of the CESM2 Large Ensemble historical members (1°)
-pixi run python scripts/bin_fppe.py              # bin ET of the CESM2 FHIST perturbed-parameter ensemble members (1°)
-pixi run python scripts/make_mask.py             # common valid-data mask of the obs products
-pixi run python scripts/obs_et_availability.py   # data availability of the obs ET products
-pixi run bin-obs                                 # same as scripts/run_logged.sh scripts/bin_obs.py
-                                                 # (also bin-cmip, bin-lens, bin-fppe, make-mask, obs-availability)
+pixi run prep-obs         # steps 1-11: binning inputs of every obs product combination
+pixi run prep-cmip        # steps 1-11: binning inputs of the CMIP6 historical models
+pixi run prep-lens        # steps 1-11: binning inputs of the CESM2 Large Ensemble historical members
+pixi run prep-fppe        # steps 1-11: binning inputs of the CESM2 FHIST perturbed-parameter ensemble
+pixi run make-edges       # steps 12-13: common area mask and pooled LAI/AI edges (needs every prep-*)
+pixi run bin-all          # step 14: binned ET of every family with the pooled_all and pooled_<family> edges
+pixi run make-mask        # common valid-data mask of the obs products
+pixi run obs-availability # data availability of the obs ET products
 qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
 qsub scripts/legacy_regrid/regrid_cmip.pbs       # deprecated: save CMIP6 fields regridded to 1°
 
-pixi run test                                    # all tests (~7 min)
+pixi run test             # all tests (~6 min)
 ```
 
-The scripts take no arguments: edit the settings at the top of each script (time
-period, products or models, number of bins, ...). Each script's docstring lists
-its steps and every output file it writes. The pipelines regrid their inputs in
-memory, so the two regrid jobs are not needed before running them. Every data
-family goes onto the target grid by the same rule: annual means over complete
-years on the native grid, masked to land there, then conservatively regridded
-(`etunc.grid.regrid_annual`, `NA_THRESH`).
+Each task is `scripts/run_logged.sh scripts/<name>.py`, which logs the output,
+the git commit, `etunc/config.py` and the script's settings to `WORK_ROOT/logs`.
+The scripts take no arguments: edit the settings at the top of each script
+(products, models, members, ...) or the shared ones in `etunc/config.py` (time
+period, grid, thresholds, number of bins). Each script's docstring lists every
+output file it writes. Every family runs the same steps, written out in the
+script's `main()`; only the loader (step 1), the unit conversion (step 3) and
+the land mask (step 5) differ.
 
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`. Binning settings (e.g., `N_XBINS`, `N_YBINS`) exist there but they also can changed at the top of each run script. For consistent analysis, all run script should have the same binning settings.

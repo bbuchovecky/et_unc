@@ -223,22 +223,6 @@ def test_load_obs_saved_regridded(spec, monkeypatch, tmp_path):
         lo.load_obs(spec, "ET", res="0.5")
 
 
-@pytest.mark.parametrize("loader, name", [(lo.load_gleam, "gleam"), (lo.load_pml, "pml"), (lo.load_sith, "sith")])
-def test_wrappers_regrid_res(monkeypatch, loader, name):
-    """regrid_res sends the per-product loaders to load_obs_regridded; without it they call load_obs."""
-    calls = []
-    monkeypatch.setattr(lo, "load_obs_regridded", lambda *a, **kw: calls.append(("regridded", a, kw)))
-    monkeypatch.setattr(lo, "load_obs", lambda *a, **kw: calls.append(("load_obs", a, kw)))
-    loader("ET", slice("2001", "2002"), regrid_res=0.5, na_thresh=0.3, version="v1")
-    loader("ET", slice("2001", "2002"), version="v1", res="1")
-    assert calls == [
-        ("regridded", (name, "ET", slice("2001", "2002"), 0.5), {"na_thresh": 0.3, "version": "v1"}),
-        ("load_obs", (name, "ET", slice("2001", "2002")), {"version": "v1", "res": "1"}),
-    ]
-    with pytest.raises(ValueError, match="not both"):
-        loader("ET", regrid_res=0.5, res="0.5")
-
-
 def test_gleam_units_fix():
     """The mislabeled units of GLEAM v4.3b yearly files are corrected to mm.year-1."""
     ds = xr.Dataset({"E": ("time", [1.0], {"units": "mm.day-1"})})

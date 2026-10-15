@@ -14,7 +14,6 @@ import xarray as xr
 import etunc.config as config
 import etunc.load.obs as lo
 import etunc.grid as rg
-import etunc.load.cmip as cmip
 
 
 def field(lat, lon, value=1.0):
@@ -73,7 +72,7 @@ def test_grid_tag_only_standard_grids(res):
 
 
 def test_load_obs_reads_the_standard_grid_tags():
-    """load_obs reads (and regrid_file writes) regridded files under the same tags as grid.RESOLUTIONS."""
+    """load_obs reads regridded files under the same tags as grid.RESOLUTIONS."""
     assert set(lo.RES_DIRS.values()) == set(rg.RESOLUTIONS)
     assert {float(r) for r in lo.RES_DIRS} == set(rg.RESOLUTIONS.values())
 
@@ -152,7 +151,6 @@ def test_regridded_coords_are_target_grid(res):
     outs = [
         rg.conservative_regridder(fine, res)(fine),
         rg.bounded_conservative_regridder(coarse, res)(coarse),
-        cmip.regrid_to_target(coarse, res),
     ]
     for out in outs:
         np.testing.assert_array_equal(out.lat, grid.lat)
@@ -256,15 +254,6 @@ def test_regrid_on_grid_source_is_identity():
 # ------------------------------------------------------------------
 # Metadata
 # ------------------------------------------------------------------
-
-def test_approx_resolution():
-    """The grid spacing is found from lat/lon or latitude/longitude coords, and is (None, None) without them."""
-    assert rg.approx_resolution(rg.target_grid(0.5)) == (0.5, 0.5)
-    da = xr.DataArray(np.zeros((3, 4)), dims=("y", "x"),
-                      coords={"latitude": ("y", [0.0, 2.0, 4.0]), "longitude": ("x", [0.0, 3.0, 6.0, 9.0])})
-    assert rg.approx_resolution(da) == (2.0, 3.0)
-    assert rg.approx_resolution(xr.DataArray([1.0], dims="t")) == (None, None)
-
 
 # ------------------------------------------------------------------
 # Grid formatting and snapping

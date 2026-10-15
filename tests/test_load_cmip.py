@@ -1,8 +1,7 @@
 """
 Tests that pin the behavior of the CMIP6 member selection and model loading in
 `etunc.load.cmip` (`load_native`, raw monthly fields for scripts/prep_cmip.py,
-and `load_land_fraction`), the member-ID helpers of `CMIPESGFLoader`, and
-`regrid_to_target` (from `regrid_cmip_esgf.py`). Run from the project root with:
+and `load_land_fraction`), and the member-ID helpers of `CMIPESGFLoader`. Run from the project root with:
 
     python -m pytest tests/test_load_cmip.py
 
@@ -14,7 +13,6 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import etunc.grid as rg
 import etunc.load.cmip as cmip
 from etunc.load.cmip import CMIPESGFLoader
 
@@ -117,12 +115,6 @@ def test_sftlf_files(tmp_path):
         cmip.sftlf_files(path)
 
 
-def test_member_tag():
-    """One member is tagged by its ID, several by their count."""
-    assert cmip.member_tag(["r1i1p1f1"]) == "r1i1p1f1"
-    assert cmip.member_tag(["r1i1p1f1", "r2i1p1f1", "r3i1p1f1"]) == "3members"
-
-
 # ------------------------------------------------------------------
 # load_native and load_land_fraction: raw monthly fields for binning
 # ------------------------------------------------------------------
@@ -212,21 +204,3 @@ def test_load_land_fraction_percent_or_fraction(tmp_path, scale):
     assert lf.attrs["units"] == "1"
     assert src_grid.sizes["lat_b"] == LAT_N.size + 1 and src_grid.sizes["lon_b"] == LON_N.size + 1
 
-
-def test_regrid_to_target_ec_earth_ij_grid():
-    """
-    A field on EC-Earth-style (j, i) dims with 2-D latitude/longitude coords is given 1-D lat/lon and
-    conservatively regridded onto the target grid; a constant field stays constant.
-    """
-    lat = np.arange(-89.0, 90.0, 2.0)
-    lon = np.arange(1.0, 360.0, 2.0)
-    da = xr.DataArray(
-        np.full((2, lat.size, lon.size), 3.0), dims=("time", "j", "i"),
-        coords={"latitude": (("j", "i"), np.repeat(lat[:, None], lon.size, axis=1)),
-                "longitude": (("j", "i"), np.repeat(lon[None, :], lat.size, axis=0))},
-        name="lai", attrs={"units": "1"},
-    )
-    out = cmip.regrid_to_target(da, 1.0)
-    assert out.dims == ("time", "lat", "lon") and out.attrs["units"] == "1"
-    np.testing.assert_array_equal(out.lat, rg.target_grid(1.0).lat)
-    np.testing.assert_allclose(out.sel(lat=slice(-87, 87)), 3.0, rtol=1e-10)

@@ -29,7 +29,6 @@ ILAMB_ROOT = OBS_ROOT / "ilamb"
 
 # DEPRECATED: Regridded files, written by the regrid scripts and read by the loaders
 OBS_REGRID_ROOT = OBS_ROOT / "regridded"
-CMIP_REGRID_ROOT = CAMPAIGN_ROOT / "cmip6" / "regridded"
 
 # CMIP6 catalogs from the external cmip-intake-esgf-fetch tool. The catalogs, and most file paths in them, are on purgeable Derecho scratch.
 # Moving them to campaign storage only needs CMIP_FETCH_ROOT changed here.
@@ -108,7 +107,6 @@ def summarize():
     print(f"{'OBS_ROOT':18} = {OBS_ROOT}")
     print(f"{'ILAMB_ROOT':18} = {ILAMB_ROOT}")
     print(f"{'OBS_REGRID_ROOT':18} = {OBS_REGRID_ROOT}")
-    print(f"{'CMIP_REGRID_ROOT':18} = {CMIP_REGRID_ROOT}")
     print(f"{'CMIP_FETCH_ROOT':18} = {CMIP_FETCH_ROOT}")
     print(f"{'CMIP_CATALOG_ROOT':18} = {CMIP_CATALOG_ROOT}")
     print(f"{'CMIP_CATALOG':18} = {CMIP_CATALOG}")

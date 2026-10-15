@@ -2,15 +2,17 @@
 etunc.load.cmip
 ===============
 Load CMIP6 data listed in a catalog CSV from the external
-`cmip-intake-esgf-fetch` tool (`CMIPESGFLoader`), and the CMIP6 pieces of the
-drivers:
+`cmip-intake-esgf-fetch` tool (`CMIPESGFLoader`), and the CMIP6 pieces of
+scripts/prep_cmip.py:
 
 - model and member selection (`available_members`, `select_members`,
-  `sftlf_files`, `member_tag`) and native land fraction (`load_land_fraction`);
+  `sftlf_files`) and native land fraction (`load_land_fraction`);
 - `load_native`: one model's monthly fields on its native grid, in native
-  units (step 1 of the binning pipeline, scripts/prep_cmip.py);
-- `regrid_to_target`, the whole-field conservative regrid of
-  scripts/regrid_cmip.py (with the EC-Earth (j, i) grid fix).
+  units (step 1 of the binning pipeline).
+
+The whole-field regridding of the deprecated scripts/legacy_regrid/regrid_cmip.py
+(`regrid_to_target`) and the loader's unused convenience methods
+(`LegacyCMIPESGFLoader`) are in `etunc.legacy.load_cmip`.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from etunc.grid import bounded_src_grid, check_coords, make_regridder
+from etunc.grid import bounded_src_grid, check_coords
 
 
 class CMIPESGFLoader:
@@ -63,20 +65,6 @@ class CMIPESGFLoader:
         if experiment_id is None:
             return pd.Series(True, index=self.catalog.index)
         return self.catalog["experiment_id"] == experiment_id
-
-
-    def _source_mask(self, source_id: str | Sequence[str] | None) -> pd.Series:
-        source_ids = self._as_list(source_id)
-        if source_ids is None:
-            return pd.Series(True, index=self.catalog.index)
-        return self.catalog["source_id"].isin(source_ids)
-
-
-    def _member_mask(self, member_id: str | Sequence[str] | None) -> pd.Series:
-        member_ids = self._as_list(member_id)
-        if member_ids is None:
-            return pd.Series(True, index=self.catalog.index)
-        return self.catalog["member_id"].isin(member_ids)
 
 
     @classmethod
@@ -146,21 +134,6 @@ class CMIPESGFLoader:
         source_with_landgrid = sorted(source_with_area & source_with_sftlf)
         print(f"number of models with areacella and sftlf: {len(source_with_landgrid)}")
         return source_with_landgrid
-
-
-    def get_source_with_area(self, experiment_id: str | None = None) -> list[str]:
-        """Compatibility wrapper for source_with_area()."""
-        return self.source_with_area(experiment_id=experiment_id)
-
-
-    def get_source_with_sftlf(self, experiment_id: str | None = None) -> list[str]:
-        """Compatibility wrapper for source_with_sftlf()."""
-        return self.source_with_sftlf(experiment_id=experiment_id)
-
-
-    def get_source_with_landgrid(self, experiment_id: str | None = None) -> list[str]:
-        """Compatibility wrapper for source_with_landgrid()."""
-        return self.source_with_landgrid(experiment_id=experiment_id)
 
 
     def get_availability(
@@ -238,66 +211,6 @@ class CMIPESGFLoader:
                 avail_source_id.append(sid)
 
         return avail_member_id, avail_variables, avail_source_id
-
-
-    def get_avail_member_id(
-        self,
-        variables: str | Sequence[str],
-        experiment_id: str = "historical",
-        source_id: str | Sequence[str] | None = None,
-        *,
-        source_candidates: Sequence[str] | None = None,
-        verbose: bool = True,
-    ) -> dict[str, set[str]]:
-        """Return the available member IDs per source."""
-        avail_member_id, _, _ = self.get_availability(
-            variables,
-            experiment_id=experiment_id,
-            source_id=source_id,
-            source_candidates=source_candidates,
-            verbose=verbose,
-        )
-        return avail_member_id
-
-
-    def get_avail_variables(
-        self,
-        variables: str | Sequence[str],
-        experiment_id: str = "historical",
-        source_id: str | Sequence[str] | None = None,
-        *,
-        source_candidates: Sequence[str] | None = None,
-        verbose: bool = True,
-    ) -> dict[str, list[str]]:
-        """Return the available variables per source."""
-        _, avail_variables, _ = self.get_availability(
-            variables,
-            experiment_id=experiment_id,
-            source_id=source_id,
-            source_candidates=source_candidates,
-            verbose=verbose,
-        )
-        return avail_variables
-
-
-    def get_avail_source_id(
-        self,
-        variables: str | Sequence[str],
-        experiment_id: str = "historical",
-        source_id: str | Sequence[str] | None = None,
-        *,
-        source_candidates: Sequence[str] | None = None,
-        verbose: bool = True,
-    ) -> list[str]:
-        """Return source IDs that have all requested variables available."""
-        _, _, avail_source_id = self.get_availability(
-            variables,
-            experiment_id=experiment_id,
-            source_id=source_id,
-            source_candidates=source_candidates,
-            verbose=verbose,
-        )
-        return avail_source_id
 
 
     def get_member_ids_max_r(
@@ -622,11 +535,6 @@ def select_members(
     return [m for m in spec if m in avail]
 
 
-def member_tag(members: list[str]) -> str:
-    """File-name tag: the member_id of a single member, "<n>members" otherwise."""
-    return members[0] if len(members) == 1 else f"{len(members)}members"
-
-
 def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
     """Land fraction [0-1] on a model's native grid, and that grid with cell edges for regridding."""
     with xr.open_dataset(path) as ds:
@@ -670,53 +578,3 @@ def load_native(
 # ------------------------------------------------------------------
 # Regridding whole fields (scripts/regrid_cmip.py)
 # ------------------------------------------------------------------
-
-def _format_lat_lon(da: xr.DataArray) -> xr.DataArray:
-    """Clean and format lat/lon coords (primarily for EC-Earth)."""
-    if ("i" in da.dims) and ("j" in da.dims):
-        if ("longitude" in da.coords) and ("latitude" in da.coords):
-            da = da.rename(i="lon")
-            da = da.rename(j="lat")
-
-            latitude = da["latitude"]
-            longitude = da["longitude"]
-
-            # Assumes a regular grid (lat varies only along j, lon only along i),
-            # so one column and one row give the 1-D coords
-            da = da.assign_coords(lat=latitude.isel(lon=0), lon=longitude.isel(lat=0))
-            return da.drop_vars(["latitude", "longitude"])
-    return da
-
-
-def regrid_to_target(da: xr.DataArray, res: float | str = 1.0, verbose: bool = False) -> xr.DataArray:
-    """
-    Conservative (area-weighted) xESMF regridding onto `etunc.grid.target_grid(res)`, as written
-    by scripts/regrid_cmip.py. EC-Earth's (j, i) grids are first given 1-D lat/lon
-    (`_format_lat_lon`).
-
-    The source grid keeps its original lat/lon dims (1-D or 2-D); xESMF infers
-    its cell edges. Raises RuntimeError if the regridding fails.
-    """
-    da = _format_lat_lon(da)
-
-    try:
-        src = xr.Dataset(
-            {
-                "lon": (da["lon"].dims, da["lon"].values),
-                "lat": (da["lat"].dims, da["lat"].values),
-            }
-        )
-        if verbose:
-            print(f"Source: lon={len(src.lon)}, lat={len(src.lat)}")
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            regridder = make_regridder(src, res, "conservative")
-            if verbose:
-                print(f"Target: lon={regridder.shape_out[1]}, lat={regridder.shape_out[0]}")
-            # No skipna/na_thresh, unlike the binning pipeline: a target cell that overlaps any
-            # NaN source cell (e.g. ocean in land variables) is NaN
-            return regridder(da, keep_attrs=True)
-
-    except Exception as exc:  # pragma: no cover - environment specific
-        raise RuntimeError(f"xESMF regridding failed - da: {da.dims} {da.shape}") from exc

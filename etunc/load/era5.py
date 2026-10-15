@@ -48,14 +48,6 @@ def _root(kind: str, year: int) -> Path:
     return paths
 
 
-def available_years(kind: str = "meanflux") -> list[int]:
-    """Sorted years with a directory under the GDEX root that `load_era5` reads for `kind`."""
-    roots = GDEX_ROOTS[kind] if isinstance(GDEX_ROOTS[kind], tuple) else (GDEX_ROOTS[kind],)
-    years = {int(d.name) for r in roots if r.is_dir() for d in r.iterdir() if d.name.isdigit()}
-    # A year counts only under the root that `_root` assigns it to
-    return sorted(y for y in years if (_root(kind, y) / str(y)).is_dir())
-
-
 def load_era5(
     var_code: str,
     start: str,

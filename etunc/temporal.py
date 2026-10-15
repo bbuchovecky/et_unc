@@ -24,16 +24,6 @@ def format_time_period(time_slice: slice) -> str:
     return f"{time_slice.start.replace('-', '')}-{time_slice.stop.replace('-', '')}"
 
 
-def to_yyyymm(time) -> str:
-    """One time stamp (numpy datetime64 or cftime) -> "YYYYMM"."""
-    time_raw = time.values
-    if isinstance(time_raw, np.datetime64):
-        return pd.Timestamp(time_raw).strftime("%Y%m")
-    elif isinstance(time_raw, np.ndarray):  # cftime dates come back as a 0-d object array
-        return time.item().strftime("%Y%m")
-    raise TypeError(f"Unsupported type {type(time)!r} for time")
-
-
 def period_str(years) -> str:
     """Years [2003, ..., 2009] -> "200301-200912", for file names."""
     return format_time_period(slice(f"{min(years)}-01", f"{max(years)}-12"))

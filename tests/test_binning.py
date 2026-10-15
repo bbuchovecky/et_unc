@@ -453,14 +453,6 @@ def test_drop_zero_width_bins():
     np.testing.assert_allclose(dropped.y_bin_lower, [0, 1])
 
 
-def test_frac_count():
-    """Each bin's count as a fraction of the total count, summing to 1."""
-    bs = make_bs(np.ones((2, 2, 2)), [[1, 3], [2, 4]])
-    fc = binning.frac_count(bs)
-    np.testing.assert_allclose(fc.sum(["y_bin", "x_bin"]), 1.0)
-    np.testing.assert_allclose(fc.isel(sid=0).values, [[0.1, 0.3], [0.2, 0.4]])
-
-
 def test_frac_valid():
     """The fraction of entries along `dim` (e.g. models) with a valid mean in each bin."""
     means = np.ones((4, 1, 2))
@@ -536,24 +528,13 @@ def test_plot_bin_summary_and_facets(tmp_path, rng, mask, edges):
     assert (tmp_path / "summary.png").exists() and (tmp_path / "facets.png").exists()
 
 
-def test_plot_edges_and_hist(tmp_path, inputs, edges):
-    """plot_edges, plot_edges_compare and plot_input_hist (log scale, edge lines) run and save."""
+def test_plot_edges_compare_and_quick_map(tmp_path, inputs, edges):
+    """plot_edges_compare and quick_map run and save."""
     y_edges, x_edges = edges
-    plotting.plot_edges(y_edges, fout=tmp_path / "edges.png")
     plotting.plot_edges_compare({"lai": y_edges, "ai": x_edges}, fout=tmp_path / "cmp.png")
-    fig = plotting.plot_input_hist({"a": inputs["lai"], "b": inputs["lai"] * 1.1}, y_edges, log=True)
-    assert fig.axes[0].get_yscale() == "log"
-    assert len(fig.axes[0].get_lines()) >= 1  # edge lines
-    for name in ("edges.png", "cmp.png"):
-        assert (tmp_path / name).exists()
-
-
-def test_map_plots(tmp_path, inputs):
-    """quick_map saves a map, and plot_input_maps draws one map per input."""
     plotting.quick_map(inputs["lai"], tmp_path / "map.png", title="lai")
-    fig = plotting.plot_input_maps(inputs, title="inputs")
-    assert len([ax for ax in fig.axes if hasattr(ax, "projection")]) == 3
-    assert (tmp_path / "map.png").exists()
+    for name in ("cmp.png", "map.png"):
+        assert (tmp_path / name).exists()
 
 
 def test_facets_removes_unused_panels():

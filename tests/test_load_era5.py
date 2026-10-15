@@ -1,7 +1,7 @@
 """
 Tests of the ERA5 loaders in `etunc.load.era5` used by scripts/prep_obs.py:
-variable selection in `load_era5`, `available_years`, `load_native` (raw
-monthly fields) and `load_land_fraction`.
+variable selection in `load_era5`, `load_native` (raw monthly fields) and
+`load_land_fraction`.
 Run from the project root with:
 
     python -m pytest tests/test_load_era5.py
@@ -71,11 +71,6 @@ def test_load_era5_selects_code_variable(gdex):
     assert da.name == "MER"
     assert da.dims == ("time", "lat", "lon")
     assert da.sizes["time"] == 24
-
-
-def test_available_years(gdex):
-    """Only year directories count."""
-    assert le.available_years("meanflux") == [2000, 2001, 2002]
 
 
 def test_load_native_raw_months_on_formatted_grid(gdex):

@@ -123,10 +123,3 @@ def test_on_month_axis():
     with pytest.raises(ValueError, match="more than one time step in a month"):
         temporal.on_month_axis(monthly(pd.to_datetime(["2000-02-01", "2000-02-15"])), months)
 
-
-def test_to_yyyymm():
-    """Both numpy datetime64 and cftime time stamps format as YYYYMM."""
-    da = monthly(pd.to_datetime(["2003-07-16"]))
-    assert temporal.to_yyyymm(da.time.isel(time=0)) == "200307"
-    da = monthly([cftime.DatetimeNoLeap(1850, 1, 16)])
-    assert temporal.to_yyyymm(da.time.isel(time=0)) == "185001"

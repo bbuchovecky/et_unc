@@ -5,7 +5,8 @@ Unmaintained and untested. The annual loaders of `etunc.load.era5` before the
 binning pipeline was restructured (docs/binning-workflow.md): `load_native`
 (annual means of et, pr and rn in W/m2 on the native grid, masked with
 LANDFRAC > LF_THRESH) and `load_annual` (`regrid_annual` of it).
-scripts/prep_obs.py now writes out these steps.
+scripts/prep_obs.py now writes out these steps. Also `available_years`
+(years on GDEX), which the former ERA5 year span of bin_obs.py used.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from etunc.config import LF_THRESH, NA_THRESH
 from etunc.grid import check_same_grid, format_grid, landfrac_mask
 from etunc.legacy.grid import regrid_annual
 from etunc.legacy.temporal import annual_means, print_annual
-from etunc.load.era5 import available_years, load_era5, load_land_fraction
+from etunc.load.era5 import GDEX_ROOTS, _root, load_era5, load_land_fraction
 from etunc.units import convert_units, net_radiation_era5
 
 
@@ -96,3 +97,11 @@ def load_annual(
     for v, da in ann.items():
         print_annual(da, f"{v:3} {'ERA5':12}")
     return ann
+
+
+def available_years(kind: str = "meanflux") -> list[int]:
+    """Sorted years with a directory under the GDEX root that `load_era5` reads for `kind`."""
+    roots = GDEX_ROOTS[kind] if isinstance(GDEX_ROOTS[kind], tuple) else (GDEX_ROOTS[kind],)
+    years = {int(d.name) for r in roots if r.is_dir() for d in r.iterdir() if d.name.isdigit()}
+    # A year counts only under the root that `_root` assigns it to
+    return sorted(y for y in years if (_root(kind, y) / str(y)).is_dir())

@@ -9,8 +9,8 @@ docs/binning-workflow.md and written out step by step in the scripts.
 - `drop_et_outliers`: the plausibility filter on annual mean ET (step 6).
 - `bin_stats`: statistics of every (year, gridcell) ET sample, binned by its
   gridcell's climatological LAI and AI (step 14), optionally per member.
-- Post-processing: `pool_members`, `drop_zero_width_bins`, `frac_count`,
-  `frac_valid`, `test_significance`, `ensemble_spread`.
+- Post-processing: `pool_members`, `drop_zero_width_bins`, `frac_valid`,
+  `test_significance`, `ensemble_spread`.
 """
 
 from __future__ import annotations
@@ -320,12 +320,6 @@ def drop_zero_width_bins(bs: xr.DataArray) -> xr.DataArray:
             keep = (bs[f"{ax}_bin_upper"] > bs[f"{ax}_bin_lower"]).values
             bs = bs.isel({dim: np.flatnonzero(keep)})
     return bs
-
-
-def frac_count(bs: xr.DataArray) -> xr.DataArray:
-    """Fraction of all samples (per member/source) falling in each bin."""
-    count = bs.sel(stats="count")
-    return count / count.sum(dim=["y_bin", "x_bin"])
 
 
 def frac_valid(bs: xr.DataArray, dim: str) -> xr.DataArray:

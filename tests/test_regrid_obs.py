@@ -1,7 +1,7 @@
 """
-Tests for the obs regridding of regrid_obs.py: grid.regrid_with_na_thresh and
-load.obs.output_path / regrid_file (the shared grids are tested in test_grid.py),
-and the in-memory `load_obs_regridded`. Run from the project root with:
+Tests for the conservative regridding of obs products: grid.regrid_with_na_thresh
+(the shared grids are tested in test_grid.py) and the in-memory
+`load_obs_regridded`. Run from the project root with:
 
     python -m pytest tests/test_regrid_obs.py
 
@@ -109,14 +109,6 @@ def test_time_varying_missing_values():
     assert np.isnan(coarse_cell(out.isel(time=1), 10.5, 20.5))
 
 
-def test_output_path_mirrors_source(monkeypatch, tmp_path):
-    """The output path mirrors the source path under REGRID_ROOT/<dataset dir>/<res tag>."""
-    monkeypatch.setattr(lo, "OBS_REGRID_ROOT", tmp_path)
-    spec = lo.get_dataset("gleam")
-    src = spec.root / "v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
-    assert lo.output_path(spec, "1deg", src) == tmp_path / "gleam-v4.3/1deg/v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc"
-
-
 @pytest.fixture
 def sith_like(tmp_path):
     """SiTH-like 2000-2002 file (int32 x100, (time, lon, lat)) with on-disk time chunks of 10: (spec, ds)."""
@@ -133,38 +125,6 @@ def sith_like(tmp_path):
     # time chunks of 10 -> blocks of 10, 10, 10, 6 that straddle years
     ds.to_netcdf(spec.root / "Monthly/ET.Pv2.A2000_2002.M.nc", encoding={"ET": {"chunksizes": (10, 5, 5)}})
     return spec, ds
-
-
-def test_regrid_file_multi_year(monkeypatch, tmp_path, sith_like):
-    """SiTH-like file spanning 2000-2002 is regridded block by block into one output file."""
-    monkeypatch.setattr(lo, "OBS_REGRID_ROOT", tmp_path / "out")
-    spec, ds = sith_like
-    ((src, years),) = lo.list_files(spec, "ET", "v2", "monthly").items()
-    assert years == (2000, 2002)
-    assert lo.regrid_file(spec, "ET", src, years, "v2", "monthly") is not None
-    with xr.open_dataset(lo.output_path(spec, "1deg", src)) as out:
-        assert out.ET.sizes == {"time": 36, "lat": 180, "lon": 360}
-        np.testing.assert_array_equal(out.time, ds.time)
-        np.testing.assert_allclose(out.ET.sel(lat=10.5, lon=20.5), np.repeat([2000.0, 2001.0, 2002.0], 12))
-        assert np.isnan(out.ET.sel(lat=0.5, lon=0.5)).all()
-        assert tuple(out.ET.attrs["src_shape"]) == (36, 10, 10)
-        # Provenance: target grid, source state, preprocess and code versions
-        attrs = out.ET.attrs
-        assert attrs["target_grid"] == "1deg" and "res" not in attrs
-        assert attrs["source_size_bytes"] == src.stat().st_size
-        assert attrs["source_mtime"].endswith("UTC") and attrs["regrid_date"].endswith("UTC")
-        assert attrs["load_preprocess"] == "_decode_sith"
-        assert attrs["etunc_git_commit"] and attrs["xesmf_version"] and attrs["esmpy_version"]
-        assert out.attrs["history"].splitlines()[0].endswith(f"(etunc {attrs['etunc_git_commit']})")
-        assert out.attrs["Fill Value"] == "-999"  # source global attrs kept
-    assert lo.output_path(spec, "0.5deg", src).exists()
-
-    # Read back with the load functions
-    back = lo.load_obs(spec, "ET", slice("2001", "2001"), res="1")
-    assert back.sizes == {"time": 12, "lat": 180, "lon": 360}
-    np.testing.assert_allclose(back.sel(lat=10.5, lon=20.5), 2001.0)
-    assert lo.list_files(spec, "ET", "v2", "monthly", res="0.5") == {lo.output_path(spec, "0.5deg", src): (2000, 2002)}
-    assert lo.regrid_file(spec, "ET", src, years, "v2", "monthly", overwrite=False) is None  # existing output skipped
 
 
 @pytest.fixture
@@ -184,28 +144,6 @@ def per_year(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         ds.to_netcdf(path)
     return spec
-
-
-@pytest.mark.parametrize("which", ["per_year", "sith_like"])
-def test_load_obs_regridded_matches_regrid_file(monkeypatch, tmp_path, request, which):
-    """In-memory regridding equals the files regrid_file writes, read back with load_obs(res=)."""
-    monkeypatch.setattr(lo, "OBS_REGRID_ROOT", tmp_path / "out")
-    spec = request.getfixturevalue(which)
-    if which == "sith_like":
-        spec, var = spec[0], "ET"
-    else:
-        var = "E"
-    version = spec.versions[0]
-    for src, years in lo.list_files(spec, var, version, "monthly").items():
-        lo.regrid_file(spec, var, src, years, version, "monthly")
-
-    for res, saved_res in ((1.0, "1"), ("0.5deg", "0.5")):
-        mem = lo.load_obs_regridded(spec, var, slice("2000", "2001"), res, version=version)
-        saved = lo.load_obs(spec, var, slice("2000", "2001"), version=version, res=saved_res).load()
-        xr.testing.assert_equal(mem, saved)
-        assert mem.dtype == saved.dtype == np.float32
-        assert mem.attrs["res"] == saved_res and mem.attrs["na_thresh"] == rg.NA_THRESH
-        assert mem.attrs["dataset"] == spec.name and mem.attrs["version"] == version
 
 
 def test_load_obs_regridded_time_slices(per_year, sith_like):

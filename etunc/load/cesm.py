@@ -6,7 +6,8 @@ the FHIST perturbed-parameter ensemble ("fppe"), the GOGA2 10-member ensemble
 ("goga") and the CESM2 Large Ensemble ("lens"). Also holds each ensemble's grid
 file (LANDFRAC, LANDAREA, ...) and the FHIST PPE member names.
 
-Every ensemble loader (`load_fhist_ppe`, `load_goga2`, `load_cesm2le`)
+Every ensemble loader (`load_fhist_ppe`, `load_cesm2le`; `load_goga2` is in
+`etunc.legacy.load_cesm`)
 returns a lazy (dask) Dataset of native monthly fields with a ``member``
 dimension. Its time axis is shifted from CESM's end-of-interval stamps to the
 month the data averages (see ``shift_time``).
@@ -20,7 +21,6 @@ Example
 >>> import etunc.load.cesm as lc
 >>> grid = lc.load_grid("fppe")
 >>> ds = lc.load_fhist_ppe("EFLX_LH_TOT", "lnd", "month_1")
->>> ds = lc.load_goga2("EFLX_LH_TOT", "lnd", "month_1", "h0")
 >>> ds = lc.load_cesm2le("EFLX_LH_TOT", "lnd", "month_1", "h0", bb="cmip6")
 >>> lc.ppe_member_name(2)   # "2.dleaf.max"
 >>> variables = {"EFLX_LH_TOT": "lnd", "TLAI": "lnd", "PRECT": "atm", "FSNS": "atm", "FLNS": "atm"}
@@ -39,7 +39,6 @@ from typing import Literal, Mapping, Sequence
 import numpy as np
 import xarray as xr
 
-from etunc.config import LAT_BNDS
 from etunc.grid import bounded_src_grid
 
 
@@ -67,7 +66,6 @@ VARIABLES_TO_DROP = {
 
 FHIST_PPE_ROOT = Path("/glade/campaign/univ/uwas0155/ppe/historical/coupled_simulations")
 FHIST_PPE_BASENAME = "f.e21.FHIST_BGC.f19_f19_mg17.historical.coupPPE"
-GOGA2_ROOT = Path("/glade/campaign/collections/rda/data/d651010/global/CESM2.1_GOGA_ERSSTv5")
 LENS2_ROOT = Path("/glade/campaign/collections/gdex/data/d651056/CESM2-LE")
 
 LENS_BRANCH_YEARS = [
@@ -333,83 +331,6 @@ def ppe_member_name(
 # GOGA2 and the CESM2 Large Ensemble
 # ------------------------------------------------------------------
 
-def load_goga2(
-    variable: str | Sequence[str],
-    gcomp: str,
-    frequency: str,
-    stream: str,
-    experiment: Literal["historical", "ssp370"] = "historical",
-    member: str = "",
-) -> xr.Dataset:
-    """
-    Load variables from the GOGA2 10-member ensemble.
-
-    Parameters
-    ----------
-    variable : str or list of str
-        CESM variable name(s).
-    gcomp : str
-        Model component the variable belongs to: "atm" or "lnd".
-    frequency : str
-        Output frequency, e.g. "month_1".
-    stream : str
-        History tape stream, e.g. "h0".
-    experiment : str, optional
-        "historical" or "ssp370".
-    member : str, optional
-        Only load a single member (e.g. "01"); the result then has no
-        ``member`` dimension.
-
-    Returns
-    -------
-    xr.Dataset
-        Dataset with a ``member`` dimension (1-10), without COSP variables.
-    """
-    variables = _as_list(variable)
-    scomp = CESM2_COMPONENT_MAP[gcomp]
-    exp_tag = {"historical": "FHIST_BGC", "ssp370": "FSSP370_BGC"}[experiment]
-
-    def _open_member(m: int) -> list[xr.Dataset]:
-        datasets = []
-        for var_name in variables:
-            tsdir = GOGA2_ROOT / f"{gcomp}/proc/tseries/{frequency}/{var_name}"
-            pattern = (
-                f"f.e21.{exp_tag}.f09_f09.{experiment}.ersstv5.goga.ens{m:02d}."
-                f"{scomp}.{stream}.{var_name}.*.nc"
-            )
-            files = sorted(tsdir.glob(pattern))
-            if files:
-                datasets.append(
-                    xr.open_mfdataset(
-                        files,
-                        decode_timedelta=False,
-                        drop_variables=VARIABLES_TO_DROP[gcomp],
-                        coords="minimal",
-                    )
-                )
-        return datasets
-
-    with xr.set_options(use_new_combine_kwarg_defaults=True):
-        if isinstance(member, str) and (len(member) > 0):
-            datasets = _open_member(int(member))
-            if not datasets:
-                return xr.Dataset()
-            combined_ds = xr.merge(datasets)
-        else:
-            member_datasets = []
-            for m in range(1, 11):
-                datasets = _open_member(m)
-                if datasets:
-                    member_datasets.append(xr.merge(datasets))
-            if not member_datasets:
-                return xr.Dataset()
-            combined_ds = xr.concat(member_datasets, dim="member", coords="minimal")
-            # Numbered 1..n by position: a missing member shifts the labels of the later ones
-            combined_ds = combined_ds.assign_coords(member=range(1, len(member_datasets) + 1))
-
-    return shift_time(_drop_cosp(combined_ds))
-
-
 def load_cesm2le(
     variable: str | Sequence[str],
     gcomp: str,
@@ -524,11 +445,6 @@ def load_cesm2le(
 # ------------------------------------------------------------------
 # Grid file
 # ------------------------------------------------------------------
-
-def load_cesm_grid(source: Literal["fppe", "goga", "lens"], lat_bnds: slice = LAT_BNDS) -> xr.Dataset:
-    """Grid dataset (LANDFRAC, LANDAREA, ...) of a CESM ensemble."""
-    return load_grid(source).sel(lat=lat_bnds)
-
 
 # ------------------------------------------------------------------
 # Monthly fields and land fraction for binning (scripts/prep_lens.py, prep_fppe.py)

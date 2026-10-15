@@ -5,10 +5,13 @@ Unmaintained and untested. Moved from `etunc.grid` when the binning pipeline
 was restructured (docs/binning-workflow.md): `regrid_annual`, the second stage
 of the former `load_annual` of every load module. The prep scripts now write
 out its steps (land mask, conservative regridding, `on_grid`, LAT_BNDS).
+Also `approx_resolution` and `coord_name`, used by the deprecated writers of
+regridded files (scripts/legacy_regrid/).
 """
 
 from __future__ import annotations
 
+import numpy as np
 import xarray as xr
 
 from etunc.config import LAT_BNDS, NA_THRESH
@@ -56,3 +59,35 @@ def regrid_annual(
     return out
 
 
+def coord_name(ds: xr.DataArray | xr.Dataset, candidates: list[str], standard_names: list[str]) -> str | None:
+    """First of `candidates` among the coords of `ds`, else the first coord with one of `standard_names`."""
+    for name in candidates:
+        if name in ds.coords:
+            return name
+    for name, var in ds.coords.items():
+        if str(var.attrs.get("standard_name", "")) in standard_names:
+            return name
+    return None
+
+
+def approx_resolution(ds: xr.DataArray | xr.Dataset) -> tuple[float | None, float | None]:
+    """Median (lat, lon) spacing [deg] of the unique coordinate values; None if it cannot be found."""
+    lat_name = coord_name(ds, ["lat", "latitude", "nav_lat"], ["latitude"])
+    lon_name = coord_name(ds, ["lon", "longitude", "nav_lon"], ["longitude"])
+
+    def spacing(name: str | None) -> float | None:
+        if name is None or name not in ds.coords:
+            return None
+        arr = np.asarray(ds[name].values)
+        if arr.ndim == 0:
+            return None
+        vals = np.unique(arr[np.isfinite(arr)])
+        if vals.size < 2:
+            return None
+        diffs = np.diff(np.sort(vals))
+        diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
+        if diffs.size == 0:
+            return None
+        return float(np.nanmedian(diffs))
+
+    return spacing(lat_name), spacing(lon_name)

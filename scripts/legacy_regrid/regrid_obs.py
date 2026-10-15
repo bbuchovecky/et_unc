@@ -10,7 +10,7 @@ their native 0.1 deg grid to the common 0.5 deg and 1 deg grids.
 Each source file is loaded with `lo.load_obs` (so it gets that module's
 unit fixes, decoding and lat/lon standardization) and regridded with xESMF
 first-order conservative regridding (`rg.conservative_regridder`) onto
-the common grids of `rg.target_grid`, by `lo.regrid_file`. Multi-year files (SiTHv2,
+the common grids of `rg.target_grid`, by `etunc.legacy.load_obs.regrid_file`. Multi-year files (SiTHv2,
 1982-2022) are read and regridded in blocks of time steps matching their on-disk chunks (so
 each compressed chunk is read once and memory stays bounded), and the blocks
 are concatenated into one output file. Missing values are skipped: each coarse
@@ -22,7 +22,7 @@ mm/year, ...).
 Output mirrors the source tree under a resolution directory, one file per
 source file:
 
-    lo.REGRID_ROOT/<dataset dir>/<res tag>/<source path relative to dataset dir>  (lo.output_path)
+    lo.REGRID_ROOT/<dataset dir>/<res tag>/<source path relative to dataset dir>  (etunc.legacy.load_obs.output_path)
     e.g. regridded/gleam-v4.3/1deg/v4.3a/monthly/E/E_1980_GLEAM_v4.3a_MO.nc
          regridded/pml-v2.2/0.5deg/V2.2c/monthly/ET/PML-V2.2c_ET_1982.nc
          regridded/sith-v2/1deg/Monthly/ET.SiTHv2.A1982_2022.M.nc
@@ -46,6 +46,7 @@ import time
 
 import etunc.load.obs as lo
 import etunc.grid as rg
+import etunc.legacy.load_obs as legacy_lo  # regrid_file, output_path
 
 
 # {dataset: {"versions": ..., "freqs": ..., "vars": ...}}; None = all available
@@ -102,7 +103,7 @@ def main() -> None:
                     print(f"==== {spec.name} {version} {freq} {var} ({y0}-{y1}, {len(files)} files) ====")
                     tot = {"files": 0, "skipped": 0, "load": 0.0, "regrid": 0.0, "save": 0.0}
                     for src, years in files.items():
-                        t = lo.regrid_file(
+                        t = legacy_lo.regrid_file(
                             spec, var, src, years, version, freq, resolutions=RESOLUTIONS, na_thresh=NA_THRES,
                             overwrite=OVERWRITE, complevel=COMPLEVEL, script=os.path.basename(__file__),
                         )

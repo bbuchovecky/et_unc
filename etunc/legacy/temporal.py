@@ -5,13 +5,16 @@ Unmaintained and untested. The temporal aggregation of `etunc.temporal`
 before the binning pipeline was restructured (docs/binning-workflow.md):
 `aggregate` with its "mon", "year_max" and "clim_max" modes, and the annual
 means of the former `load_native` loaders (`annual_means`). The pipeline now
-uses `etunc.temporal.aggregate`.
+uses `etunc.temporal.aggregate`. Also `to_yyyymm`, used by the notebook
+loaders and scripts/legacy_regrid/regrid_cmip.py.
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
+import numpy as np
+import pandas as pd
 import xarray as xr
 
 from etunc.temporal import complete_years, period_str
@@ -106,3 +109,11 @@ def print_annual(da: xr.DataArray, label: str) -> None:
     )
 
 
+def to_yyyymm(time) -> str:
+    """One time stamp (numpy datetime64 or cftime) -> "YYYYMM"."""
+    time_raw = time.values
+    if isinstance(time_raw, np.datetime64):
+        return pd.Timestamp(time_raw).strftime("%Y%m")
+    elif isinstance(time_raw, np.ndarray):  # cftime dates come back as a 0-d object array
+        return time.item().strftime("%Y%m")
+    raise TypeError(f"Unsupported type {type(time)!r} for time")
