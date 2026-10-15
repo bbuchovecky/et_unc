@@ -51,7 +51,7 @@ def test_aggregate_year_missing_month(require_all_months, capsys):
         assert ann.sel(year=2000).isnull().all()
     else:
         np.testing.assert_allclose(ann.sel(year=2000), 2.0 * (366 - 30) / 366)  # April (30 days) as 0, leap year
-    assert "x: annual means of 3 complete years; 2 gridcell-years with 1-11 valid months" in capsys.readouterr().out
+    assert "x: annual means of 3 complete years; 2 gridcell-years with partial (1-11) valid months" in capsys.readouterr().out
 
 
 def test_aggregate_year_days_weighted_and_complete_years():

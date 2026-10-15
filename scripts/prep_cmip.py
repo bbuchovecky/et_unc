@@ -104,6 +104,7 @@ def main():
             print(f"{sid:16}: {len(mids)} of {len(avail[sid])} members {mids}")
 
     per_model = []
+    native_res = {}  # {source_id: native resolution}, of the models that are saved
     for sid, mids in members.items():
         print(f"\n=== {sid} ===")
         # 1-2. Monthly native fields over TIME_SLICE, and the native land fraction. sftlf may come
@@ -162,6 +163,7 @@ def main():
 
         # The model is the source of its members
         inputs = xr.Dataset({"et": ann["et"], **clim, "ai": ai})
+        native_res[sid] = rg.native_res(src_grid)
         per_model.append(inputs.assign_coords(
             member=[f"{sid}.{m}" for m in mids], source=("member", [sid] * len(mids)),
         ))
@@ -174,6 +176,7 @@ def main():
     inputs.attrs = {
         "family": FAMILY, "dataset": f"CMIP6 {EXPERIMENT_ID}",
         "time_period": temporal.period_str(inputs.year.values), "grid": grid,
+        "native_res": "; ".join(f"{sid}: {res}" for sid, res in native_res.items()),
         "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
         "land_mask": "sftlf > lf_thresh, without Greenland/Iceland",
     }

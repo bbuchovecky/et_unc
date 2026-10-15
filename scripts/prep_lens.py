@@ -85,7 +85,7 @@ def main():
     monthly = {
         "et": raw["EFLX_LH_TOT"].assign_attrs(units="W/m2"),     # latent heat flux, already W/m2
         "lai": raw["TLAI"].assign_attrs(units="m2/m2"),
-        "pr": units.convert_units("PRECT", raw["PRECT"]),        # m/s x L x water density
+        "pr": units.convert_units("PRECT", raw["PRECT"]),        # m/s x Lv x water density
         "rn": units.net_radiation_cesm(raw["FSNS"], raw["FLNS"]),
     }
 
@@ -112,6 +112,7 @@ def main():
     if len(years) < cfg.MIN_YEARS:
         raise RuntimeError(f"Only {len(years)} shared years, fewer than MIN_YEARS = {cfg.MIN_YEARS}")
     ann = {k: da.sel(year=years) for k, da in ann.items()}
+    print(f"n_shared_years = {len(years)}")
 
     # 10. Climatological LAI, P and Rn over those years
     print("\n=== 10. Climatologies ===")
@@ -126,7 +127,7 @@ def main():
     inputs = inputs.drop_vars("member_id").assign_coords(member=names, source=("member", names))
     inputs.attrs = {
         "family": FAMILY, "dataset": f"CESM2-LE historical ({BB} biomass burning)",
-        "time_period": temporal.period_str(years), "grid": grid,
+        "time_period": temporal.period_str(years), "grid": grid, "native_res": rg.native_res(src_grid),
         "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
         "land_mask": "LANDFRAC > lf_thresh, without Greenland/Iceland",
     }

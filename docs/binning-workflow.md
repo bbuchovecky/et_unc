@@ -26,58 +26,58 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 
 ## pipeline
 `prep_<family>.py`, once per product (obs) or model (CMIP6) or ensemble (LENS2, FHIST PPE):
-1. Load monthly native-resolution variables over `TIME_SLICE` (`load/*.load_native`, `lo.load_obs`) (native grid)
-2. (`TIME_SLICE` is selected by the loader) (native grid)
-3. Convert units of ET, P, Rn to W/m2 (`units.*`, written out in the script) (native grid)
-	- One L = 2.45e6 J/kg for every water flux
+1. Load monthly native-resolution variables over `TIME_SLICE` (`load/*.load_native`, `lo.load_obs`) [native grid]
+2. `TIME_SLICE` is selected by the loader [native grid]
+3. Convert units of ET, P, Rn to W/m2 (`units.*`, written out in the script) [native grid]
+	- $L_v = 2.45 \times 10^6$ J/kg for every water flux
 	- Net radiation with the sign convention of each source (`units.net_radiation_*`)
-4. Compute the annual mean (`temporal.aggregate(da, "year")`) (native grid)
-	1. Only keep complete calendar years: all 12 months in the time axis, and 12 valid months for ET, P, Rn
-	2. Missing LAI months count as zero
-	3. The number of gridcell-years affected is printed
-5. Mask to land and remove AR6 region 0 (`grid.mask_to_land`) (native grid)
-	1. Use Natural Earth for observational products (ILAMB, PML, GLEAM, SiTH): `grid.landne_mask`
-	2. Use land fraction > `LF_THRESH` for model output and ERA5, since they have a land fraction variable: `grid.landfrac_mask`
-6. ET outlier filter: annual ET < `MIN_ANNUAL_ET = -1 W/m2` is NaN (`binning.drop_et_outliers`) (native grid)
-	1. On land, before regridding, so an outlier does not enter its target cell
-	2. The log reports how many fall inside `LAT_BNDS`
-7. **Conservatively regrid to target resolution with `NA_THRESH = 0.5`** (`grid.bounded_conservative_regridder`, `grid.regrid_with_na_thresh`, `grid.on_grid`) (target grid)
-	1. A target cell is the mean of its valid (land) source cells, and NaN where more than `NA_THRESH` of its area is missing
-8. Exclude Antarctica by reducing domain to `LAT_BNDS` (target grid)
+4. Compute the annual mean (`temporal.aggregate(da, "year")`) [native grid]
+	- Only keep complete calendar years: all 12 months in the time axis, and 12 valid months for ET, P, Rn
+	- Missing LAI months count as zero
+	- The number of gridcell-years affected is printed
+5. Mask to land and remove AR6 region 0 (`grid.mask_to_land`) [native grid]
+	- Use Natural Earth for observational products (ILAMB, PML, GLEAM, SiTH): `grid.landne_mask`
+	- Use land fraction > `LF_THRESH` for model output and ERA5, since they have a land fraction variable: `grid.landfrac_mask`
+6. ET outlier filter: annual ET < `MIN_ANNUAL_ET = -1 W/m2` is NaN (`binning.drop_et_outliers`) [native grid]
+	- On land, before regridding, so an outlier does not enter its target cell
+	- The log reports how many fall inside `LAT_BNDS`
+7. **Conservatively regrid to target resolution with `NA_THRESH = 0.5`** (`grid.bounded_conservative_regridder`, `grid.regrid_with_na_thresh`, `grid.on_grid`) [target grid]
+	- A target cell is the mean of its valid (land) source cells, and NaN where more than `NA_THRESH` of its area is missing
+8. Exclude Antarctica by reducing domain to `LAT_BNDS` [target grid]
 
 `prep_<family>.py`, once per obs combination or model (all members of a model or ensemble share their years):
 
-9. Select only shared complete years from all four products, at least `MIN_YEARS = 3` (`temporal.shared_years`) (target grid)
-10. Compute the climatological LAI, Rn, and P over those years (`temporal.aggregate(da, "clim")`) (target grid)
-	1. Report any missing years, as these will propagate to the aridity calculation
-11. Compute aridity from the climatological Rn and P (`edges.compute_aridity_index`) (target grid)
+9. Select only shared complete years from all four products, at least `MIN_YEARS = 3` (`temporal.shared_years`) [target grid]
+10. Compute the climatological LAI, Rn, and P over those years (`temporal.aggregate(da, "clim")`) [target grid]
+	- Report any missing years, as these will propagate to the aridity calculation
+11. Compute aridity from the climatological Rn and P (`edges.compute_aridity_index`) [target grid]
 
 `make_edges.py`:
 
-12. Apply the common area mask to ensure each data product uses the same gridcells (target grid)
-	1. Each family's own valid area (`grid.valid_area`: ET in any year, LAI and a finite AI, in every member), then their intersection (`grid.common_area`), saved to disk
-	2. Report how many gridcells and how much land area is lost compared with each family's own mask
-13. Compute climatological LAI and aridity quantiles pooled across all data products (target grid)
-	1. Saved to disk so that the binning script loads the same quantile edges for every family
-	2. `pooled_all`: hierarchical weights (`edges.hierarchical_weights`) reduce the contribution of members of the same model and of FPPE and LENS2:
+12. Apply the common area mask to ensure each data product uses the same gridcells [target grid]
+	- Each family's own valid area (`grid.valid_area`: ET in any year, LAI and a finite AI, in every member), then their intersection (`grid.common_area`), saved to disk
+	- Report how many gridcells and how much land area is lost compared with each family's own mask
+13. Compute climatological LAI and aridity quantiles pooled across all data products [target grid]
+	- Saved to disk so that the binning script loads the same quantile edges for every family
+	- `pooled_all`: hierarchical weights (`edges.hierarchical_weights`) reduce the contribution of members of the same model and of FPPE and LENS2:
 	   w = 1/N_families × 1/N_sources(family) × 1/N_members(source) × 1/N_values(member).
 	   A source is an obs combination, a CMIP6 model, or a PPE/LENS member.
-	3. `pooled_<family>`: one family, its sources weighted equally
-	4. Weighted quantiles with `np.quantile(..., weights=, method="inverted_cdf")`: edges fall on data values, the first and last edges are the pooled minimum and maximum
+	- `pooled_<family>`: one family, its sources weighted equally
+	- Weighted quantiles with `np.quantile(..., weights=, method="inverted_cdf")`: edges fall on data values, the first and last edges are the pooled minimum and maximum
 
 `bin_all.py`:
 
-14. Bin ET by climatological LAI and aridity, for every family in `BIN_FAMILIES`, with the `pooled_all` and `pooled_<family>` edges (`binning.bin_stats`, per member) (target grid)
+14. Bin ET by climatological LAI and aridity, for every family in `BIN_FAMILIES`, with the `pooled_all` and `pooled_<family>` edges (`binning.bin_stats`, per member) [target grid]
 
-TODO: For testing the sensitivity to resolution, keep model output at native resolution by skipping step 7 (needs the common area mask on each native grid).
+**TODO:** For testing the sensitivity to resolution, keep model output at native resolution by skipping step 7 (needs the common area mask on each native grid).
 
 ## code
 Core modules and their respective functions.
 ```
 load/*.py:
 load_native(...)                         # step 1: raw monthly fields in native units
-load_land_fraction()                     # land fraction and native grid (era5, cmip, cesm)
 obs.load_obs(dataset, var, time_slice)   # step 1 for the gridded obs products
+load_land_fraction()                     # land fraction and native grid (era5, cmip, cesm)
 
 units.py:
 convert_units()                          # keyed on the variable name (CMIP, CESM, ERA5)

@@ -175,6 +175,15 @@ def bounded_src_grid(ds: xr.Dataset | xr.DataArray) -> xr.Dataset:
     })
 
 
+def native_res(grid: xr.Dataset | xr.DataArray) -> str:
+    """
+    Resolution of a 1-D lat/lon grid as "<dlat> x <dlon> deg", e.g. "0.9424 x 1.25 deg",
+    from the median spacing of the cell centers (Gaussian grids are not exactly regular).
+    """
+    dlat, dlon = (float(np.median(np.abs(np.diff(grid[name].values)))) for name in ("lat", "lon"))
+    return f"{dlat:.4g} x {dlon:.4g} deg"
+
+
 # ------------------------------------------------------------------
 # Regridders
 # ------------------------------------------------------------------

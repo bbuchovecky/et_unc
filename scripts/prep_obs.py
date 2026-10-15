@@ -120,6 +120,7 @@ def main():
     # Steps 1-8, once per product: annual means on the target grid
     # ------------------------------------------------------------------
     ann = {v: {} for v in FACTORS}  # {variable: {product: (year, lat, lon)}}
+    native_res = {}  # {(variable, product): native resolution}
     for v, p, kind in products:
         label = f"{v}/{p}"
         print(f"\n=== {label} ===")
@@ -179,6 +180,7 @@ def main():
 
         # 8. Domain without Antarctica
         ann[v][p] = a.sel(lat=cfg.LAT_BNDS).rename(v)
+        native_res[(v, p)] = rg.native_res(src_grid)
 
     # ------------------------------------------------------------------
     # Steps 9-11, once per (et, lai, pr, rn) combination of products
@@ -219,6 +221,10 @@ def main():
     inputs.attrs = {
         "family": FAMILY, "dataset": "observational products (ILAMB, ERA5, gridded ET)",
         "time_period": temporal.period_str(inputs.year.values), "grid": grid,
+        # Products in at least one saved combination
+        "native_res": "; ".join(
+            f"{v}/{p}: {res}" for (v, p), res in native_res.items() if p in inputs[f"{v}_product"].values
+        ),
         "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
         "min_years": MIN_YEARS,
         "land_mask": "Natural Earth land (ERA5: LANDFRAC > lf_thresh), without Greenland/Iceland",

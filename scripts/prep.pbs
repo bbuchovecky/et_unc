@@ -2,7 +2,7 @@
 #PBS -N prep
 #PBS -A UWAS0155
 #PBS -q casper
-#PBS -l walltime=12:00:00
+#PBS -l walltime=4:00:00
 #PBS -l select=1:ncpus=8:mem=128GB
 #PBS -j oe
 #PBS -o /glade/work/bbuchovecky/et_unc/logs/

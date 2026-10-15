@@ -127,7 +127,7 @@ def main():
     inputs = inputs.drop_vars("member_id").assign_coords(member=names, source=("member", names))
     inputs.attrs = {
         "family": FAMILY, "dataset": "CESM2 FHIST perturbed-parameter ensemble",
-        "time_period": temporal.period_str(years), "grid": grid,
+        "time_period": temporal.period_str(years), "grid": grid, "native_res": rg.native_res(src_grid),
         "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
         "land_mask": "LANDFRAC > lf_thresh, without Greenland/Iceland",
     }

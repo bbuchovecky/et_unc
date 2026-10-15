@@ -91,7 +91,7 @@ def aggregate(
         rule = "set to NaN" if require_all_months else "missing months counted as 0"
         print(f"{label}: annual means of {len(years)} complete years"
               + (f" (incomplete years dropped: {dropped})" if dropped else "")
-              + f"; {n_partial} gridcell-years with 1-11 valid months, {rule}")
+              + f"; {n_partial} gridcell-years with partial (1-11) valid months, {rule}")
         out.attrs.update(n_partial_gridcell_years=n_partial, partial_years=rule)
         return out
 

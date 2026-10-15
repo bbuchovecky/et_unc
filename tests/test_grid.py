@@ -125,6 +125,13 @@ def test_bounded_src_grid():
     np.testing.assert_array_equal(rg.bounded_src_grid(ds).lat_b, [-90, -40, 0, 30, 90])
 
 
+def test_native_res():
+    """Median spacing of the centers, so one irregular latitude does not change it."""
+    lat, lon = np.array([-89.0, -60.0, -20.0, 20.0, 60.0]), np.arange(0.0, 360, 1.25)
+    assert rg.native_res(field(lat, lon)) == "40 x 1.25 deg"
+    assert rg.native_res(rg.target_grid(0.5)) == "0.5 x 0.5 deg"
+
+
 def test_bounded_conservative_regridder_conserves():
     """Global Gaussian-like source: a constant stays constant, and the masked-area mean is conserved."""
     lat = np.sort(np.concatenate([[-88.0, 88.0], np.linspace(-80, 80, 30) + 0.3 * np.sin(np.arange(30))]))

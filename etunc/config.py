@@ -44,8 +44,9 @@ CMIP_FX_CATALOG = CMIP_CATALOG_ROOT / "cmip6_fx_glade.csv"  # one sftlf file per
 # Outputs
 # ------------------------------------------------------------------
 
-WORK_ROOT = Path("/glade/work/bbuchovecky/et_unc")
-PROC_ROOT = WORK_ROOT / "proc"              # binned stats in PROC_ROOT/<family>/qbin/
+WORK_ROOT = Path("/glade/derecho/scratch/bbuchovecky/et_unc")
+# WORK_ROOT = Path("/glade/work/bbuchovecky/et_unc")
+PROC_ROOT = WORK_ROOT / "proc"
 FIG_ROOT = WORK_ROOT / "fig"
 BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
 
@@ -101,8 +102,9 @@ DPI = 120
 
 
 def summarize():
-    print("######### config.py")
+    print("#### config ####")
     print("\nInput Paths:")
+    print("------------")
     print(f"{'CAMPAIGN_ROOT':18} = {CAMPAIGN_ROOT}")
     print(f"{'OBS_ROOT':18} = {OBS_ROOT}")
     print(f"{'ILAMB_ROOT':18} = {ILAMB_ROOT}")
@@ -113,25 +115,27 @@ def summarize():
     print(f"{'CMIP_FX_CATALOG':18} = {CMIP_FX_CATALOG}")
     # print(f"{'ESGF_CACHE_CATALOG':18} = {ESGF_CACHE_CATALOG}")
     print("\nOutput Paths:")
+    print("-------------")
     print(f"{'WORK_ROOT':18} = {WORK_ROOT}")
     print(f"{'PROC_ROOT':18} = {PROC_ROOT}")
     print(f"{'FIG_ROOT':18} = {FIG_ROOT}")
     print(f"{'BIN_EDGES_ROOT':18} = {BIN_EDGES_ROOT}")
     print("\nConstants:")
+    print("----------")
     print(f"{'TIME_SLICE':18} = {TIME_SLICE}")
     print(f"{'MIN_YEARS':18} = {MIN_YEARS}")
     print(f"{'MIN_ANNUAL_ET':18} = {MIN_ANNUAL_ET}")
     print(f"{'FAMILIES':18} = {FAMILIES}")
     print(f"{'N_XBINS':18} = {N_XBINS}")
     print(f"{'N_YBINS':18} = {N_YBINS}")
-    print(f"{'TARGET_RES':18} = {TARGET_RES}")
+    print(f"{'TARGET_RES':18} = {TARGET_RES} deg")
     print(f"{'LAT_BNDS':18} = {LAT_BNDS}")
     print(f"{'NA_THRESH':18} = {NA_THRESH}")
     print(f"{'LF_THRESH':18} = {LF_THRESH}")
-    print(f"{'LATENT_HEAT_VAPORIZATION':18} = {LATENT_HEAT_VAPORIZATION}")
-    print(f"{'LIQ_WATER_DENSITY':18} = {LIQ_WATER_DENSITY}")
-    print(f"{'EARTH_RADIUS':18} = {EARTH_RADIUS}")
-    print("\n######### config.py")
+    print(f"{'LATENT_HEAT_VAPORIZATION':18} = {LATENT_HEAT_VAPORIZATION} J/kg")
+    print(f"{'LIQ_WATER_DENSITY':18} = {LIQ_WATER_DENSITY} kg/m3")
+    print(f"{'EARTH_RADIUS':18} = {EARTH_RADIUS} m")
+    print("\n#### config ####\n")
 
 
 def summarize_settings(namespace: dict):
@@ -142,8 +146,8 @@ def summarize_settings(namespace: dict):
     records them. Larger objects such as grids are skipped.
     """
     plain = (bool, int, float, str, Path, slice, tuple, list, dict, type(None))
-    print("######### script settings")
+    print("\n#### script settings ####\n")
     for name, value in namespace.items():
         if name.isupper() and isinstance(value, plain):
             print(f"{name:18} = {value!r}")
-    print("#########")
+    print("\n#### script settings ####\n")
