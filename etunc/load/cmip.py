@@ -6,7 +6,8 @@ Load CMIP6 data listed in a catalog CSV from the external
 scripts/prep_cmip.py:
 
 - model and member selection (`available_members`, `select_members`,
-  `sftlf_files`) and native land fraction (`load_land_fraction`);
+  `sftlf_files`), models grouped by modeling center (`group_model_variants`)
+  and native land fraction (`load_land_fraction`);
 - `load_native`: one model's monthly fields on its native grid, in native
   units (step 1 of the binning pipeline).
 
@@ -533,6 +534,30 @@ def select_members(
     if missing:
         print(f"{sid}: members {missing} are not available (not all variables), skipping them")
     return [m for m in spec if m in avail]
+
+
+# Base models whose source_id prefix differs from the rest of their modeling center's models,
+# or is not the model's name
+BASE_MODEL_ALIASES = {
+    "EC": "EC-Earth",    # EC-Earth3, EC-Earth3-Veg, ...
+    "NorCPM": "NorESM",  # NCC: NorCPM1 is built on NorESM1
+    "UKESM": "HadGEM",   # Met Office: UKESM1 is built on HadGEM3-GC3.1
+}
+
+
+def group_model_variants(source_ids: Iterable[str]) -> dict[str, list[str]]:
+    """
+    {base model: sorted source_ids of its variants}, grouping the models of
+    one modeling center by source_id. The base model is the source_id up to its
+    first "-", without trailing version digits, then BASE_MODEL_ALIASES, e.g.
+    CESM2, CESM2-WACCM -> "CESM"; MIROC6, MIROC-ES2L -> "MIROC";
+    MPI-ESM1-2-LR, MPI-ESM-1-2-HAM -> "MPI"; UKESM1-0-LL, HadGEM3-GC31-LL -> "HadGEM".
+    """
+    groups: dict[str, list[str]] = {}
+    for sid in sorted(set(source_ids)):
+        base = re.sub(r"\d+$", "", sid.split("-")[0])
+        groups.setdefault(BASE_MODEL_ALIASES.get(base, base), []).append(sid)
+    return dict(sorted(groups.items()))
 
 
 def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:

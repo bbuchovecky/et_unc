@@ -83,7 +83,7 @@ def plot_bin_fraction(values: dict[str, tuple[np.ndarray, np.ndarray]], bin_edge
     fig, ax = plt.subplots(figsize=(10, 0.6 * len(values) + 1.5), layout="constrained")
     pm = ax.pcolormesh(np.arange(n + 1), np.arange(len(values) + 1), frac, cmap="RdBu_r", vmin=0, vmax=2 / n)
     for (i, j), f in np.ndenumerate(frac):
-        ax.text(j + 0.5, i + 0.5, f"{100 * f:.0f}", ha="center", va="center", fontsize=7)
+        ax.text(j + 0.5, i + 0.5, f"{100 * f:.2f}", ha="center", va="center", fontsize=7)
     ax.set_yticks(np.arange(len(values)) + 0.5, list(values))
     ax.set_xlabel(f"{bin_edges.name} bin")
     ax.set_title(f"{title}; even = {100 / n:.1f}%")
@@ -130,6 +130,7 @@ def main():
         title=f"Valid areas of {', '.join(inputs)} ({grid}, {period})", label="families with the gridcell valid",
         highlight_common=True, fout=FIG_ROOT / f"all.area_mask.{grid}.{period}.png",
     )
+    print(FIG_ROOT / f"all.area_mask.{grid}.{period}.png")
 
     # 13. Quantile edges on the common area: pooled across all families, and pooled within each family
     for v, n_bins in N_BINS.items():

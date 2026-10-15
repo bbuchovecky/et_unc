@@ -8,7 +8,7 @@ prep_obs.py, prep_cmip.py, prep_lens.py, prep_fppe.py   steps 1-11   -> PROC_ROO
 make_edges.py                                           steps 12-13  -> common area mask, pooled LAI/AI edges
 bin_all.py                                              step 14      -> binned ET of every family
 ```
-Run them in that order (`pixi run prep-obs`, ..., `pixi run make-edges`, `pixi run bin-all`).
+Run them in that order.
 Every script prints `etunc/config.py` and its own settings into its log (`scripts/run_logged.sh`).
 
 ## binning
@@ -26,8 +26,8 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 
 ## pipeline
 `prep_<family>.py`, once per product (obs) or model (CMIP6) or ensemble (LENS2, FHIST PPE):
-1. Load monthly native-resolution variables over `TIME_SLICE` (`load/*.load_native`, `lo.load_obs`) [native grid]
-2. `TIME_SLICE` is selected by the loader [native grid]
+1. Load monthly native-resolution variables (`load/*.load_native`, `lo.load_obs`) [native grid]
+2. The time period is selected by the loader (`TIME_SLICE`) [native grid]
 3. Convert units of ET, P, Rn to W/m2 (`units.*`, written out in the script) [native grid]
 	- $L_v = 2.45 \times 10^6$ J/kg for every water flux
 	- Net radiation with the sign convention of each source (`units.net_radiation_*`)
@@ -38,6 +38,7 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 5. Mask to land and remove AR6 region 0 (`grid.mask_to_land`) [native grid]
 	- Use Natural Earth for observational products (ILAMB, PML, GLEAM, SiTH): `grid.landne_mask`
 	- Use land fraction > `LF_THRESH` for model output and ERA5, since they have a land fraction variable: `grid.landfrac_mask`
+	- CMIP6 only: annual LAI missing on land is set to 0 (some models leave LAI undefined where there is no vegetation)
 6. ET outlier filter: annual ET < `MIN_ANNUAL_ET = -1 W/m2` is NaN (`binning.drop_et_outliers`) [native grid]
 	- On land, before regridding, so an outlier does not enter its target cell
 	- The log reports how many fall inside `LAT_BNDS`

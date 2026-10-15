@@ -399,6 +399,10 @@ def plot_bin_means(
     col_wrap: int = 6,
     size: float = 3,
     hatch: xr.DataArray | None = None,
+    cbar_shrink: float | None = None,
+    cmap: str = "YlGnBu",
+    vmin: float | None = None,
+    vmax: float | None = None,
 ):
     """
     One heatmap of the bin mean of `bs` per entry along `dim` (e.g. "combo",
@@ -409,10 +413,19 @@ def plot_bin_means(
 
     hatch : boolean (dim, y_bin, x_bin) field; True bins are hatched
         (e.g. ~`binning.test_significance`)
+    cbar_shrink : colorbar length as a fraction of the grid height; by default
+        about two panels tall, since the colorbar otherwise spans every row
     """
+    col_wrap = min(col_wrap, bs.sizes[dim])
+    if cbar_shrink is None:
+        nrows = -(-bs.sizes[dim] // col_wrap)
+        cbar_shrink = min(1.0, 2 / nrows)
     fg = plot_bin_facets(
-        bs, dim=dim, col_wrap=min(col_wrap, bs.sizes[dim]), size=size,
-        cmap="YlGnBu", robust=True, cbar_kwargs={"label": f"bin mean {bs.name} [{bs.attrs.get('units', '?')}]"},
+        bs, dim=dim, col_wrap=col_wrap, size=size, cmap=cmap, robust=True, vmin=vmin, vmax=vmax,
+        cbar_kwargs={
+            "label": f"bin mean {bs.name} [{bs.attrs.get('units', '?')}]",
+            "shrink": cbar_shrink, "aspect": 20 * cbar_shrink,
+        },
     )
     shared_edges = dim not in bs["y_bin_lower"].dims and dim not in bs["x_bin_lower"].dims
     with_period = "time_period" in bs.coords and bs["time_period"].dims == (dim,)

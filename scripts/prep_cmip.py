@@ -10,8 +10,9 @@ Models: every model in CATALOG with all VARIABLES for at least one member and
 an sftlf file in FX_CATALOG, minus OMIT_SOURCE_IDS. Members per model from
 MEMBER_IDS / DEFAULT_MEMBERS ("top" = one member per model). ET is evspsbl,
 LAI is lai, P is pr and Rn = rsds - rsus + rlds - rlus. The native land mask
-is the model's sftlf > LF_THRESH, without Greenland and Iceland. A model whose
-sftlf is not on its data grid is skipped (MIROC-ES2H).
+is the model's sftlf > LF_THRESH, without Greenland and Iceland; annual LAI
+missing on land is set to 0. A model whose sftlf is not on its data grid is
+skipped (MIROC-ES2H).
 
 Outputs
 -------
@@ -64,7 +65,9 @@ VARIABLES = ["evspsbl", "lai", "pr", "rsds", "rsus", "rlds", "rlus"]
 
 # None = every model with all VARIABLES and sftlf, minus OMIT_SOURCE_IDS
 SOURCE_IDS: list[str] | None = None
-OMIT_SOURCE_IDS: list[str] = []
+OMIT_SOURCE_IDS: list[str] = [
+    "CAMS-CSM1-0",  # most evspsbl over land is NaN 
+]
 
 # Members per model: a list of member_ids, or
 #   "top"   : first member sorted by r/i/p/f (one member per model)
@@ -134,6 +137,12 @@ def main():
         # 5. Native land mask: sftlf > LF_THRESH, without Greenland/Iceland
         land = rg.landfrac_mask(landfrac, cfg.LF_THRESH)
         ann = {k: rg.mask_to_land(da, land, f"{sid}/{k}") for k, da in ann.items()}
+
+        # LAI missing on land (e.g. unvegetated cells some models leave undefined) is set to 0;
+        # masking again after the fill sets the ocean back to NaN
+        n_nan = int(ann["lai"].isnull().sum())
+        ann["lai"] = rg.mask_to_land(ann["lai"].fillna(0), land, f"{sid}/lai")
+        print(f"{sid}/lai: {n_nan - int(ann['lai'].isnull().sum())} land gridcell-years with missing LAI set to 0")
 
         # 6. ET outlier filter (on land, before regridding, so an outlier does not enter its target cell)
         ann["et"] = binning.drop_et_outliers(ann["et"], cfg.MIN_ANNUAL_ET, label=f"{sid}/et")

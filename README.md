@@ -98,3 +98,8 @@ the land mask (step 5) differ.
 Binning settings (e.g., `N_XBINS`, `N_YBINS`) exist there but they also can changed at
 the top of each run script. For consistent analysis, all run script should have the
 same binning settings.
+
+## TODO
+- Move ERA5 to its own `prep_era.py` script, so that ERA5 precip and net radiation do not count for the combinations of obs products.
+- Allow data families to use their own valid area for binning, instead of using the common area mask.
+- Perform sensitivity test to resolution, comparing the bin stats between native and 1° regridded resolution resolution.

@@ -188,6 +188,8 @@ def main():
                 title=(f"{title}; hatched: not significantly different from 0 at {1 - SIGNIF_ALPHA:.0%} "
                        f"(t-test, n > {SIGNIF_N_MIN})"),
             )
+            print(fig_dir / f"{stem}.summary.png")
+            print(fig_dir / f"{stem}.bin_mean.png")
             print(fig_dir / f"{stem}.bin_mean_signif.png")
 
             # ------------------------------------------------------------------
