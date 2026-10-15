@@ -73,6 +73,7 @@ pixi run prep-obs         # steps 1-11: binning inputs of every obs product comb
 pixi run prep-cmip        # steps 1-11: binning inputs of the CMIP6 historical models
 pixi run prep-lens        # steps 1-11: binning inputs of the CESM2 Large Ensemble historical members
 pixi run prep-fppe        # steps 1-11: binning inputs of the CESM2 FHIST perturbed-parameter ensemble
+qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs  # any prep-* as a Casper job (FAMILY: obs, cmip, lens, fppe)
 pixi run make-edges       # steps 12-13: common area mask and pooled LAI/AI edges (needs every prep-*)
 pixi run bin-all          # step 14: binned ET of every family with the pooled_all and pooled_<family> edges
 pixi run make-mask        # common valid-data mask of the obs products
@@ -93,4 +94,7 @@ script's `main()`; only the loader (step 1), the unit conversion (step 3) and
 the land mask (step 5) differ.
 
 ## Config
-`etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`. Binning settings (e.g., `N_XBINS`, `N_YBINS`) exist there but they also can changed at the top of each run script. For consistent analysis, all run script should have the same binning settings.
+`etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.
+Binning settings (e.g., `N_XBINS`, `N_YBINS`) exist there but they also can changed at
+the top of each run script. For consistent analysis, all run script should have the
+same binning settings.

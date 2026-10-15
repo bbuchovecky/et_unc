@@ -67,7 +67,7 @@ def area_mask_path(grid: str, period: str) -> Path:
 # Pipeline settings shared by every family (docs/binning-workflow.md)
 TIME_SLICE = slice("1995-01", "2014-12")  # one period for every family
 MIN_YEARS = 3          # minimum complete years shared by the four products of an obs combination
-MIN_ANNUAL_ET = -1.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
+MIN_ANNUAL_ET = -2.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
 FAMILIES = ("obs", "cmip", "fppe", "lens")  # families pooled by make_edges.py and binned by bin_all.py
 
 # Binning settings
