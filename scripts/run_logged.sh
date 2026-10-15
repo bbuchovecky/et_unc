@@ -2,7 +2,7 @@
 # Run a pipeline script with its output (stdout and stderr) printed to the
 # terminal and saved to a timestamped log, headed by the git state of the repo.
 #
-# Usage: scripts/run_logged.sh scripts/bin_obs.py
+# Usage: scripts/run_logged.sh scripts/prep_obs.py
 #
 # Logs go to WORK_ROOT/logs (WORK_ROOT from etunc.config), or to $LOG_DIR if set:
 #   <LOG_DIR>/<script name>.<YYYYmmdd-HHMMSS>.log
