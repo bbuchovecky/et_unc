@@ -5,17 +5,18 @@ Load ERA5 monthly means from the NCAR GDEX archive (ds633.0 / ds633.5) and the
 ERA5 grid file (LANDFRAC, ...).
 
 - `load_era5`: one monthly-mean parameter on the native 0.25 deg grid.
-- Annual means for binning, as in every load module: `load_native` (binning
-  variables et, pr and rn of VARIABLES in W/m2, complete years on the native
-  grid, masked to land with LANDFRAC > LF_THRESH, no Greenland/Iceland) and
-  `load_annual` = `etunc.grid.regrid_annual` of it (conservative).
+- `load_native`: several "meanflux" parameters over a time slice, with lon in
+  [-180, 180] and lat ascending, in native units (step 1 of the binning
+  pipeline, scripts/prep_obs.py).
+- `load_land_fraction`: LANDFRAC and the native grid with cell edges.
 
 Example
 -------
 >>> import etunc.load.era5 as le
 >>> grid = le.load_era5_grid()
 >>> swnet = le.load_era5("msnswrf", "1995-01", "2014-12", kind="meanflux")
->>> ann = le.load_annual(("et", "pr", "rn"), slice("2001", "2010"), 0.5)
+>>> raw = le.load_native(("mer", "mtpr"), slice("1995-01", "2014-12"))
+>>> landfrac, src_grid = le.load_land_fraction()
 """
 
 from __future__ import annotations
@@ -27,11 +28,7 @@ from typing import Sequence
 
 import xarray as xr
 
-from etunc.config import LF_THRESH, NA_THRESH
-from etunc.grid import bounded_src_grid, check_same_grid, format_grid, landfrac_mask
-from etunc.units import convert_units, net_radiation_era5
-from etunc.legacy.grid import regrid_annual
-from etunc.legacy.temporal import annual_means, print_annual
+from etunc.grid import bounded_src_grid, format_grid
 
 
 GDEX_ROOTS = {
@@ -43,15 +40,6 @@ GDEX_ROOTS = {
 SPLIT_YEAR = 1979
 
 ERA5_GRID_PATH = Path("/glade/work/bbuchovecky/data/era5/e5.invariant.grid.nc")
-
-# Mean-rate parameter codes ("meanflux" stream) of each binning variable; rn is the
-# sum of the net SW and LW fluxes (`to_wm2`)
-VARIABLES = {
-    "et": ("mer",),
-    "pr": ("mtpr",),
-    "rn": ("msnswrf", "msnlwrf"),
-}
-
 
 def _root(kind: str, year: int) -> Path:
     paths = GDEX_ROOTS[kind]
@@ -152,74 +140,27 @@ def load_era5_grid() -> xr.Dataset:
     return xr.open_dataset(ERA5_GRID_PATH)
 
 
-def land_fraction() -> xr.DataArray:
-    """ERA5 LANDFRAC with lon in [-180, 180] and lat ascending."""
-    # The grid file's scalar `time` coord would clash with the time axis of the monthly fields
-    return format_grid(load_era5_grid()["LANDFRAC"]).reset_coords(drop=True)
-
-
-def to_wm2(variable: str, fields: dict[str, xr.DataArray]) -> xr.DataArray:
-    """Binning variable `variable` [W/m2] from its parameter fields {code: DataArray} (VARIABLES)."""
-    if variable == "rn":
-        return net_radiation_era5(fields["msnswrf"], fields["msnlwrf"])
-    (code,) = VARIABLES[variable]
-    # mer is positive downward, so convert_units also flips its sign to make ET positive
-    return convert_units(code, fields[code])
-
-
-def load_native(
-    variables: Sequence[str], time_slice: slice = slice(None, None),
-) -> tuple[dict[str, xr.DataArray], xr.DataArray, xr.Dataset]:
+def load_land_fraction() -> tuple[xr.DataArray, xr.Dataset]:
     """
-    Annual means {variable: (year, lat, lon)} [W/m2] of binning variables
-    `variables` ("et", "pr", "rn"; see VARIABLES) on the native 0.25 deg grid
-    over the complete years in `time_slice`, masked to land (LANDFRAC >
-    LF_THRESH, no Greenland/Iceland). All 12 months are needed for a valid
-    annual mean. An open end of `time_slice` means the first or last year on
-    GDEX.
+    ERA5 LANDFRAC [0-1] with lon in [-180, 180] and lat ascending, and its
+    grid with cell edges for regridding.
+    """
+    # The grid file's scalar `time` coord would clash with the time axis of the monthly fields
+    landfrac = format_grid(load_era5_grid()["LANDFRAC"]).reset_coords(drop=True)
+    return landfrac, bounded_src_grid(landfrac)
 
-    Returns (annual means, native land mask, native grid), the input of
-    `etunc.grid.regrid_annual`.
+
+def load_native(codes: Sequence[str], time_slice: slice) -> dict[str, xr.DataArray]:
+    """
+    Monthly means {code: (time, lat, lon)} of the "meanflux" parameters
+    `codes` (e.g. "mer", "mtpr", "msnswrf", "msnlwrf") over `time_slice` on
+    the native 0.25 deg grid, with lon in [-180, 180] and lat ascending, in
+    native units and sign (fluxes positive downward, so evaporation "mer" is
+    negative). Step 1 of the binning pipeline (scripts/prep_obs.py).
     """
     # Whole years are read (load_era5 takes years); the months are cut by `.sel(time=time_slice)`
-    if time_slice.start is None or time_slice.stop is None:
-        years = available_years("meanflux")
-    first = int(str(time_slice.start)[:4]) if time_slice.start is not None else min(years)
-    last = int(str(time_slice.stop)[:4]) if time_slice.stop is not None else max(years)
-    landfrac = land_fraction()
-    # Sets the area ERA5 contributes, as sftlf does for CMIP6. Masking on the native grid keeps
-    # ocean values out of the area-weighted means of coastal target cells (ERA5 is global)
-    native_mask = landfrac_mask(landfrac, LF_THRESH)
-
-    monthly = {}
-    for v in variables:
-        fields = {
-            code: format_grid(load_era5(code, f"{first}-01", f"{last}-12", kind="meanflux")).sel(time=time_slice)
-            for code in VARIABLES[v]
-        }
-        da = to_wm2(v, fields)
-        check_same_grid(da, landfrac, f"{v}/ERA5")
-        # Exact landfrac coords, so `.where(native_mask)` cannot misalign on round-off
-        da = da.assign_coords(lat=landfrac.lat, lon=landfrac.lon)
-        with xr.set_options(keep_attrs=True):
-            monthly[v] = da.where(native_mask)
-    return annual_means(monthly), native_mask, bounded_src_grid(landfrac)
-
-
-def load_annual(
-    variables: Sequence[str],
-    time_slice: slice,
-    res: float | str,
-    *,
-    mask: xr.DataArray | None = None,
-    na_thresh: float = NA_THRESH,
-) -> dict[str, xr.DataArray]:
-    """
-    Annual means {variable: (year, lat, lon)} [W/m2] of `variables` on
-    `target_grid(res)` within LAT_BNDS, masked with `mask` if given:
-    `etunc.grid.regrid_annual` of `load_native`.
-    """
-    ann = regrid_annual(*load_native(variables, time_slice), res, mask=mask, na_thresh=na_thresh, label="ERA5")
-    for v, da in ann.items():
-        print_annual(da, f"{v:3} {'ERA5':12}")
-    return ann
+    first, last = str(time_slice.start)[:4], str(time_slice.stop)[:4]
+    return {
+        code: format_grid(load_era5(code, f"{first}-01", f"{last}-12", kind="meanflux")).sel(time=time_slice)
+        for code in codes
+    }

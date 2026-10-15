@@ -1,14 +1,13 @@
 """
-Tests of the ERA5 loaders in `etunc.load.era5` used by scripts/bin_obs.py:
-variable selection in `load_era5`, `available_years`, `to_wm2`, and
-`load_native`/`load_annual` (annual means, land masking, conservative
-regridding).
+Tests of the ERA5 loaders in `etunc.load.era5` used by scripts/prep_obs.py:
+variable selection in `load_era5`, `available_years`, `load_native` (raw
+monthly fields) and `load_land_fraction`.
 Run from the project root with:
 
     python -m pytest tests/test_load_era5.py
 
-Synthetic GDEX-like files on a coarse global grid (2.5 deg, regridded to
-10 deg) in tmp_path; takes a few seconds.
+Synthetic GDEX-like files on a coarse global grid (2.5 deg) in tmp_path;
+takes a few seconds.
 """
 
 import numpy as np
@@ -16,13 +15,9 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import etunc.legacy.grid as legacy_grid
-import etunc.config as config
-import etunc.grid as rg
 import etunc.load.era5 as le
 
 
-RES = 10  # target spacing [deg]; any spacing that divides 180
 # Native grid as in the GDEX files: lat descending and including the poles, lon in [0, 360)
 LAT = np.arange(90, -90.1, -2.5)
 LON = np.arange(0, 360, 2.5)
@@ -83,59 +78,27 @@ def test_available_years(gdex):
     assert le.available_years("meanflux") == [2000, 2001, 2002]
 
 
-def test_to_wm2():
-    """ET is -mer x L, pr is mtpr x L and rn is net SW + net LW, all in W/m2."""
-    one = xr.DataArray([1.0])
-    fields = {code: one * v for code, v in VALUES.items()}
-    L = config.LATENT_HEAT_VAPORIZATION
-    for v, expected in (("et", 2e-5 * L), ("pr", 3e-5 * L), ("rn", 90.0)):
-        out = le.to_wm2(v, fields)
-        np.testing.assert_allclose(out, expected)
-        assert out.attrs["units"] == "W/m2"
-
-
-@pytest.mark.parametrize("variable, expected", [
-    ("et", 2e-5 * config.LATENT_HEAT_VAPORIZATION),
-    ("pr", 3e-5 * config.LATENT_HEAT_VAPORIZATION),
-    ("rn", 90.0),
-])
-def test_load_annual(gdex, variable, expected):
+def test_load_native_raw_months_on_formatted_grid(gdex):
     """
-    Complete years only, on the target grid within LAT_BNDS, with the constant
-    value on land target cells and NaN over ocean.
+    load_native returns each code's monthly field over the time slice only, with lon in [-180, 180] and lat
+    ascending, in native units and sign (mer stays negative).
     """
-    ann = le.load_annual((variable,), slice("2000", "2002"), RES)
-    assert list(ann) == [variable]
-    ann = ann[variable]
-    grid = rg.target_grid(RES).sel(lat=config.LAT_BNDS)
-
-    assert ann.name == variable
-    assert ann.dims == ("year", "lat", "lon")
-    assert ann.year.values.tolist() == [2000, 2001]  # 2002 has 6 months
-    np.testing.assert_array_equal(ann.lat, grid.lat)
-    np.testing.assert_array_equal(ann.lon, grid.lon)
-    assert ann.attrs["units"] == "W/m2"
-
-    # Land is lon [-180, -90): target cells inside it keep the value, cells outside are NaN
-    land = (ann.lon > -180) & (ann.lon < -90)
-    np.testing.assert_allclose(ann.where(land, drop=True), expected, rtol=1e-6)
-    assert ann.where(~land, drop=True).isnull().all()
+    raw = le.load_native(("mer", "msnswrf"), slice("2000-03", "2001-12"))
+    assert list(raw) == ["mer", "msnswrf"]
+    mer = raw["mer"]
+    assert mer.dims == ("time", "lat", "lon")
+    assert mer.sizes["time"] == 22 and str(mer.time.values[0])[:7] == "2000-03"
+    assert np.all(np.diff(mer.lat) > 0) and mer.lon.min() >= -180 and mer.lon.max() < 180
+    np.testing.assert_allclose(mer, VALUES["mer"])
+    assert mer.attrs["units"] == "kg m**-2 s**-1"
 
 
-def test_load_annual_is_regrid_annual_of_load_native(gdex):
-    """
-    load_annual is legacy_grid.regrid_annual(*load_native(...)) for every variable at
-    once; load_native gives complete years on the native grid, masked to land,
-    and an open-ended time slice covers every year on GDEX.
-    """
-    variables = ("et", "pr", "rn")
-    native, native_mask, src_grid = le.load_native(variables, slice(None, None))
-    assert list(native) == list(variables)
-    assert native["et"].dims == ("year", "lat", "lon") and native["et"].sizes["lat"] == LAT.size
-    assert native["et"].year.values.tolist() == [2000, 2001]
-    assert native_mask.dtype == bool
-    assert native["pr"].where(~native_mask).isnull().all()  # ocean is NaN
-    out = legacy_grid.regrid_annual(native, native_mask, src_grid, RES)
-    ann = le.load_annual(variables, slice("2000", "2001"), RES)
-    for v in variables:
-        xr.testing.assert_identical(ann[v], out[v])
+def test_load_land_fraction(gdex):
+    """LANDFRAC on the formatted grid without the grid file's scalar time coord, and its grid with cell edges."""
+    landfrac, src_grid = le.load_land_fraction()
+    assert landfrac.dims == ("lat", "lon") and "time" not in landfrac.coords
+    assert np.all(np.diff(landfrac.lat) > 0) and landfrac.lon.min() >= -180
+    land = (landfrac.lon >= -180) & (landfrac.lon < -90)
+    np.testing.assert_array_equal(landfrac.isel(lat=0) == 1, land)
+    np.testing.assert_array_equal(src_grid.lat, landfrac.lat)
+    assert src_grid.sizes["lat_b"] == landfrac.sizes["lat"] + 1

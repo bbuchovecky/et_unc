@@ -11,9 +11,9 @@ returns a lazy (dask) Dataset of native monthly fields with a ``member``
 dimension. Its time axis is shifted from CESM's end-of-interval stamps to the
 month the data averages (see ``shift_time``).
 
-Annual means for binning, as in every load module: `load_native` (LENS2 or
-FHIST PPE annual means of ET, LAI, pr and Rn on the native grid, LANDFRAC
-mask) and `load_annual` = `etunc.grid.regrid_annual` of it.
+For the binning pipeline (scripts/prep_lens.py, prep_fppe.py), `load_native`
+returns the LENS2 or FHIST PPE monthly fields on the native grid in native
+units (step 1), and `load_land_fraction` the grid file's LANDFRAC.
 
 Example
 -------
@@ -23,9 +23,9 @@ Example
 >>> ds = lc.load_goga2("EFLX_LH_TOT", "lnd", "month_1", "h0")
 >>> ds = lc.load_cesm2le("EFLX_LH_TOT", "lnd", "month_1", "h0", bb="cmip6")
 >>> lc.ppe_member_name(2)   # "2.dleaf.max"
->>> variables = {"et": ("EFLX_LH_TOT", "lnd"), "lai": ("TLAI", "lnd"), "pr": ("PRECT", "atm"),
-...              "fsns": ("FSNS", "atm"), "flns": ("FLNS", "atm")}
->>> ann = lc.load_annual("lens", None, slice("1995-01", "2014-12"), 1, variables=variables)
+>>> variables = {"EFLX_LH_TOT": "lnd", "TLAI": "lnd", "PRECT": "atm", "FSNS": "atm", "FLNS": "atm"}
+>>> raw = lc.load_native("lens", None, slice("1995-01", "2014-12"), variables=variables)
+>>> landfrac, src_grid = lc.load_land_fraction("lens")
 """
 
 from __future__ import annotations
@@ -39,11 +39,8 @@ from typing import Literal, Mapping, Sequence
 import numpy as np
 import xarray as xr
 
-from etunc.config import LAT_BNDS, LF_THRESH, NA_THRESH
-from etunc.grid import bounded_src_grid, check_same_grid, landfrac_mask
-from etunc.units import convert_units, net_radiation_cesm
-from etunc.legacy.grid import regrid_annual
-from etunc.legacy.temporal import annual_means, print_annual
+from etunc.config import LAT_BNDS
+from etunc.grid import bounded_src_grid
 
 
 CESM2_COMPONENT_MAP = {
@@ -534,20 +531,20 @@ def load_cesm_grid(source: Literal["fppe", "goga", "lens"], lat_bnds: slice = LA
 
 
 # ------------------------------------------------------------------
-# Annual means for binning (scripts/bin_lens.py, scripts/bin_fppe.py)
+# Monthly fields and land fraction for binning (scripts/prep_lens.py, prep_fppe.py)
 # ------------------------------------------------------------------
 
 def _lens_fields(
-    variables: Mapping[str, tuple[str, str]],
+    variables: Mapping[str, str],
     members: Sequence[str] | None,
     time_slice: slice,
     frequency: str,
     stream: str,
     bb: str,
 ) -> dict[str, xr.DataArray]:
-    """{key: (member, time, lat, lon)} of LENS2 `members` (ens_names; None = all), with member_id = ens_name."""
+    """{variable: (member, time, lat, lon)} of LENS2 `members` (ens_names; None = all), with member_id = ens_name."""
     fields, ens = {}, None
-    for k, (v, gcomp) in variables.items():
+    for v, gcomp in variables.items():
         print(f"{v} ({gcomp})")
         da = load_cesm2le(v, gcomp, frequency, stream, bb=bb, verbose=False)[v].sel(time=time_slice)
         names = da["ens_name"].values.tolist()
@@ -558,12 +555,12 @@ def _lens_fields(
                 raise ValueError(f"Members {missing} not in LENS2 ({bb}): {names}")
         # Only member_id is kept of the non-index coords
         da = da.isel(member=[names.index(m) for m in ens]).reset_coords(drop=True)
-        fields[k] = da.assign_coords(member_id=("member", ens))
+        fields[v] = da.assign_coords(member_id=("member", ens))
     return fields
 
 
 def _fppe_fields(
-    variables: Mapping[str, tuple[str, str]],
+    variables: Mapping[str, str],
     members: Sequence[int] | None,
     time_slice: slice,
     frequency: str,
@@ -571,12 +568,12 @@ def _fppe_fields(
     drop_outliers: Sequence[int],
 ) -> dict[str, xr.DataArray]:
     """
-    {key: (member, time, lat, lon)} of the FHIST PPE `members` (None = all but
+    {variable: (member, time, lat, lon)} of the FHIST PPE `members` (None = all but
     `drop_outliers`) that have every variable, with member_id = parameter name.
     """
     # One `load_fhist_ppe` call per component
     by_gcomp: dict[str, list[str]] = {}
-    for v, gcomp in variables.values():
+    for v, gcomp in variables.items():
         by_gcomp.setdefault(gcomp, []).append(v)
     ds = {}
     for gcomp, vs in by_gcomp.items():
@@ -599,8 +596,8 @@ def _fppe_fields(
         raise RuntimeError("No FHIST PPE member has every variable.")
     names = [ppe_member_name(m) for m in ids]
     return {
-        k: ds[gcomp][v].sel(member=ids, time=time_slice).reset_coords(drop=True).assign_coords(member_id=("member", names))
-        for k, (v, gcomp) in variables.items()
+        v: ds[gcomp][v].sel(member=ids, time=time_slice).reset_coords(drop=True).assign_coords(member_id=("member", names))
+        for v, gcomp in variables.items()
     }
 
 
@@ -609,82 +606,30 @@ def load_native(
     members: Sequence[str] | Sequence[int] | None,
     time_slice: slice,
     *,
-    variables: Mapping[str, tuple[str, str]],
+    variables: Mapping[str, str],
     frequency: str = "month_1",
     stream: str = "h0",
     bb: str = "cmip6",
     drop_outliers: Sequence[int] = (13, 28),
-) -> tuple[dict[str, xr.DataArray], xr.DataArray, xr.Dataset]:
-    """
-    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
-    of a CESM ensemble on its native grid, masked with the grid file's land
-    fraction (LANDFRAC > LF_THRESH, no Greenland/Iceland), with `member_id`
-    on `member`. Complete years only; a missing month counts as LAI = 0, while
-    ET, pr and Rn need all 12 months (`annual_means`).
-
-    source : "lens" (LENS2; `members` are ens_names, `bb` its biomass burning
-        forcing) or "fppe" (FHIST PPE; `members` are integer ids, None = all
-        but `drop_outliers`).
-    variables : {key: (CESM variable, gcomp)} for the keys "et" (EFLX_LH_TOT,
-        in W/m2), "lai", "pr" (PRECT or PRECT_calculated, m/s), "fsns" and "flns".
-
-    Returns (annual means, native land mask, native grid with cell edges), the
-    input of `etunc.grid.regrid_annual`.
-    """
-    grid = load_grid(source)
-    # Sets the area the ensemble contributes: native cells with LANDFRAC > LF_THRESH, minus
-    # Greenland/Iceland. Masking on the native grid keeps ocean and ice-sheet values
-    # out of the area-weighted means of the regridding
-    native_mask = landfrac_mask(grid["LANDFRAC"], LF_THRESH)
-
-    if source == "lens":
-        fields = _lens_fields(variables, members, time_slice, frequency, stream, bb)
-    elif source == "fppe":
-        fields = _fppe_fields(variables, members, time_slice, frequency, stream, drop_outliers)
-    else:
-        raise ValueError(f"Unsupported CESM source {source!r}; use 'lens' or 'fppe'")
-    for k, da in fields.items():
-        check_same_grid(da, grid, f"{source}/{k}")
-        # Exact grid-file coords, so `.where(native_mask)` cannot misalign on round-off
-        fields[k] = da.assign_coords(lat=grid.lat, lon=grid.lon)
-
-    monthly = {
-        # EFLX_LH_TOT is the total latent heat flux, already in W/m2
-        "et": fields["et"].assign_attrs(units="W/m2"),
-        "lai": fields["lai"].assign_attrs(units="m2/m2"),
-        # Keyed on the variable name: PRECT(_calculated) m/s -> W/m2
-        "pr": convert_units(variables["pr"][0], fields["pr"]),
-        "rn": net_radiation_cesm(fields["fsns"], fields["flns"]),
-    }
-    with xr.set_options(keep_attrs=True):
-        monthly = {k: da.where(native_mask) for k, da in monthly.items()}
-    return annual_means(monthly), native_mask, bounded_src_grid(grid)
-
-
-def load_annual(
-    source: Literal["lens", "fppe"],
-    members: Sequence[str] | Sequence[int] | None,
-    time_slice: slice,
-    res: float | str,
-    *,
-    variables: Mapping[str, tuple[str, str]],
-    frequency: str = "month_1",
-    stream: str = "h0",
-    bb: str = "cmip6",
-    drop_outliers: Sequence[int] = (13, 28),
-    mask: xr.DataArray | None = None,
-    na_thresh: float = NA_THRESH,
 ) -> dict[str, xr.DataArray]:
     """
-    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
-    of a CESM ensemble on `target_grid(res)` within LAT_BNDS, masked with
-    `mask` if given: `etunc.grid.regrid_annual` of `load_native`.
+    Monthly fields {variable: (member, time, lat, lon)} of a CESM ensemble over
+    `time_slice` on its native grid, in native units (step 1 of the binning
+    pipeline), with `member_id` on `member`.
+
+    source : "lens" (LENS2; `members` are ens_names, None = all, `bb` its
+        biomass burning forcing) or "fppe" (FHIST PPE; `members` are integer
+        ids, None = all but `drop_outliers`; only members with every variable).
+    variables : {CESM variable: gcomp ("lnd" or "atm")}.
     """
-    native = load_native(
-        source, members, time_slice, variables=variables, frequency=frequency, stream=stream, bb=bb,
-        drop_outliers=drop_outliers,
-    )
-    ann = regrid_annual(*native, res, mask=mask, na_thresh=na_thresh, label=source)
-    for k, da in ann.items():
-        print_annual(da, f"{k:3} {source}")
-    return ann
+    if source == "lens":
+        return _lens_fields(variables, members, time_slice, frequency, stream, bb)
+    if source == "fppe":
+        return _fppe_fields(variables, members, time_slice, frequency, stream, drop_outliers)
+    raise ValueError(f"Unsupported CESM source {source!r}; use 'lens' or 'fppe'")
+
+
+def load_land_fraction(source: Literal["fppe", "goga", "lens"]) -> tuple[xr.DataArray, xr.Dataset]:
+    """LANDFRAC [0-1] of a CESM ensemble's grid file, and that grid with cell edges for regridding."""
+    grid = load_grid(source)
+    return grid["LANDFRAC"], bounded_src_grid(grid)

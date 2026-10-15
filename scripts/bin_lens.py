@@ -58,10 +58,10 @@ import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
 from etunc.edges import EDGE_ATTRS
+import etunc.legacy.load_cesm as legacy_lc
 import etunc.legacy.binning as lb  # old edges and inputs, until bin_all.py replaces this script
 import etunc.plotting as plotting
 import etunc.grid as rg
-import etunc.load.cesm as lc
 import etunc.load.cmip as cmip
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
@@ -141,7 +141,7 @@ def main():
     # Load and regrid annual means, build binning inputs, and map climatologies
     # ------------------------------------------------------------------
     print("=== Load LENS2 ===")
-    ann = lc.load_annual(
+    ann = legacy_lc.load_annual(
         "lens", MEMBERS, TIME_SLICE, TARGET_RES, variables=VARIABLES, frequency=FREQUENCY, stream=STREAM,
         bb=BB, mask=mask, na_thresh=cfg.NA_THRESH,
     )

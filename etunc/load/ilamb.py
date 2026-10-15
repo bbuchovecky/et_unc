@@ -2,16 +2,13 @@
 etunc.load.ilamb
 ================
 Load the ILAMB observational products in PRODUCTS (ILAMB_DATA_ROOT), with
-lon in [-180, 180] and lat ascending, within LAT_BNDS.
+lon in [-180, 180] and lat ascending.
 
-- Annual means for binning, as in every load module: `load_native` (complete
-  years on the native grid, masked to land with `etunc.grid.landne_mask`) and
-  `load_annual` = `etunc.grid.regrid_annual` of it (conservative). LAI is
-  m2/m2 and a missing LAI month counts as 0; ET, pr and rn are converted to
-  W/m2 and need all 12 months.
-- `load_ilamb`: monthly fields over a time slice, each month conservatively
-  regridded (or native with `res=None`), in native units or (`wm2=True`)
-  converted to W/m2 first.
+- `load_native`: the monthly field of one product on its native grid, in
+  native units (step 1 of the binning pipeline, scripts/prep_obs.py).
+- `load_ilamb`: monthly fields over a time slice within LAT_BNDS, each month
+  conservatively regridded (or native with `res=None`), in native units or
+  (`wm2=True`) converted to W/m2 first (make_mask.py, obs_et_availability.py).
 
 Both set undecoded fill values (|value| >= FILL_THRESH) to NaN.
 """
@@ -22,12 +19,8 @@ import numpy as np
 import xarray as xr
 
 from etunc.config import ILAMB_ROOT, LAT_BNDS, NA_THRESH
-from etunc.grid import (
-    bounded_src_grid, conservative_regridder, format_grid, landne_mask, on_grid, regrid_with_na_thresh,
-)
+from etunc.grid import conservative_regridder, format_grid, on_grid, regrid_with_na_thresh
 from etunc.units import flux_to_wm2
-from etunc.legacy.grid import regrid_annual
-from etunc.legacy.temporal import annual_means, print_annual
 
 
 ILAMB_DATA_ROOT = ILAMB_ROOT / "ILAMB-Data"
@@ -74,59 +67,19 @@ def _open(variable: str, product: str) -> xr.DataArray:
     return format_grid(ds[name])
 
 
-def _monthly(variable: str, product: str, time_slice: slice) -> xr.DataArray:
-    """Loaded monthly field over `time_slice` on the native grid, with fill values as NaN."""
+def load_native(variable: str, product: str, time_slice: slice) -> xr.DataArray:
+    """
+    Monthly field (time, lat, lon) of one product over `time_slice` on its
+    native grid, in its native units (step 1 of docs/binning-workflow.md),
+    loaded, with undecoded fill values as NaN. Raises FileNotFoundError if the
+    product has no data in `time_slice`.
+    """
     da = _open(variable, product).sel(time=time_slice).load()
     if da.sizes["time"] == 0:
         raise FileNotFoundError(f"{variable}/{product}: no data in {time_slice}")
     # Fill values must be NaN before averaging, or a single ~1e37 month swamps the year
     with xr.set_options(keep_attrs=True):
         return da.where(np.abs(da) < FILL_THRESH)
-
-
-def load_native(
-    variable: str, product: str, time_slice: slice = slice(None, None),
-) -> tuple[dict[str, xr.DataArray], xr.DataArray, xr.Dataset]:
-    """
-    Annual means {variable: (year, lat, lon)} of one product on its native
-    grid over the complete years in `time_slice`, masked to land
-    (`etunc.grid.landne_mask` of the native grid). ET, pr and rn are in W/m2
-    and need all 12 months; LAI is m2/m2 and a missing month counts as 0.
-
-    Returns (annual means, native land mask, native grid), the input of
-    `etunc.grid.regrid_annual`.
-    """
-    da = _monthly(variable, product, time_slice)
-    if variable == "lai":
-        da.attrs["units"] = "m2/m2"
-    else:
-        da = flux_to_wm2(da)
-    # Natural Earth land, as the target-grid mask of the binning. Removes the ocean of the
-    # global pr and rn products (GPCP, CMAP, CERES, GEWEX) before it can enter coastal cells
-    native_mask = landne_mask(da)
-    with xr.set_options(keep_attrs=True):
-        da = da.where(native_mask)
-    return annual_means({variable: da}), native_mask, bounded_src_grid(da)
-
-
-def load_annual(
-    variable: str,
-    product: str,
-    time_slice: slice,
-    res: float | str,
-    *,
-    mask: xr.DataArray | None = None,
-    na_thresh: float = NA_THRESH,
-) -> dict[str, xr.DataArray]:
-    """
-    Annual means {variable: (year, lat, lon)} of one product on
-    `target_grid(res)` within LAT_BNDS, masked with `mask` if given:
-    `etunc.grid.regrid_annual` of `load_native`.
-    """
-    label = f"{variable}/{product}"
-    ann = regrid_annual(*load_native(variable, product, time_slice), res, mask=mask, na_thresh=na_thresh, label=label)
-    print_annual(ann[variable], f"{variable:3} {product:12}")
-    return ann
 
 
 def load_ilamb(
@@ -148,7 +101,7 @@ def load_ilamb(
     product has no data in `time_slice`.
     """
     label = f"{variable}/{product}"
-    da = _monthly(variable, product, time_slice)
+    da = load_native(variable, product, time_slice)
     if wm2:
         da = flux_to_wm2(da)
     if res is None:

@@ -1,10 +1,8 @@
 """
 Tests that pin the behavior of the CMIP6 member selection and model loading in
-`etunc.load.cmip` (moved from `cmip_binned_et.py`: `load_annual` =
-`etunc.grid.regrid_annual` of `load_native`), the member-ID helpers of
-`CMIPESGFLoader`, and `regrid_to_target` (from `regrid_cmip_esgf.py`). The
-expected values were written against the old driver functions and are
-unchanged. Run from the project root with:
+`etunc.load.cmip` (`load_native`, raw monthly fields for scripts/prep_cmip.py,
+and `load_land_fraction`), the member-ID helpers of `CMIPESGFLoader`, and
+`regrid_to_target` (from `regrid_cmip_esgf.py`). Run from the project root with:
 
     python -m pytest tests/test_load_cmip.py
 
@@ -16,8 +14,6 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import etunc.legacy.grid as legacy_grid
-import etunc.config as config
 import etunc.grid as rg
 import etunc.load.cmip as cmip
 from etunc.load.cmip import CMIPESGFLoader
@@ -27,14 +23,10 @@ from etunc.load.cmip import CMIPESGFLoader
 # Member IDs and member selection
 # ------------------------------------------------------------------
 
-# Settings of scripts/bin_cmip.py (formerly cmip_binned_et.py), passed explicitly
+# Settings of scripts/prep_cmip.py, passed explicitly
 VARIABLES = ["evspsbl", "lai", "pr", "rsds", "rsus", "rlds", "rlus"]
 EXPERIMENT_ID = "historical"
 TIME_SLICE = slice("1995-01", "2014-12")
-TARGET_RES = 1.0
-TARGET_GRID = rg.target_grid(TARGET_RES)
-NA_THRES = 0.5
-SETTINGS = dict(variables=VARIABLES, experiment_id=EXPERIMENT_ID, na_thresh=NA_THRES)
 
 def test_sort_member_ids_numeric():
     """Member IDs sort numerically by r, i, p, f (r10 after r2), and invalid IDs raise."""
@@ -132,77 +124,43 @@ def test_member_tag():
 
 
 # ------------------------------------------------------------------
-# load_annual: native annual means -> conservative regrid onto the 1 deg grid
+# load_native and load_land_fraction: raw monthly fields for binning
 # ------------------------------------------------------------------
-# Native grid: 2.25 deg, lon in [0, 360], edges at multiples of 2.25 from -90
-# and 0. Its edges fall a quarter of the way into 1 deg target cells, so a
-# target cell on the edge of a land block is 25% or 75% land.
+# Native grid: 2.25 deg, lon in [0, 360]
 
 RES_N = 2.25
 LAT_N = -90 + RES_N * (np.arange(80) + 0.5)
 LON_N = RES_N * (np.arange(160) + 0.5)
-TIME = xr.date_range("1995-01-01", "1997-06-01", freq="MS", calendar="noleap", use_cftime=True)  # 1997 incomplete
+TIME = xr.date_range("1995-01-01", "1997-06-01", freq="MS", calendar="noleap", use_cftime=True)
 MEMBERS = ["r1i1p1f1", "r2i1p1f1"]
-
-LAND = (slice(41, 45), slice(41, 45))       # native cells: lat 2.25-11.25, lon 92.25-101.25
-GREENLAND = (slice(72, 76), slice(140, 144))  # native cells: lat 72-81, lon 315-324
-LAI_GAP = (0, "1995-07", 42, 42)  # (member, month, lat index, lon index): lat 4.5-6.75, lon 94.5-96.75
-ET_GAP = (0, "1996-03", 43, 43)   # lat 6.75-9, lon 96.75-99
-
-# {variable: (land value, ocean value)}; ocean values must not leak into the result
-VALUES = {
-    "evspsbl": (2e-5, 5e-5),  # kg m-2 s-1
-    "lai": (2.0, 0.0),
-    "pr": (3e-5, 9e-5),
-    "rsds": (200.0, 250.0),
-    "rsus": (30.0, 20.0),
-    "rlds": (350.0, 300.0),
-    "rlus": (400.0, 410.0),
-}
-L = config.LATENT_HEAT_VAPORIZATION
-EXPECTED = {"et": 2e-5 * L, "lai": 2.0, "pr": 3e-5 * L, "rn": 200.0 - 30.0 + 350.0 - 400.0}
-
-# Target (1 deg) cells
-VALID_LAT = np.arange(2.5, 11, 1.0)   # 75% land at 2.5, 25% land at 11.5 (NaN)
-VALID_LON = np.arange(92.5, 101, 1.0)  # likewise for lon
-MASKED_CELL = (6.5, 96.5)              # False in the target `mask`
-ET_GAP_CELLS = [(7.5, 97.5), (7.5, 98.5), (8.5, 97.5), (8.5, 98.5)]  # inside the native ET_GAP cell
-LAI_GAP_CELL = (5.5, 95.5)             # the only target cell inside the native LAI_GAP cell
-LAI_GAP_TOUCHED = [(lat, lon) for lat in (4.5, 5.5, 6.5) for lon in (94.5, 95.5, 96.5)]
+LAND = (slice(41, 45), slice(41, 45))  # native land cells
 
 
 def land_fraction(scale=100.0):
     lf = np.zeros((LAT_N.size, LON_N.size))
     lf[LAND] = 1.0
-    lf[GREENLAND] = 1.0
     return xr.DataArray(
         lf * scale, dims=("lat", "lon"), coords={"lat": LAT_N, "lon": LON_N}, name="sftlf",
         attrs={"units": "%"},
     )
 
 
-def write_sftlf(path, scale=100.0, lat_shift=0.0):
-    lf = land_fraction(scale)
-    lf = lf.assign_coords(lat=lf.lat + lat_shift)
-    lf.to_dataset().to_netcdf(path)
+def write_sftlf(path, scale=100.0):
+    land_fraction(scale).to_dataset().to_netcdf(path)
     return str(path)
 
 
 def monthly_fields():
-    """{variable: (member, time, lat, lon)} as returned by CMIPESGFLoader.load_data."""
-    land = land_fraction(1.0).values > 0
+    """{variable: (member, time, lat, lon)} as returned by CMIPESGFLoader.load_data, with an extra coord."""
     out = {}
-    for v, (vland, vocean) in VALUES.items():
-        data = np.where(land, vland, vocean)[None, None] * np.ones((len(MEMBERS), TIME.size, 1, 1))
+    for i, v in enumerate(VARIABLES):
         out[v] = xr.DataArray(
-            data, dims=("member", "time", "lat", "lon"),
-            coords={"member": np.arange(len(MEMBERS)), "member_id": ("member", MEMBERS),
-                    "time": TIME, "lat": LAT_N, "lon": LON_N},
+            np.full((len(MEMBERS), TIME.size, LAT_N.size, LON_N.size), float(i)),
+            dims=("member", "time", "lat", "lon"),
+            coords={"member": np.arange(len(MEMBERS)), "time": TIME, "lat": LAT_N, "lon": LON_N,
+                    "height": 2.0},
             name=v, attrs={"units": "test"},
         )
-    for v, (m, month, i, j) in [("lai", LAI_GAP), ("evspsbl", ET_GAP)]:
-        t = np.flatnonzero(out[v].time.dt.strftime("%Y-%m").values == month)[0]
-        out[v][m, t, i, j] = np.nan
     return out
 
 
@@ -219,174 +177,40 @@ class StubLoader:
         return {source_id: {v: self.data[v].sel(time=time_slice) for v in variables if v in self.data}}
 
 
-def target_mask():
-    grid = TARGET_GRID.sel(lat=config.LAT_BNDS)
-    mask = xr.DataArray(
-        np.ones((grid.sizes["lat"], grid.sizes["lon"])), dims=("lat", "lon"),
-        coords={"lat": grid.lat, "lon": grid.lon},
-    )
-    mask.loc[{"lat": MASKED_CELL[0], "lon": MASKED_CELL[1]}] = 0.0
-    return mask
-
-
-def expected_field(k, member, year):
-    """Expected (lat, lon) values of `k` away from the LAI gap, which is checked separately."""
-    grid = TARGET_GRID.sel(lat=config.LAT_BNDS)
-    out = xr.DataArray(np.full((grid.sizes["lat"], grid.sizes["lon"]), np.nan), dims=("lat", "lon"),
-                       coords={"lat": grid.lat, "lon": grid.lon})
-    out.loc[{"lat": VALID_LAT, "lon": VALID_LON}] = EXPECTED[k]
-    out.loc[{"lat": MASKED_CELL[0], "lon": MASKED_CELL[1]}] = np.nan
-    if k == "et" and member == 0 and year == 1996:
-        for lat, lon in ET_GAP_CELLS:
-            out.loc[{"lat": lat, "lon": lon}] = np.nan
-    return out
-
-
-@pytest.fixture(scope="module")
-def loaded(tmp_path_factory):
-    """load_annual output with a % sftlf file, plus the stub loader that it called."""
-    path = write_sftlf(tmp_path_factory.mktemp("fx") / "sftlf.nc")
+def test_load_native_raw_fields_with_member_id():
+    """
+    load_native asks the loader for the model's variables, members and time slice, and returns them unchanged
+    (native units) with only member_id kept of the non-index coords.
+    """
     loader = StubLoader(monthly_fields())
-    ann = cmip.load_annual(loader, "FAKE-ESM", MEMBERS, path, TIME_SLICE, TARGET_RES, mask=target_mask(), **SETTINGS)
-    return ann, loader
-
-
-def test_load_annual_calls_loader(loaded):
-    """load_annual asks the loader for the variables, experiment, the model's members and the time slice."""
-    _, loader = loaded
+    raw = cmip.load_native(loader, "FAKE-ESM", MEMBERS, TIME_SLICE, variables=VARIABLES, experiment_id=EXPERIMENT_ID)
     assert loader.calls == [{
         "variables": VARIABLES, "experiment_id": EXPERIMENT_ID, "source_id": "FAKE-ESM",
         "member_id": MEMBERS, "time_slice": TIME_SLICE,
     }]
+    assert list(raw) == VARIABLES
+    pr = raw["pr"]
+    assert pr.dims == ("member", "time", "lat", "lon") and pr.attrs["units"] == "test"
+    assert pr.member_id.values.tolist() == MEMBERS and "height" not in pr.coords
+    np.testing.assert_allclose(pr, VARIABLES.index("pr"))
 
 
-def test_load_annual_dims_coords_names_units(loaded):
-    """
-    et, lai, pr and rn have dims (member, year, lat, lon), complete years only, member_id, the exact 1 deg
-    coords within LAT_BNDS, and the right units.
-    """
-    ann, _ = loaded
-    assert list(ann) == ["et", "lai", "pr", "rn"]
-    grid = TARGET_GRID.sel(lat=config.LAT_BNDS)
-    for k, da in ann.items():
-        assert da.name == k
-        assert da.dims == ("member", "year", "lat", "lon")
-        assert da.year.values.tolist() == [1995, 1996]  # incomplete 1997 dropped
-        assert da.member_id.values.tolist() == MEMBERS
-        np.testing.assert_array_equal(da.lat, grid.lat)
-        np.testing.assert_array_equal(da.lon, grid.lon)
-    assert {k: da.attrs["units"] for k, da in ann.items()} == {
-        "et": "W/m2", "lai": "m2/m2", "pr": "W/m2", "rn": "W/m2",
-    }
-
-
-@pytest.mark.parametrize("k", ["et", "lai", "pr", "rn"])
-def test_load_annual_values(loaded, k):
-    """
-    Land values only (ocean masked on the native grid before regridding),
-    NaN where more than NA_THRES of a target cell is outside the native land
-    mask, in Greenland, and where the target mask is False. A missing ET month
-    makes that year NaN.
-    """
-    ann, _ = loaded
-    for m in range(len(MEMBERS)):
-        for year in (1995, 1996):
-            got = ann[k].isel(member=m).sel(year=year)
-            expected = expected_field(k, m, year)
-            if k == "lai" and m == 0 and year == 1995:
-                for lat, lon in LAI_GAP_TOUCHED:
-                    expected.loc[{"lat": lat, "lon": lon}] = got.sel(lat=lat, lon=lon)  # checked below
-            np.testing.assert_allclose(got.values, expected.values, rtol=1e-10, equal_nan=True)
-
-
-def test_load_annual_missing_lai_month_counts_as_zero(loaded):
-    """A missing LAI month counts as 0 in the annual mean instead of making the year NaN."""
-    ann, _ = loaded
-    lai = ann["lai"].isel(member=0).sel(year=1995)
-    july_weight = 31 / 365
-    assert float(lai.sel(lat=LAI_GAP_CELL[0], lon=LAI_GAP_CELL[1])) == pytest.approx(2.0 * (1 - july_weight), rel=1e-10)
-    for lat, lon in LAI_GAP_TOUCHED:
-        if (lat, lon) in (LAI_GAP_CELL, MASKED_CELL):
-            continue
-        val = float(lai.sel(lat=lat, lon=lon))  # partly inside the gap cell
-        assert 2.0 * (1 - july_weight) < val < 2.0
-    np.testing.assert_allclose(ann["lai"].isel(member=1).sel(year=1995, lat=LAI_GAP_CELL[0], lon=LAI_GAP_CELL[1]), 2.0)
-
-
-def test_load_annual_greenland_excluded(loaded):
-    """Land in Greenland is excluded by the native mask, so it is NaN on the target grid."""
-    ann, _ = loaded
-    native = rg.landfrac_mask(land_fraction(1.0))
-    assert not native.isel(lat=GREENLAND[0], lon=GREENLAND[1]).any()  # land in sftlf, excluded by the mask
-    greenland = ann["et"].sel(lat=slice(72, 81), lon=slice(-45, -36))
-    assert greenland.size > 0 and greenland.isnull().all()
-
-
-def test_load_annual_fraction_sftlf_same_as_percent(loaded, tmp_path):
-    """A sftlf file stored as a fraction gives the same output as one stored in %."""
-    ann, _ = loaded
-    path = write_sftlf(tmp_path / "sftlf_frac.nc", scale=1.0)  # fraction labelled "%" (as E3SM-1-0)
-    ann_frac = cmip.load_annual(
-        StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, TIME_SLICE, TARGET_RES, mask=target_mask(), **SETTINGS,
-    )
-    for k in ann:
-        xr.testing.assert_identical(ann_frac[k], ann[k])
-
-
-def test_load_annual_sftlf_on_other_grid_raises(tmp_path):
-    """A sftlf file on a different grid from the data raises."""
-    path = write_sftlf(tmp_path / "sftlf_shifted.nc", lat_shift=0.5)
-    with pytest.raises(ValueError, match="differ from the reference grid"):
-        cmip.load_annual(
-        StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, TIME_SLICE, TARGET_RES, mask=target_mask(), **SETTINGS,
-    )
-
-
-def test_load_annual_missing_variable_raises(tmp_path):
+def test_load_native_missing_variable_raises():
     """A variable the loader cannot provide raises, naming it."""
-    path = write_sftlf(tmp_path / "sftlf.nc")
     data = monthly_fields()
     del data["rlus"]
     with pytest.raises(ValueError, match=r"could not load \['rlus'\]"):
-        cmip.load_annual(StubLoader(data), "FAKE-ESM", MEMBERS, path, TIME_SLICE, TARGET_RES, mask=target_mask(), **SETTINGS)
+        cmip.load_native(StubLoader(data), "FAKE-ESM", MEMBERS, TIME_SLICE, variables=VARIABLES,
+                         experiment_id=EXPERIMENT_ID)
 
 
-def test_load_annual_is_regrid_annual_of_load_native(loaded, tmp_path):
-    """load_annual is legacy_grid.regrid_annual(*load_native(...)): native annual means, then the conservative regrid."""
-    ann, _ = loaded
-    path = write_sftlf(tmp_path / "sftlf.nc")
-    native, native_mask, src_grid = cmip.load_native(
-        StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, TIME_SLICE,
-        variables=VARIABLES, experiment_id=EXPERIMENT_ID,
-    )
-    assert native["et"].dims == ("member", "year", "lat", "lon") and native["et"].sizes["lat"] == LAT_N.size
-    assert native["et"].member_id.values.tolist() == MEMBERS
-    assert native_mask.dtype == bool and src_grid.sizes["lat_b"] == LAT_N.size + 1
-    out = legacy_grid.regrid_annual(native, native_mask, src_grid, TARGET_RES, mask=target_mask(), na_thresh=NA_THRES)
-    for k in ann:
-        xr.testing.assert_identical(out[k], ann[k])
-
-
-def test_regrid_annual_na_thres_and_any_spacing(tmp_path):
-    """
-    A higher na_thresh keeps target cells that are only 25% land (with the land value); any spacing that divides
-    180 gives that grid's exact coords within LAT_BNDS.
-    """
-    path = write_sftlf(tmp_path / "sftlf.nc")
-    native, native_mask, src_grid = cmip.load_native(
-        StubLoader(monthly_fields()), "FAKE-ESM", MEMBERS, path, TIME_SLICE,
-        variables=VARIABLES, experiment_id=EXPERIMENT_ID,
-    )
-    loose = legacy_grid.regrid_annual(native, native_mask, src_grid, TARGET_RES, mask=target_mask(), na_thresh=0.8)
-    edge = loose["pr"].isel(member=1).sel(year=1995, lat=11.5, lon=VALID_LON[1:])  # 25% land (lon 92.5: 19%, NaN)
-    np.testing.assert_allclose(edge, EXPECTED["pr"], rtol=1e-10)
-    assert loose["pr"].member_id.values.tolist() == MEMBERS
-
-    g2 = rg.target_grid(2.0).sel(lat=config.LAT_BNDS)
-    mask2 = xr.ones_like(g2.lat * g2.lon)
-    coarse = legacy_grid.regrid_annual(native, native_mask, src_grid, 2.0, mask=mask2, na_thresh=NA_THRES)
-    np.testing.assert_array_equal(coarse["et"].lat, g2.lat)
-    np.testing.assert_array_equal(coarse["et"].lon, g2.lon)
+@pytest.mark.parametrize("scale", [100.0, 1.0])
+def test_load_land_fraction_percent_or_fraction(tmp_path, scale):
+    """sftlf in % and sftlf stored as a fraction labelled "%" (as E3SM-1-0) both give a [0, 1] land fraction."""
+    lf, src_grid = cmip.load_land_fraction(write_sftlf(tmp_path / "sftlf.nc", scale))
+    xr.testing.assert_allclose(lf, land_fraction(1.0).assign_attrs(units="1"))
+    assert lf.attrs["units"] == "1"
+    assert src_grid.sizes["lat_b"] == LAT_N.size + 1 and src_grid.sizes["lon_b"] == LON_N.size + 1
 
 
 def test_regrid_to_target_ec_earth_ij_grid():

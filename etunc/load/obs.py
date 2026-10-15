@@ -24,11 +24,9 @@ the native files and conservatively regrids each time step in memory onto
 ``etunc.grid.target_grid(res)`` (used by make_mask.py and
 obs_et_availability.py).
 
-Annual means for binning, as in every load module: ``load_native`` (annual
-means of a water flux in W/m2 over complete years on the native grid, masked
-to land with ``etunc.grid.landne_mask``, read one year at a time) and
-``load_annual`` = ``etunc.grid.regrid_annual`` of it (conservative, used by
-bin_obs.py).
+The binning pipeline (scripts/prep_obs.py) reads the native monthly files
+with ``load_obs`` (step 1) and converts, averages, masks and regrids them in
+the script.
 
 Every function also takes ``res``: "native" (default) reads the original
 files, "0.5" or "1" the copies regridded by ``regrid_obs.py`` to 0.5 or 1 deg,
@@ -44,7 +42,6 @@ Example
 >>> et = lo.load_obs("pml", "ET", slice("2003", "2005"), version="V2.2a-MODIS", freq="8-day")
 >>> et = lo.load_sith("ET", slice("1995", "2014"), freq="yearly")
 >>> et = lo.load_obs_regridded("gleam", "E", slice("1995", "2014"), 0.5)  # regridded in memory
->>> ann = lo.load_annual("gleam", "E", slice("1995", "2014"), 1)        # {"E": annual means [W/m2]}
 >>> et = lo.load_gleam("E", slice("1995", "2014"), regrid_res=0.5)       # same
 >>> et = lo.load_gleam("E", slice("1995", "2014"), res="1")             # saved 1 deg files (deprecated)
 >>> lo.list_variables("gleam"), lo.list_years("pml", "ET", version="V2.2b")
@@ -96,12 +93,8 @@ import xarray as xr
 
 from etunc.config import NA_THRESH, OBS_ROOT, OBS_REGRID_ROOT
 from etunc.grid import (
-    RESOLUTIONS, approx_resolution, bounded_src_grid, conservative_regridder, landne_mask, regrid_with_na_thresh,
+    RESOLUTIONS, approx_resolution, conservative_regridder, regrid_with_na_thresh,
 )
-from etunc.temporal import complete_years, yearly_to_annual
-from etunc.units import accumulation_to_flux, latent_heat_to_wm2
-from etunc.legacy.grid import regrid_annual
-from etunc.legacy.temporal import annual_means, print_annual
 
 RES_DIRS = {"0.5": "0.5deg", "1": "1deg"}  # res -> directory under OBS_REGRID_ROOT/<dataset dir>
 
@@ -656,88 +649,6 @@ def load_sith(
     With `regrid_res`, regridded in memory by `load_obs_regridded`.
     """
     return _load_named("sith", var, time_slice, regrid_res, na_thresh, kwargs)
-
-
-# ------------------------------------------------------------------
-# Annual means for binning
-# ------------------------------------------------------------------
-
-def load_native(
-    dataset: str | ObsDataset,
-    var: str,
-    time_slice: slice = slice(None, None),
-    *,
-    version: str | None = None,
-    freq: str = "monthly",
-) -> tuple[dict[str, xr.DataArray], xr.DataArray, xr.Dataset]:
-    """
-    Annual means {var: (year, lat, lon)} [W/m2] of a water flux (mm per day,
-    month or year, e.g. ET or E) on the native grid over the complete years
-    in `time_slice`, masked to land (`etunc.grid.landne_mask` of the native
-    grid). Monthly products need all 12 months for a valid annual mean; for
-    yearly products the yearly total is the annual mean. Read one year at a
-    time, so only one native year is in memory.
-
-    Returns (annual means, native land mask, native grid), the input of
-    `etunc.grid.regrid_annual`.
-    """
-    spec, version = _resolve(dataset, version, freq)
-    if freq not in ("monthly", "yearly"):
-        raise ValueError(f"{spec.name}: annual means need monthly or yearly files, not {freq!r}")
-    if _has_year(spec):
-        y0, y1 = _year_bounds(time_slice)
-        years = [
-            y for y in list_years(spec, var, version, freq) if (y0 is None or y >= y0) and (y1 is None or y <= y1)
-        ]
-        reads = [slice(str(y), str(y)) for y in years]
-    else:
-        reads = [time_slice]  # one file holds every year
-    if not reads:
-        raise FileNotFoundError(f"No {spec.name} {version} {freq} files for {var!r} in {time_slice}")
-
-    pieces, native_mask = [], None
-    for read in reads:
-        da = load_obs(spec, var, read, version=version, freq=freq).sel(time=time_slice)
-        if da.sizes["time"] == 0 or (freq == "monthly" and not complete_years(da)):
-            continue  # nothing, or a partial year, in `time_slice`
-        # Totals (mm/month, mm/year) -> W/m2, using each time step's month or year length
-        da = latent_heat_to_wm2(accumulation_to_flux(da.load()))
-        ann = annual_means({var: da})[var] if freq == "monthly" else yearly_to_annual(da)
-        if native_mask is None:
-            # Natural Earth land, as the target-grid mask of the binning
-            native_mask = landne_mask(ann)
-        with xr.set_options(keep_attrs=True):
-            pieces.append(ann.where(native_mask))
-        del da
-        gc.collect()
-    if not pieces:
-        raise ValueError(f"{spec.name} {version} {freq} {var}: no complete year in {time_slice}")
-    ann = xr.concat(pieces, dim="year").rename(var)
-    return {var: ann}, native_mask, bounded_src_grid(ann)
-
-
-def load_annual(
-    dataset: str | ObsDataset,
-    var: str,
-    time_slice: slice,
-    res: float | str,
-    *,
-    version: str | None = None,
-    freq: str = "monthly",
-    mask: xr.DataArray | None = None,
-    na_thresh: float = NA_THRESH,
-) -> dict[str, xr.DataArray]:
-    """
-    Annual means {var: (year, lat, lon)} [W/m2] of a water flux on
-    `target_grid(res)` within LAT_BNDS, masked with `mask` if given:
-    `etunc.grid.regrid_annual` of `load_native`.
-    """
-    spec, version = _resolve(dataset, version, freq)
-    label = f"{spec.name} {version}"
-    native = load_native(spec, var, time_slice, version=version, freq=freq)
-    ann = regrid_annual(*native, res, mask=mask, na_thresh=na_thresh, label=label)
-    print_annual(ann[var], f"{var:3} {label}")
-    return ann
 
 
 # ------------------------------------------------------------------

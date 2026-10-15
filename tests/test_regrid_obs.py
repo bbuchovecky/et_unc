@@ -1,9 +1,7 @@
 """
 Tests for the obs regridding of regrid_obs.py: grid.regrid_with_na_thresh and
 load.obs.output_path / regrid_file (the shared grids are tested in test_grid.py),
-the in-memory `load_obs_regridded`, and the annual means for binning
-(`load_native`, `load_annual`; a synthetic land mask stands in for Natural
-Earth). Run from the project root with:
+and the in-memory `load_obs_regridded`. Run from the project root with:
 
     python -m pytest tests/test_regrid_obs.py
 
@@ -18,13 +16,8 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import etunc.legacy.grid as legacy_grid
-import etunc.legacy.temporal as legacy_temporal
-import etunc.config as lo_config
 import etunc.load.obs as lo
 import etunc.grid as rg
-import etunc.temporal as temporal
-import etunc.units as units
 
 
 # ------------------------------------------------------------------
@@ -229,97 +222,6 @@ def test_load_obs_regridded_time_slices(per_year, sith_like):
 def test_load_obs_regridded_missing_files(per_year):
     with pytest.raises(FileNotFoundError, match="No yr v1 monthly files"):
         lo.load_obs_regridded(per_year, "E", slice("1990", "1991"), 1.0)
-
-
-# ------------------------------------------------------------------
-# load_native and load_annual: annual means for binning
-# ------------------------------------------------------------------
-
-def fake_land_mask(east_of=-1000.0):
-    """Stand-in for rg.landne_mask (Natural Earth): land where lon > `east_of` (everywhere by default)."""
-    return lambda grid: (grid["lat"] > -1000) & (grid["lon"] > east_of)
-
-
-def expected_annual(spec, var, time_slice):
-    """Annual means [W/m2] of the native field over complete years, computed independently of load_native."""
-    da = lo.load_obs(spec, var, time_slice).load()
-    da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
-    da = da.sel(time=da.time.dt.year.isin(temporal.complete_years(da)))
-    return legacy_temporal.annual_mean(da, require_all_months=True)
-
-
-@pytest.mark.parametrize("which", ["per_year", "sith_like"])
-def test_load_native_annual_means(monkeypatch, request, which):
-    """
-    Per-year and multi-year files give the native annual means in W/m2 (from mm/month, with each month's
-    length) over complete years, read one year at a time.
-    """
-    monkeypatch.setattr(lo, "landne_mask", fake_land_mask())
-    spec = request.getfixturevalue(which)
-    spec, var = (spec[0], "ET") if which == "sith_like" else (spec, "E")
-    native, native_mask, src_grid = lo.load_native(spec, var, slice(None, None))
-    ann = native[var]
-    expected = expected_annual(spec, var, slice(None, None))
-    assert list(native) == [var] and ann.name == var
-    assert ann.dims == ("year", "lat", "lon") and ann.attrs["units"] == "W/m2"
-    assert ann.year.values.tolist() == expected.year.values.tolist()
-    np.testing.assert_allclose(ann, expected, rtol=1e-6)
-    assert native_mask.dtype == bool and src_grid.sizes["lat_b"] == ann.sizes["lat"] + 1
-
-
-def test_load_native_land_mask_partial_year_and_missing_month(monkeypatch, tmp_path):
-    """
-    The native land mask is applied, a partial year is dropped, and one missing month makes that native cell
-    NaN for the year (it does not just leave out that month, as regridding each month first would).
-    """
-    monkeypatch.setattr(lo, "landne_mask", fake_land_mask(east_of=20.5))
-    spec = lo.ObsDataset("yr", tmp_path / "yr", "{version}/{freq}/{var}/{var}_{year}.nc", ("v1",), {"monthly": "M"})
-    for year, months in ((2000, 12), (2001, 6)):
-        data = np.full((months, 10, 10), 31.0, dtype="float32")
-        if year == 2000:
-            data[6, 2, 7] = np.nan  # July, one land cell
-        ds = xr.Dataset({"E": (("time", "lat", "lon"), data, {"units": "mm/month"})},
-                        coords={"time": pd.date_range(f"{year}-01", periods=months, freq="MS"),
-                                "lat": np.round(10.05 + 0.1 * np.arange(10), 4),
-                                "lon": np.round(20.05 + 0.1 * np.arange(10), 4)})
-        path = spec.root / f"v1/monthly/E/E_{year}.nc"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        ds.to_netcdf(path)
-
-    native, native_mask, _ = lo.load_native(spec, "E", slice("2000", "2001"))
-    ann = native["E"]
-    assert ann.year.values.tolist() == [2000]  # 2001 has 6 months
-    assert ann.where(~native_mask).isnull().all() and native_mask.sum() == 50
-    assert np.isnan(float(ann.isel(year=0, lat=2, lon=7)))
-    assert int(ann.notnull().sum()) == 49
-
-
-def test_load_native_yearly(monkeypatch, tmp_path):
-    """Yearly totals (mm/year) are the annual means, divided by each year's length (2000 is a leap year)."""
-    monkeypatch.setattr(lo, "landne_mask", fake_land_mask())
-    spec = lo.ObsDataset("yr", tmp_path / "yr", "{version}/{freq}/{var}/{var}_{year}.nc", ("v1",), {"yearly": "Y"})
-    for year in (2000, 2001):
-        ds = xr.Dataset({"E": (("time", "lat", "lon"), np.full((1, 4, 4), 365.0), {"units": "mm/year"})},
-                        coords={"time": [pd.Timestamp(f"{year}-12-31")],
-                                "lat": 10.05 + 0.1 * np.arange(4), "lon": 20.05 + 0.1 * np.arange(4)})
-        path = spec.root / f"v1/yearly/E/E_{year}.nc"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        ds.to_netcdf(path)
-    ann = lo.load_native(spec, "E", freq="yearly")[0]["E"]
-    L = lo_config.LATENT_HEAT_VAPORIZATION
-    np.testing.assert_allclose(ann.sel(year=2000), 365 / (366 * 86400) * L)
-    np.testing.assert_allclose(ann.sel(year=2001), 365 / (365 * 86400) * L)
-
-
-def test_load_annual_is_regrid_annual_of_load_native(monkeypatch, per_year):
-    """load_annual is legacy_grid.regrid_annual(*load_native(...)) onto the target grid within LAT_BNDS."""
-    monkeypatch.setattr(lo, "landne_mask", fake_land_mask())
-    out = lo.load_annual(per_year, "E", slice("2000", "2001"), 1.0)
-    expected = legacy_grid.regrid_annual(*lo.load_native(per_year, "E", slice("2000", "2001")), 1.0)
-    xr.testing.assert_identical(out["E"], expected["E"])
-    grid = rg.target_grid(1.0).sel(lat=lo_config.LAT_BNDS)
-    np.testing.assert_array_equal(out["E"].lat, grid.lat)
-    assert out["E"].year.values.tolist() == [2000, 2001]
 
 
 # ------------------------------------------------------------------

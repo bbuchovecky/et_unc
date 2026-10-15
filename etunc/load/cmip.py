@@ -7,8 +7,8 @@ drivers:
 
 - model and member selection (`available_members`, `select_members`,
   `sftlf_files`, `member_tag`) and native land fraction (`load_land_fraction`);
-- annual means for binning, as in every load module: `load_native` (native
-  grid, sftlf mask), and `load_annual` = `etunc.grid.regrid_annual` of it;
+- `load_native`: one model's monthly fields on its native grid, in native
+  units (step 1 of the binning pipeline, scripts/prep_cmip.py);
 - `regrid_to_target`, the whole-field conservative regrid of
   scripts/regrid_cmip.py (with the EC-Earth (j, i) grid fix).
 """
@@ -24,11 +24,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from etunc.config import LF_THRESH, NA_THRESH
-from etunc.grid import bounded_src_grid, check_coords, check_same_grid, landfrac_mask, make_regridder
-from etunc.units import convert_units, net_radiation_cmip
-from etunc.legacy.grid import regrid_annual
-from etunc.legacy.temporal import annual_means, print_annual
+from etunc.grid import bounded_src_grid, check_coords, make_regridder
 
 
 class CMIPESGFLoader:
@@ -643,89 +639,32 @@ def load_land_fraction(path: str | Path) -> tuple[xr.DataArray, xr.Dataset]:
 
 
 # ------------------------------------------------------------------
-# Annual means on the common grid (scripts/bin_cmip.py)
+# Monthly fields for binning (scripts/prep_cmip.py)
 # ------------------------------------------------------------------
 
 def load_native(
     loader: CMIPESGFLoader,
     sid: str,
     members: list[str],
-    sftlf_path: str,
     time_slice: slice,
     *,
     variables: Sequence[str],
     experiment_id: str,
-) -> tuple[dict[str, xr.DataArray], xr.DataArray, xr.Dataset]:
+) -> dict[str, xr.DataArray]:
     """
-    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
-    for one model on its native grid, masked with its land fraction (sftlf >
-    LF_THRESH, no Greenland/Iceland), with `member_id` on `member`.
-    `variables` must include evspsbl, lai, pr, rsds, rsus, rlds and rlus.
-    Complete years only; a missing month counts as LAI = 0, while ET, pr and
-    Rn need all 12 months (`annual_means`).
-
-    Returns (annual means, native land mask, native grid with cell edges), the
-    input of `etunc.grid.regrid_annual`.
+    Monthly fields {variable: (member, time, lat, lon)} of one model's
+    `members` over `time_slice` on its native grid, in native units (step 1
+    of the binning pipeline), with `member_id` on `member`. Raises
+    ValueError if a variable could not be loaded.
     """
-    lf, src_grid = load_land_fraction(sftlf_path)
-    # Sets the area each model contributes: native cells with sftlf > LF_THRESH, minus
-    # Greenland/Iceland. Masking on the native grid keeps ocean and ice-sheet values
-    # out of the area-weighted means of the regridding
-    native_mask = landfrac_mask(lf, LF_THRESH)
-
     data = loader.load_data(
         variables, experiment_id, source_id=sid, member_id=members, time_slice=time_slice, verbose=False,
     )[sid]
     missing = set(variables) - set(data)
     if missing:
         raise ValueError(f"{sid}: could not load {sorted(missing)}")
-
-    fields = {}
-    for v in variables:
-        # Only member_id is kept of the non-index coords
-        da = data[v].reset_coords(drop=True).assign_coords(member_id=("member", list(members)))
-        # sftlf comes from another experiment, so check that it is on the same grid
-        check_same_grid(da, lf, f"{sid}/{v}")
-        # Exact sftlf coords, so `.where(native_mask)` cannot misalign on round-off
-        fields[v] = da.assign_coords(lat=lf.lat, lon=lf.lon)
-
-    monthly = {
-        # ET is evspsbl (evaporation including sublimation and transpiration), x L to W/m2
-        "et": convert_units("evspsbl", fields["evspsbl"]),
-        "lai": fields["lai"].assign_attrs(units="m2/m2"),
-        "pr": convert_units("pr", fields["pr"]),
-        "rn": net_radiation_cmip(fields["rsds"], fields["rsus"], fields["rlds"], fields["rlus"]),
-    }
-    with xr.set_options(keep_attrs=True):
-        monthly = {k: da.where(native_mask) for k, da in monthly.items()}
-    return annual_means(monthly), native_mask, src_grid
-
-
-def load_annual(
-    loader: CMIPESGFLoader,
-    sid: str,
-    members: list[str],
-    sftlf_path: str,
-    time_slice: slice,
-    res: float | str,
-    *,
-    variables: Sequence[str],
-    experiment_id: str,
-    mask: xr.DataArray | None = None,
-    na_thresh: float = NA_THRESH,
-) -> dict[str, xr.DataArray]:
-    """
-    Annual means (member, year, lat, lon) of ET, LAI, pr and Rn [W/m2, m2/m2]
-    for one model on `target_grid(res)` within LAT_BNDS, masked with `mask` if
-    given: `etunc.grid.regrid_annual` of `load_native`.
-    """
-    ann = regrid_annual(
-        *load_native(loader, sid, members, sftlf_path, time_slice, variables=variables, experiment_id=experiment_id),
-        res, mask=mask, na_thresh=na_thresh, label=sid,
-    )
-    for k, da in ann.items():
-        print_annual(da, f"{k:3} {sid:16}")
-    return ann
+    # Only member_id is kept of the non-index coords
+    return {v: data[v].reset_coords(drop=True).assign_coords(member_id=("member", list(members))) for v in variables}
 
 
 # ------------------------------------------------------------------
@@ -775,7 +714,7 @@ def regrid_to_target(da: xr.DataArray, res: float | str = 1.0, verbose: bool = F
             regridder = make_regridder(src, res, "conservative")
             if verbose:
                 print(f"Target: lon={regridder.shape_out[1]}, lat={regridder.shape_out[0]}")
-            # No skipna/na_thresh, unlike `regrid_annual`: a target cell that overlaps any
+            # No skipna/na_thresh, unlike the binning pipeline: a target cell that overlaps any
             # NaN source cell (e.g. ocean in land variables) is NaN
             return regridder(da, keep_attrs=True)
 

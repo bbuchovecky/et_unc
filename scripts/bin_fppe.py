@@ -59,10 +59,10 @@ import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
 from etunc.edges import EDGE_ATTRS
+import etunc.legacy.load_cesm as legacy_lc
 import etunc.legacy.binning as lb  # old edges and inputs, until bin_all.py replaces this script
 import etunc.plotting as plotting
 import etunc.grid as rg
-import etunc.load.cesm as lc
 import etunc.load.cmip as cmip
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
@@ -161,7 +161,7 @@ def main():
     # climatologies
     # ------------------------------------------------------------------
     print("=== Load FHIST PPE ===")
-    ann = lc.load_annual(
+    ann = legacy_lc.load_annual(
         "fppe", MEMBERS, TIME_SLICE, TARGET_RES, variables=VARIABLES, frequency=FREQUENCY, stream=STREAM,
         drop_outliers=DROP_OUTLIERS, mask=mask, na_thresh=cfg.NA_THRESH,
     )

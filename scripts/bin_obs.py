@@ -83,12 +83,14 @@ import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
 from etunc.edges import EDGE_ATTRS, compute_aridity_index
+import etunc.legacy.load_ilamb as legacy_il
+import etunc.legacy.load_era5 as legacy_le
+import etunc.legacy.load_obs as legacy_lo
 import etunc.legacy.binning as lb  # old edges and inputs, until bin_all.py replaces this script
 import etunc.plotting as plotting
 import etunc.grid as rg
 import etunc.load.era5 as le
 import etunc.load.ilamb as il
-import etunc.load.obs as lo
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
 
@@ -311,7 +313,7 @@ def main():
     # ------------------------------------------------------------------
     print("=== Load ILAMB products ===")
     ann = {
-        v: {p: il.load_annual(v, p, slice(None, None), TARGET_RES)[v] for p in (ILAMB_PRODUCTS.get(v) or products)}
+        v: {p: legacy_il.load_annual(v, p, slice(None, None), TARGET_RES)[v] for p in (ILAMB_PRODUCTS.get(v) or products)}
         for v, products in il.PRODUCTS.items()
     }
 
@@ -319,7 +321,7 @@ def main():
     if ERA5_VARIABLES:
         span = era5_span(ann)
         print(f"\n=== Load ERA5 ({span.start}-{span.stop}) ===")
-        for v, da in le.load_annual(ERA5_VARIABLES, span, TARGET_RES).items():
+        for v, da in legacy_le.load_annual(ERA5_VARIABLES, span, TARGET_RES).items():
             ann[v]["ERA5"] = da
 
     # Gridded ET only over the years that some (lai, pr, rn) product set shares
@@ -332,7 +334,7 @@ def main():
         span = slice(str(min(years)), str(max(years)))
         print(f"\n=== Load gridded ET products ({span.start}-{span.stop}) ===")
         for label, (dataset, version, var, freq) in GRIDDED_ET_PRODUCTS.items():
-            et = lo.load_annual(dataset, var, span, TARGET_RES, version=version, freq=freq)[var]
+            et = legacy_lo.load_annual(dataset, var, span, TARGET_RES, version=version, freq=freq)[var]
             ann["et"][label] = et.rename("et")
 
     # One plausibility rule for every ET product

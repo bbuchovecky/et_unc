@@ -64,6 +64,7 @@ import etunc.config as cfg
 import etunc.temporal as temporal
 import etunc.binning as binning
 from etunc.edges import EDGE_ATTRS
+import etunc.legacy.load_cmip as legacy_cmip
 import etunc.legacy.binning as lb  # old edges and inputs, until bin_all.py replaces this script
 import etunc.plotting as plotting
 import etunc.grid as rg
@@ -193,7 +194,7 @@ def main():
     inputs = {}
     for sid, mids in members.items():
         try:
-            ann = cmip.load_annual(
+            ann = legacy_cmip.load_annual(
                 loader, sid, mids, sftlf[sid], TIME_SLICE, TARGET_RES, variables=VARIABLES,
                 experiment_id=EXPERIMENT_ID, mask=mask, na_thresh=cfg.NA_THRESH,
             )
