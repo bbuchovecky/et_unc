@@ -7,7 +7,7 @@ ERA5 grid file (LANDFRAC, ...).
 - `load_era5`: one monthly-mean parameter on the native 0.25 deg grid.
 - `load_native`: several "meanflux" parameters over a time slice, with lon in
   [-180, 180] and lat ascending, in native units (step 1 of the binning
-  pipeline, scripts/prep_obs.py).
+  pipeline, scripts/prep_era5.py).
 - `load_land_fraction`: LANDFRAC and the native grid with cell edges.
 
 Example
@@ -148,7 +148,7 @@ def load_native(codes: Sequence[str], time_slice: slice) -> dict[str, xr.DataArr
     `codes` (e.g. "mer", "mtpr", "msnswrf", "msnlwrf") over `time_slice` on
     the native 0.25 deg grid, with lon in [-180, 180] and lat ascending, in
     native units and sign (fluxes positive downward, so evaporation "mer" is
-    negative). Step 1 of the binning pipeline (scripts/prep_obs.py).
+    negative). Step 1 of the binning pipeline (scripts/prep_era5.py).
     """
     # Whole years are read (load_era5 takes years); the months are cut by `.sel(time=time_slice)`
     first, last = str(time_slice.start)[:4], str(time_slice.stop)[:4]

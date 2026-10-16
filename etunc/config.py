@@ -27,6 +27,9 @@ CAMPAIGN_ROOT = Path("/glade/campaign/univ/uwas0155")
 OBS_ROOT = CAMPAIGN_ROOT / "obs"
 ILAMB_ROOT = OBS_ROOT / "ilamb"
 
+# PLUMBER2 flux tower files (Abramowitz et al.): met/ and flux/, one file per site
+PLUMBER_ROOT = Path("/glade/work/bbuchovecky/data/fluxnet_abramowitz")
+
 # DEPRECATED: Regridded files, written by the regrid scripts and read by the loaders
 OBS_REGRID_ROOT = OBS_ROOT / "regridded"
 
@@ -70,7 +73,7 @@ def area_mask_path(grid: str, period: str) -> Path:
 TIME_SLICE = slice("1995-01", "2014-12")  # one period for every family
 MIN_YEARS = 3          # minimum complete years shared by the four products of an obs combination
 MIN_ANNUAL_ET = -2.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
-FAMILIES = ("obs", "cmip", "fppe", "lens")  # families pooled by make_edges.py and binned by bin_all.py
+FAMILIES = ("obs", "era5", "cmip", "fppe", "lens")  # families pooled by make_edges.py and binned by bin_all.py
 
 # Binning settings
 N_XBINS = 15         # aridity index
@@ -109,6 +112,7 @@ def summarize():
     print(f"{'CAMPAIGN_ROOT':18} = {CAMPAIGN_ROOT}")
     print(f"{'OBS_ROOT':18} = {OBS_ROOT}")
     print(f"{'ILAMB_ROOT':18} = {ILAMB_ROOT}")
+    print(f"{'PLUMBER_ROOT':18} = {PLUMBER_ROOT}")
     print(f"{'OBS_REGRID_ROOT':18} = {OBS_REGRID_ROOT}")
     print(f"{'CMIP_FETCH_ROOT':18} = {CMIP_FETCH_ROOT}")
     print(f"{'CMIP_CATALOG_ROOT':18} = {CMIP_CATALOG_ROOT}")

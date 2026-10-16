@@ -1,12 +1,14 @@
 ## Binning Workflow
-Every data family (obs, CMIP6, LENS2, FHIST PPE) runs the same numbered steps.
+Every data family (obs, ERA5, CMIP6, LENS2, FHIST PPE) runs the same numbered steps.
 They are written out in `main()` of each script. The scripts differ only in
 step 1 (which loader), step 3 (which unit conversion) and step 5 (which land mask).
 
 ```
-prep_obs.py, prep_cmip.py, prep_lens.py, prep_fppe.py   steps 1-11   -> PROC_ROOT/<family>/<family>.inputs.<grid>.<period>.nc
+prep_{obs,era5,cmip,lens,fppe}.py                      steps 1-11   -> PROC_ROOT/<family>/<family>.inputs.<grid>.<period>.nc
 make_edges.py                                           steps 12-13  -> common area mask, pooled LAI/AI edges
 bin_all.py                                              step 14      -> binned ET of every family
+bin_all_clim.py                                         step 14      -> binned climatological ET of every family
+bin_plumber.py                                          step 14      -> binned ET of the PLUMBER2 flux towers
 ```
 Run them in that order.
 Every script prints `etunc/config.py` and its own settings into its log (`scripts/run_logged.sh`).
@@ -25,7 +27,7 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 	- Exclude AR6 region 0 (`grid.greenland_mask`)
 
 ## pipeline
-`prep_<family>.py`, once per product (obs) or model (CMIP6) or ensemble (LENS2, FHIST PPE):
+`prep_<family>.py`, once per product (obs, ERA5) or model (CMIP6) or ensemble (LENS2, FHIST PPE):
 1. Load monthly native-resolution variables (`load/*.load_native`, `lo.load_obs`) [native grid]
 2. The time period is selected by the loader (`TIME_SLICE`) [native grid]
 3. Convert units of ET, P, Rn to W/m2 (`units.*`, written out in the script) [native grid]
@@ -38,6 +40,7 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 5. Mask to land and remove AR6 region 0 (`grid.mask_to_land`) [native grid]
 	- Use Natural Earth for observational products (ILAMB, PML, GLEAM, SiTH): `grid.landne_mask`
 	- Use land fraction > `LF_THRESH` for model output and ERA5, since they have a land fraction variable: `grid.landfrac_mask`
+	- ERA5 family: ERA5 ET, P and Rn use the ERA5 land fraction, and its obs LAI (GIMMS_LAI4g) uses Natural Earth
 	- CMIP6 only: annual LAI missing on land is set to 0 (some models leave LAI undefined where there is no vegetation)
 6. ET outlier filter: annual ET < `MIN_ANNUAL_ET = -1 W/m2` is NaN (`binning.drop_et_outliers`) [native grid]
 	- On land, before regridding, so an outlier does not enter its target cell
@@ -46,7 +49,7 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 	- A target cell is the mean of its valid (land) source cells, and NaN where more than `NA_THRESH` of its area is missing
 8. Exclude Antarctica by reducing domain to `LAT_BNDS` [target grid]
 
-`prep_<family>.py`, once per obs combination or model (all members of a model or ensemble share their years):
+`prep_<family>.py`, once per obs combination, ERA5 source or model (all members of a model or ensemble share their years):
 
 9. Select only shared complete years from all four products, at least `MIN_YEARS = 3` (`temporal.shared_years`) [target grid]
 10. Compute the climatological LAI, Rn, and P over those years (`temporal.aggregate(da, "clim")`) [target grid]
@@ -69,6 +72,10 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 `bin_all.py`:
 
 14. Bin ET by climatological LAI and aridity, for every family in `BIN_FAMILIES`, with the `pooled_all` and `pooled_<family>` edges (`binning.bin_stats`, per member) [target grid]
+
+`bin_all_clim.py`: step 14 with climatological ET. Each member's annual mean ET is averaged over `year` with the step 10 rule (`temporal.aggregate(et, "clim")`: every year weighs equally, a gridcell's NaN years are skipped), then binned as in `bin_all.py`. Each gridcell is one sample, so every gridcell weighs equally in its bin whatever its number of valid ET years, and the within-bin variance is spatial only. Outputs are named `<family>.et_clim.qbin_*`.
+
+`bin_plumber.py`: step 14 for the PLUMBER2 flux towers (`cfg.PLUMBER_ROOT`). Each complete tower year of Qle in `TIME_SLICE` is one annual mean ET sample, binned by the climatological obs LAI and AI (from the obs inputs) at the gridcell nearest to the tower, once per (LAI, P, Rn) product set, with the `pooled_all` and `pooled_obs` edges. Towers are not masked by the common area mask; towers whose nearest gridcell has no obs data are not binned. It also plots each tower's record-mean ET against the climatological LAI and AI of `SCATTER_PRODUCTS` (GIMMS_LAI4g, GPCPv2.3, ERA5 Rn) over the years of the longest tower record, computed from the products with steps 1-11.
 
 **TODO:** For testing the sensitivity to resolution, keep model output at native resolution by skipping step 7 (needs the common area mask on each native grid).
 
@@ -116,8 +123,10 @@ binning.py:
 drop_et_outliers()                       # step 6
 bin_stats()                              # step 14
 pool_members()
+pool_by_source()                         # members of each source pooled
 drop_zero_width_bins()
 frac_valid()
 test_significance()
+et_product_spread()                      # obs: std of the bin mean across ET products
 ```
 Code that the pipeline no longer uses is in `etunc/legacy/` (unmaintained, untested).

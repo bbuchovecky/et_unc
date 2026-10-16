@@ -386,6 +386,88 @@ def test_pool_members_matches_binning_pooled_samples(rng, mask, edges):
     np.testing.assert_allclose(pooled.values, direct.values, rtol=1e-9, atol=1e-9, equal_nan=True)
 
 
+def test_bin_stats_climatological_et(rng, mask, edges):
+    """
+    bin_all_clim.py: the ET climatology (NaN years skipped) is one sample per (member, gridcell), binned by
+    the gridcell's climatological LAI and AI, matching a brute-force reference.
+    """
+    y_edges, x_edges = edges
+    inp = make_inputs(rng, mask, members=2)
+    et = inp["et"].copy()
+    j, i = np.argwhere(mask.values)[0]
+    et[0, 0, j, i] = np.nan  # a missing year: the climatology covers the other years
+    et_clim = temporal.aggregate(et, "clim")
+    assert et_clim.dims == ("member", "lat", "lon")
+    assert float(et_clim[0, j, i]) == pytest.approx(float(et[0, 1:, j, i].mean()))
+
+    bs = binning.bin_stats(et_clim, inp["lai"], inp["ai"], y_edges, x_edges, member_dim="member")
+    for m in range(2):
+        expected = brute_force_stats(
+            et_clim[m].values.ravel(), inp["lai"][m].values.ravel(), inp["ai"][m].values.ravel(),
+            y_edges.values, x_edges.values,
+        )
+        np.testing.assert_allclose(bs.isel(member=m).values, expected, equal_nan=True)
+    # One sample per valid gridcell, whatever its number of valid years
+    np.testing.assert_array_equal(bs.sel(stats="count").sum(("y_bin", "x_bin")), [int(mask.sum())] * 2)
+
+
+def test_pool_by_source(rng, mask, edges):
+    """
+    pool_by_source pools the members of each source (as pool_members) along `source`, keeping the member
+    coords that are the same within every source.
+    """
+    y_edges, x_edges = edges
+    inp = make_inputs(rng, mask, members=3)
+    member_coords = {
+        "source": ("member", ["a", "a", "b"]),
+        "product": ("member", ["p", "p", "q"]),       # one value per source: kept
+        "member_id": ("member", ["r1", "r2", "r1"]),  # varies within source "a": dropped
+    }
+    et = inp["et"].assign_coords(member_coords)
+    bs = binning.bin_stats(et, inp["lai"], inp["ai"], y_edges, x_edges, member_dim="member", name="et")
+    by_source = binning.pool_by_source(bs)
+    assert by_source.dims == ("source", "stats", "y_bin", "x_bin")
+    assert list(by_source.source.values) == ["a", "b"]
+    assert list(by_source["product"].values) == ["p", "q"]
+    assert "member_id" not in by_source.coords
+    np.testing.assert_allclose(by_source.sel(source="a").values, binning.pool_members(bs.isel(member=[0, 1])).values,
+                               equal_nan=True)
+    np.testing.assert_allclose(by_source.sel(source="b").values, binning.pool_members(bs.isel(member=[2])).values,
+                               equal_nan=True)
+
+
+def test_et_product_spread(tmp_path):
+    """
+    et_product_spread is the std (ddof=1) of the bin mean across ET products within each (lai, pr, rn)
+    product set, NaN with fewer than two ET products; plot_et_product_spread draws one panel per set.
+    """
+    means = np.array([1.0, 3.0, 2.0, 5.0]).reshape(4, 1, 1) * np.ones((4, 2, 2))
+    means[1, 0, 0] = np.nan  # one ET product missing in bin (0, 0) of the first product set
+    stats = np.full((4, len(binning.STATS), 2, 2), np.nan)
+    stats[:, 0] = means
+    bs = xr.DataArray(
+        stats, dims=("source", "stats", "y_bin", "x_bin"),
+        coords={
+            "source": ["s1", "s2", "s3", "s4"], "stats": list(binning.STATS),
+            "et_product": ("source", ["E1", "E2", "E1", "E2"]),
+            "lai_product": ("source", ["L1", "L1", "L2", "L2"]),
+            "pr_product": ("source", ["P"] * 4), "rn_product": ("source", ["R"] * 4),
+        },
+        attrs={"units": "W/m2", "y_variable": "lai", "x_variable": "ai"},
+    )
+    spread = binning.et_product_spread(bs)
+    assert list(spread.lai_pr_rn.values) == ["L1-P-R", "L2-P-R"]
+    np.testing.assert_array_equal(spread.n_et_products, [2, 2])
+    first, second = spread.sel(lai_pr_rn="L1-P-R"), spread.sel(lai_pr_rn="L2-P-R")
+    assert np.isnan(first["et_std"][0, 0]) and int(first["n_products"][0, 0]) == 1
+    assert float(first["et_std"][1, 1]) == pytest.approx(np.std([1.0, 3.0], ddof=1))
+    np.testing.assert_allclose(second["et_std"], np.std([2.0, 5.0], ddof=1))
+
+    fout = tmp_path / "spread.png"
+    plotting.plot_et_product_spread(spread, title="t", fout=fout)
+    assert fout.exists()
+
+
 def test_bin_stats_rejects_mismatched_grids(inputs, edges):
     """Inputs whose lat/lon values differ raise instead of being aligned."""
     y_edges, x_edges = edges

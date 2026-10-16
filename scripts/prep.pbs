@@ -11,16 +11,16 @@
 # through scripts/run_logged.sh, so the full log (with git header) is also saved to
 # WORK_ROOT/logs.
 #
-# Usage (FAMILY is obs, cmip, lens or fppe):
+# Usage (FAMILY is obs, era5, cmip, lens or fppe):
 #   qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs
-#   for f in obs cmip lens fppe; do qsub -N prep_$f -v FAMILY=$f scripts/prep.pbs; done
+#   for f in obs era5 cmip lens fppe; do qsub -N prep_$f -v FAMILY=$f scripts/prep.pbs; done
 # Resources are overridden on the command line, e.g. -l walltime=04:00:00
 
 REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
 
 set -euo pipefail
 
-script="scripts/prep_${FAMILY:?set FAMILY with qsub -v FAMILY=<obs|cmip|lens|fppe>}.py"
+script="scripts/prep_${FAMILY:?set FAMILY with qsub -v FAMILY=<obs|era5|cmip|lens|fppe>}.py"
 
 export OMP_NUM_THREADS="${PBS_NCPUS:-8}"
 

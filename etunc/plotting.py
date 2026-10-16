@@ -491,3 +491,21 @@ def plot_bin_summary(
         ax.set_title("")
     fig.suptitle(title)
     return finish(fig, fout)
+
+
+def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: str | Path | None = None):
+    """One heatmap per (lai, pr, rn) product set of `binning.et_product_spread`; hatched bins lack an ET product."""
+    groups = spread.lai_pr_rn.values
+    fig, axs = plt.subplots(1, len(groups), figsize=(5.5 * len(groups), 4.5), squeeze=False, layout="constrained")
+    vmax = float(spread["et_std"].quantile(0.98))
+    for ax, g in zip(axs.ravel(), groups):
+        s = spread.sel(lai_pr_rn=g)
+        plot_bin_field(
+            s["et_std"], ax=ax, hatch=s["n_products"] < s["n_et_products"], cmap="viridis", vmin=0, vmax=vmax,
+            extend="max", cbar_kwargs={"label": f"std of bin mean et [{spread.attrs.get('units', '?')}]"},
+            title=f"{g}\n{int(s.n_et_products)} ET products",
+        )
+        ax.set_xlabel("ai $\\rightarrow$")
+        ax.set_ylabel("lai $\\rightarrow$")
+    fig.suptitle(title)
+    return finish(fig, fout)

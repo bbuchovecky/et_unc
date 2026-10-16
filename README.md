@@ -2,8 +2,8 @@
 
 Research code for quantifying evapotranspiration (ET) uncertainty. Annual-mean
 ET is binned in a 2-D space of climatological leaf area index (LAI) and aridity
-index (AI = Rn / Lv×P), so that observational products (ILAMB, ERA5, PML-V2.2,
-GLEAM v4.3, SiTHv2), CMIP6 models and CESM2 ensembles can be compared bin by
+index (AI = Rn / Lv×P), so that observational products (ILAMB, PML-V2.2,
+GLEAM v4.3, SiTHv2), ERA5, CMIP6 models and CESM2 ensembles can be compared bin by
 bin.
 
 The code runs on NCAR's glade (Casper/Derecho). Inputs and outputs live outside
@@ -33,7 +33,7 @@ All of these paths are set in `etunc/config.py`.
 | `etunc/legacy/` | Unmaintained, untested code kept for the notebooks and `scripts/legacy_regrid/`: the former annual loaders, replaced functions, notebook-era helpers |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
 | `docs/binning-workflow.md` | The binning pipeline step by step, with every assumption and choice |
-| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_all.py`), configured by the constants at the top of each file |
+| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_all.py` or `bin_all_clim.py`), configured by the constants at the top of each file |
 | `scripts/download/` | Download scripts for the obs products |
 | `notebooks/` | Exploratory and analysis notebooks |
 | `tests/` | pytest suite (synthetic data, no glade data needed) |
@@ -70,12 +70,15 @@ The binning pipeline (described step by step in `docs/binning-workflow.md`) has 
 
 ```bash
 pixi run prep-obs         # steps 1-11: binning inputs of every obs product combination
+pixi run prep-era5        # steps 1-11: binning inputs of ERA5 (ET, P, Rn) with obs LAI (GIMMS_LAI4g)
 pixi run prep-cmip        # steps 1-11: binning inputs of the CMIP6 historical models
 pixi run prep-lens        # steps 1-11: binning inputs of the CESM2 Large Ensemble historical members
 pixi run prep-fppe        # steps 1-11: binning inputs of the CESM2 FHIST perturbed-parameter ensemble
-qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs  # any prep-* as a Casper job (FAMILY: obs, cmip, lens, fppe)
+qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs  # any prep-* as a Casper job (FAMILY: obs, era5, cmip, lens, fppe)
 pixi run make-edges       # steps 12-13: common area mask and pooled LAI/AI edges (needs every prep-*)
 pixi run bin-all          # step 14: binned ET of every family with the pooled_all and pooled_<family> edges
+pixi run bin-all-clim     # step 14 with climatological ET: one sample per gridcell instead of per gridcell-year
+pixi run bin-plumber      # step 14 for the PLUMBER2 flux towers: tower ET binned by the obs LAI/AI at the nearest gridcell
 pixi run make-mask        # common valid-data mask of the obs products
 pixi run obs-availability # data availability of the obs ET products
 qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
@@ -100,6 +103,5 @@ the top of each run script. For consistent analysis, all run script should have 
 same binning settings.
 
 ## TODO
-- Move ERA5 to its own `prep_era.py` script, so that ERA5 precip and net radiation do not count for the combinations of obs products.
 - Allow data families to use their own valid area for binning, instead of using the common area mask.
 - Perform sensitivity test to resolution, comparing the bin stats between native and 1° regridded resolution resolution.

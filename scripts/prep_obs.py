@@ -10,13 +10,11 @@ inputs.
 Products
 --------
 - ILAMB products in ILAMB_PRODUCTS (`il.load_native`): ET, LAI, P and Rn.
-- ERA5 for each variable in ERA5_VARIABLES (`le.load_native`, GDEX monthly
-  mean rates): ET = -mer, P = mtpr, Rn = msnswrf + msnlwrf. ERA5 has no LAI.
 - Gridded ET products in GRIDDED_ET_PRODUCTS (`lo.load_obs`, native 0.1 deg
   files of monthly or yearly totals): PML-V2.2, GLEAM v4.3, SiTHv2.
-Native land mask: Natural Earth land (ILAMB and gridded products, which have
-no land fraction) or LANDFRAC > LF_THRESH (ERA5), both without Greenland and
-Iceland. A product without data in TIME_SLICE is skipped.
+ERA5 is its own family (prep_era5.py). Native land mask: Natural Earth land
+(the products have no land fraction), without Greenland and Iceland. A product
+without data in TIME_SLICE is skipped.
 
 Each combination uses the complete years shared by its four products inside
 TIME_SLICE, and is skipped if there are fewer than MIN_YEARS.
@@ -52,7 +50,6 @@ import etunc.grid as rg
 import etunc.plotting as plotting
 import etunc.temporal as temporal
 import etunc.units as units
-import etunc.load.era5 as le
 import etunc.load.ilamb as il
 import etunc.load.obs as lo
 
@@ -80,12 +77,6 @@ ILAMB_PRODUCTS = {
     "rn":  ["CERESed4.2"],
 }
 
-# Variables for which ERA5 is added as a product (labelled "ERA5"): any of "et", "pr", "rn"
-# (ERA5 has no LAI). () = no ERA5
-ERA5_VARIABLES = ("et", "pr", "rn")
-# GDEX "meanflux" parameter codes of each ERA5 variable
-ERA5_CODES = {"et": ["mer"], "pr": ["mtpr"], "rn": ["msnswrf", "msnlwrf"]}
-
 # Gridded ET products, read from their native files: {label: (load_obs dataset, version, variable, freq)}
 GRIDDED_ET_PRODUCTS = {
     "PMLv2.2a_MODIS": ("pml", "V2.2a-MODIS", "ET", "monthly"),
@@ -110,11 +101,8 @@ def main():
     # (variable, product, kind) of every product
     products = (
         [(v, p, "ilamb") for v in FACTORS for p in (ILAMB_PRODUCTS.get(v) or il.PRODUCTS[v])]
-        + [(v, "ERA5", "era5") for v in ERA5_VARIABLES]
         + [("et", p, "gridded") for p in GRIDDED_ET_PRODUCTS]
     )
-    if ERA5_VARIABLES:
-        era5_landfrac, era5_grid = le.load_land_fraction()
 
     # ------------------------------------------------------------------
     # Steps 1-8, once per product: annual means on the target grid
@@ -129,8 +117,6 @@ def main():
         try:
             if kind == "ilamb":
                 da = il.load_native(v, p, TIME_SLICE)
-            elif kind == "era5":
-                raw = le.load_native(ERA5_CODES[v], TIME_SLICE)
             else:
                 dataset, version, var, freq = GRIDDED_ET_PRODUCTS[p]
                 da = lo.load_obs(dataset, var, TIME_SLICE, version=version, freq=freq)
@@ -142,12 +128,6 @@ def main():
         if kind == "ilamb":
             # Keyed on the file's units attr (kg m-2 s-1, W m-2, MJ m-2 day-1, mm/day)
             da = da.assign_attrs(units="m2/m2") if v == "lai" else units.flux_to_wm2(da)
-        elif kind == "era5" and v == "rn":
-            da = units.net_radiation_era5(raw["msnswrf"], raw["msnlwrf"])
-        elif kind == "era5":
-            # Mean rates are positive downward: convert_units also flips the sign of mer
-            code = ERA5_CODES[v][0]
-            da = units.convert_units(code, raw[code])
         else:
             # Totals per month (or year) -> kg m-2 s-1 -> W/m2
             da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
@@ -162,12 +142,9 @@ def main():
             print(f"{label}: no complete year in {TIME_SLICE}, skipping")
             continue
 
-        # 5. Native land mask, without Greenland/Iceland: ERA5 LANDFRAC > LF_THRESH, or Natural Earth
-        # land for the products without a land fraction (removes the ocean of global P and Rn products)
-        if kind == "era5":
-            land, src_grid = rg.landfrac_mask(era5_landfrac, cfg.LF_THRESH), era5_grid
-        else:
-            land, src_grid = rg.landne_mask(a), rg.bounded_src_grid(a)
+        # 5. Native land mask, without Greenland/Iceland: Natural Earth land, as the products have no land
+        # fraction (removes the ocean of global P and Rn products)
+        land, src_grid = rg.landne_mask(a), rg.bounded_src_grid(a)
         a = rg.mask_to_land(a, land, label)
 
         # 6. ET outlier filter (on land, before regridding, so an outlier does not enter its target cell)
@@ -219,15 +196,15 @@ def main():
     # ET is NaN in the years outside a combination's shared years
     inputs = xr.concat(combos, dim="member", join="outer", combine_attrs="drop_conflicts")
     inputs.attrs = {
-        "family": FAMILY, "dataset": "observational products (ILAMB, ERA5, gridded ET)",
+        "family": FAMILY, "dataset": "observational products (ILAMB, gridded ET)",
         "time_period": temporal.period_str(inputs.year.values), "grid": grid,
         # Products in at least one saved combination
         "native_res": "; ".join(
             f"{v}/{p}: {res}" for (v, p), res in native_res.items() if p in inputs[f"{v}_product"].values
         ),
-        "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
+        "na_thresh": cfg.NA_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
         "min_years": MIN_YEARS,
-        "land_mask": "Natural Earth land (ERA5: LANDFRAC > lf_thresh), without Greenland/Iceland",
+        "land_mask": "Natural Earth land, without Greenland/Iceland",
     }
     fout = cfg.inputs_path(FAMILY, grid, period)
     fout.parent.mkdir(parents=True, exist_ok=True)

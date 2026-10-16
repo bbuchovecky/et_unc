@@ -15,7 +15,7 @@ one family; it still uses the common area mask and the edges of all families.
 
 Outputs
 -------
-<family> : obs, cmip, fppe or lens
+<family> : obs, era5, cmip, fppe or lens
 <edges>  : pooled_all or pooled_<family>
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
@@ -38,12 +38,8 @@ PROC_ROOT/lens/qbin/lens.et.qbin_<edges>.<grid>.<period>.members_pooled.nc
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
 import xarray as xr
 
 import etunc.config as cfg
@@ -64,60 +60,6 @@ N_YBINS = cfg.N_YBINS        # LAI
 N_XBINS = cfg.N_XBINS        # AI
 SIGNIF_ALPHA = cfg.SIGNIF_ALPHA
 SIGNIF_N_MIN = cfg.SIGNIF_N_MIN
-
-
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
-
-def pool_by_source(bs: xr.DataArray) -> xr.DataArray:
-    """
-    Statistics of the members of each source pooled (`binning.pool_members`), along `source`. Member
-    coords that are the same for every member of a source (e.g. the products of an obs combination) are kept.
-    """
-    sources = list(dict.fromkeys(bs["source"].values.tolist()))
-    members = {s: bs.isel(member=np.flatnonzero(bs["source"].values == s)) for s in sources}
-    pooled = xr.concat([binning.pool_members(m) for m in members.values()], dim="source",
-                       combine_attrs="drop_conflicts")
-    same = [
-        c for c in bs.coords if bs[c].dims == ("member",) and c not in ("member", "source")
-        and all(len(set(m[c].values.tolist())) == 1 for m in members.values())
-    ]
-    return pooled.assign_coords(source=sources, **{c: ("source", [m[c].values[0] for m in members.values()]) for c in same})
-
-
-def et_product_spread(bs: xr.DataArray) -> xr.Dataset:
-    """
-    obs only: sample std (ddof=1) of the bin mean ET across ET products, separately for each
-    (lai, pr, rn) product set along `lai_pr_rn`, so only the ET product varies. Bins with fewer
-    than two ET products are NaN; `n_products` counts the ET products with a bin mean.
-    """
-    labels = ["-".join(c) for c in zip(*(bs[f"{v}_product"].values for v in ("lai", "pr", "rn")))]
-    grouped = bs.sel(stats="mean", drop=True).assign_coords(lai_pr_rn=("source", labels)).groupby("lai_pr_rn")
-    with xr.set_options(keep_attrs=True):
-        n = grouped.count("source")
-        std = grouped.std("source", ddof=1).where(n >= 2)
-    out = xr.Dataset({"et_std": std, "n_products": n.astype("i4")}, attrs=bs.attrs)
-    out["et_std"].attrs["long_name"] = "std of bin mean ET across ET products (ddof=1)"
-    return out.assign_coords(n_et_products=("lai_pr_rn", [labels.count(g) for g in out.lai_pr_rn.values]))
-
-
-def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: Path | None = None):
-    """One heatmap per (lai, pr, rn) product set of `et_product_spread`; hatched bins lack an ET product."""
-    groups = spread.lai_pr_rn.values
-    fig, axs = plt.subplots(1, len(groups), figsize=(5.5 * len(groups), 4.5), squeeze=False, layout="constrained")
-    vmax = float(spread["et_std"].quantile(0.98))
-    for ax, g in zip(axs.ravel(), groups):
-        s = spread.sel(lai_pr_rn=g)
-        plotting.plot_bin_field(
-            s["et_std"], ax=ax, hatch=s["n_products"] < s["n_et_products"], cmap="viridis", vmin=0, vmax=vmax,
-            extend="max", cbar_kwargs={"label": f"std of bin mean et [{spread.attrs.get('units', '?')}]"},
-            title=f"{g}\n{int(s.n_et_products)} ET products",
-        )
-        ax.set_xlabel("ai $\\rightarrow$")
-        ax.set_ylabel("lai $\\rightarrow$")
-    fig.suptitle(title)
-    return plotting.finish(fig, fout)
 
 
 # ------------------------------------------------------------------
@@ -166,7 +108,7 @@ def main():
             print(f"{kind}: {int(count.sum()):.3e} samples binned, {int(count.min()):.3e} to {int(count.max()):.3e} "
                   f"per member\n{fout}")
 
-            by_source = pool_by_source(bs)
+            by_source = binning.pool_by_source(bs)
             fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.sources_pooled.nc"
             by_source.to_netcdf(fout)
             print(fout)
@@ -197,11 +139,11 @@ def main():
             # ------------------------------------------------------------------
             if family == "obs":
                 # Spread across ET products, with the other three products fixed
-                spread = et_product_spread(by_source)
+                spread = binning.et_product_spread(by_source)
                 fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.et_product_std.nc"
                 spread.to_netcdf(fout)
-                plot_et_product_spread(spread, title=f"obs ET, std of bin mean across ET products, {kind} edges",
-                                       fout=fig_dir / f"{stem}.et_product_std.png")
+                plotting.plot_et_product_spread(spread, title=f"obs ET, std of bin mean across ET products, {kind} edges",
+                                                fout=fig_dir / f"{stem}.et_product_std.png")
                 print(fout)
             if family == "lens":
                 # All members' samples pooled: the LENS2 initial-condition ensemble as one distribution
