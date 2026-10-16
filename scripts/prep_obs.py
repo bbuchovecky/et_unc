@@ -72,9 +72,9 @@ FACTORS = ("et", "lai", "pr", "rn")  # order of the products in a combination
 # (or None) uses all of its il.PRODUCTS
 ILAMB_PRODUCTS = {
     "et":  list(il.PRODUCTS["et"]),  # every ILAMB ET product
-    "lai": ["MODIS"],
+    "lai": ["GIMMS_LAI4g"],
     "pr":  ["GPCPv2.3"],
-    "rn":  ["CERESed4.2"],
+    "rn":  ["GEWEX.SRB"],
 }
 
 # Gridded ET products, read from their native files: {label: (load_obs dataset, version, variable, freq)}
