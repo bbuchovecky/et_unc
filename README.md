@@ -28,12 +28,13 @@ All of these paths are set in `etunc/config.py`.
 | `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders (`regrid_with_na_thresh`), grid checks and snapping, native land masks (`landfrac_mask`, `landne_mask`, `mask_to_land`), the common area mask (`valid_area`, `common_area`), cell areas |
 | `etunc/edges.py` | Aridity index, hierarchical weights and weighted quantile edges, saved edges |
 | `etunc/binning.py` | ET outlier filter, bin statistics, post-processing |
+| `etunc/regression.py` | OLS regression of ET on climatological LAI and AI, and the partition of R² between them |
 | `etunc/plotting.py` | Maps, LAI/AI histograms, edge plots, bin heatmaps |
 | `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH), `cmip`, `cesm`, `era5`. Each `load_native` returns raw monthly fields on the native grid in native units; the model loaders also have `load_land_fraction` |
 | `etunc/legacy/` | Unmaintained, untested code kept for the notebooks and `scripts/legacy_regrid/`: the former annual loaders, replaced functions, notebook-era helpers |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
 | `docs/binning-workflow.md` | The binning pipeline step by step, with every assumption and choice |
-| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_all.py` or `bin_all_clim.py`), configured by the constants at the top of each file |
+| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_all.py` or `bin_all_clim.py`; `regress_lai_aridity.py` after them), configured by the constants at the top of each file |
 | `scripts/download/` | Download scripts for the obs products |
 | `notebooks/` | Exploratory and analysis notebooks |
 | `tests/` | pytest suite (synthetic data, no glade data needed) |
@@ -79,6 +80,7 @@ pixi run make-edges       # steps 12-13: common area mask and pooled LAI/AI edge
 pixi run bin-all          # step 14: binned ET of every family with the pooled_all and pooled_<family> edges
 pixi run bin-all-clim     # step 14 with climatological ET: one sample per gridcell instead of per gridcell-year
 pixi run bin-plumber      # step 14 for the PLUMBER2 flux towers: tower ET binned by the obs LAI/AI at the nearest gridcell
+pixi run bin-plumber-clim # step 14 for the PLUMBER2 flux towers with climatological ET: one sample per tower (needs bin-plumber)
 pixi run make-mask        # common valid-data mask of the obs products
 pixi run obs-availability # data availability of the obs ET products
 qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°

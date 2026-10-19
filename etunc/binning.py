@@ -10,7 +10,8 @@ docs/binning-workflow.md and written out step by step in the scripts.
 - `bin_stats`: statistics of every (year, gridcell) ET sample, binned by its
   gridcell's climatological LAI and AI (step 14), optionally per member.
 - Post-processing: `pool_members`, `pool_by_source`, `drop_zero_width_bins`,
-  `frac_valid`, `test_significance`, `et_product_spread`, `ensemble_spread`.
+  `frac_valid`, `test_significance`, `between_bin_fraction`, `et_product_spread`,
+  `ensemble_spread`.
 """
 
 from __future__ import annotations
@@ -366,6 +367,25 @@ def test_significance(
     t_statistic = means / (stds / np.sqrt(ns))
 
     return (np.abs(t_statistic) > t_critical) & (ns > n_min)
+
+
+def between_bin_fraction(bs: xr.DataArray) -> xr.DataArray:
+    """
+    Fraction of the variance of the binned samples explained by the bins (eta2): the R2 of
+    predicting every sample by the mean of its bin, = between-bin / total sum of squares,
+    from the `count`, `mean` and `var_pop` of `bs`. Per member if `bs` has a member dim.
+    Comparable to the R2 of `regression.lai_ai_regression` on the same samples.
+    """
+    count = bs.sel(stats="count", drop=True)
+    # Empty bins have NaN mean and variance but count 0, so they add nothing
+    mean = bs.sel(stats="mean", drop=True).fillna(0)
+    var_pop = bs.sel(stats="var_pop", drop=True).fillna(0)
+    bins = ("y_bin", "x_bin")
+    grand_mean = (count * mean).sum(bins) / count.sum(bins)
+    between = (count * (mean - grand_mean) ** 2).sum(bins)
+    within = (count * var_pop).sum(bins)
+    return (between / (between + within)).rename("eta2").assign_attrs(
+        long_name="fraction of the variance explained by the bin means (eta2)")
 
 
 def et_product_spread(bs: xr.DataArray) -> xr.Dataset:
