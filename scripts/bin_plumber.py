@@ -6,9 +6,12 @@ of bin_all.py, so the towers can be compared bin by bin with the gridded
 families. Needs the obs inputs (prep_obs.py) and the edges and common area
 mask (make_edges.py).
 
-- ET: latent heat flux Qle [W/m2] of each tower's flux file. Each calendar
-  year in TIME_SLICE with every time step valid is one annual mean ET sample,
-  filtered like the gridded ET (step 6: annual ET < MIN_ANNUAL_ET dropped).
+- ET: latent heat flux Qle [W/m2] of each tower's flux file. A calendar year
+  in TIME_SLICE is complete if every time step is valid, and its annual mean
+  is filtered like the gridded ET (step 6: annual ET < MIN_ANNUAL_ET dropped).
+  Only each tower's longest run of consecutive complete years is kept, and
+  towers whose run is shorter than MIN_CONSECUTIVE_YEARS are left out; each
+  year of the run is one annual mean ET sample.
 - LAI, P, Rn, AI: the climatologies of the obs products (prep_obs.py, steps
   10-11) at the gridcell nearest to each tower (`.sel(..., method="nearest")`).
   The obs sources only differ in LAI, P and Rn by their (lai, pr, rn) product
@@ -29,10 +32,10 @@ Outputs
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
 PROC_ROOT/plumber/plumber.inputs.<grid>.<period>.nc
-    et (member, year), NaN outside a tower's complete years; lai, pr, rn, ai (lai_pr_rn, member).
+    et (member, year), NaN outside a tower's longest run of consecutive complete years; lai, pr, rn, ai (lai_pr_rn, member).
     `member` is the site name, with coords lat/lon (tower), grid_lat/grid_lon (nearest gridcell),
     n_years, time_period and in_common_area; `lai_pr_rn` has coords obs_source, <v>_product,
-    clim_n_years and clim_period
+    clim_n_years and clim_period. Also the input of bin_plumber_clim.py
 PROC_ROOT/plumber/qbin/plumber.et.qbin_<edges>.<grid>.<period>.nc
     (lai_pr_rn, stats, y_bin, x_bin), the samples of all towers pooled
 FIG_ROOT/plumber/qbin/plumber.et.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
@@ -41,7 +44,7 @@ FIG_ROOT/plumber/qbin/plumber.et.qbin_<edges>.<grid>.<period>.{summary,bin_mean,
 
 Scatter of the towers
 ---------------------
-Each tower's mean ET over its full record (all complete years, not only TIME_SLICE) against
+Each tower's mean ET over its full record (its longest run of consecutive complete years, not only TIME_SLICE) against
 the climatological LAI and AI of SCATTER_PRODUCTS at its nearest gridcell. The climatology
 covers the years of the longest tower record, so it is computed here from the products
 (steps 1-11 of prep_obs.py) rather than taken from the obs inputs (MODIS LAI ends in 2005).
@@ -49,7 +52,7 @@ covers the years of the longest tower record, so it is computed here from the pr
 <clim_period> : YYYYMM-YYYYMM of the longest tower record
 
 PROC_ROOT/plumber/plumber.tower_clim.<grid>.<clim_period>.nc
-    et, n_years (member): mean annual ET and number of complete years of each tower's record;
+    et, n_years (member): mean annual ET and number of years of each tower's longest run of complete years;
     lai, pr, rn, ai (member): climatology of SCATTER_PRODUCTS at the nearest gridcell
 FIG_ROOT/plumber/plumber.tower_scatter.<grid>.<clim_period>.png
     AI (x) vs LAI (y), colored by tower ET, marker area proportional to the record length
@@ -90,7 +93,10 @@ N_YBINS = cfg.N_YBINS                      # LAI
 N_XBINS = cfg.N_XBINS                      # AI
 EDGE_KINDS = ("pooled_all", "pooled_obs")  # edge sets of make_edges.py
 SIGNIF_ALPHA = cfg.SIGNIF_ALPHA
-SIGNIF_N_MIN = cfg.SIGNIF_N_MIN
+SIGNIF_N_MIN = 3
+
+# Minimum consecutive years for valid tower data
+MIN_CONSECUTIVE_YEARS = 3
 
 # Products of the obs inputs left out of the binned (lai, pr, rn) product sets, by variable
 EXCLUDE_PRODUCTS: dict[str, list[str]] = {}
@@ -118,11 +124,20 @@ def tower_annual_et(path: Path, time_slice: slice) -> tuple[xr.DataArray | None,
     return qle.groupby("time.year").mean().where(complete).assign_attrs(units="W/m2"), lat, lon
 
 
-def load_towers(time_slice: slice) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+def longest_run(years: np.ndarray) -> np.ndarray:
+    """Years of the longest run of consecutive integers in the sorted `years` (the earliest run on a tie)."""
+    if years.size == 0:
+        return years
+    # Split wherever the step between successive years is not 1
+    runs = np.split(years, np.flatnonzero(np.diff(years) != 1) + 1)
+    return max(runs, key=len)
+
+
+def load_towers(time_slice: slice, min_consecutive: int = MIN_CONSECUTIVE_YEARS) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
     """
-    Annual mean tower ET (member, year) over `time_slice`, NaN outside a tower's complete years, after the
-    ET outlier filter (step 6), and the towers' latitudes and longitudes (member). Towers without a complete
-    year are skipped.
+    Annual mean tower ET (member, year) over `time_slice`, NaN outside a tower's longest run of consecutive
+    complete years (after the ET outlier filter, step 6), and the towers' latitudes and longitudes (member).
+    Towers whose longest run is shorter than `min_consecutive` years are skipped.
     """
     flux_files = sorted((PLUMBER_ROOT / "flux").glob("*.nc"))
     et, lats, lons = [], [], []
@@ -136,11 +151,31 @@ def load_towers(time_slice: slice) -> tuple[xr.DataArray, xr.DataArray, xr.DataA
         lats.append(lat)
         lons.append(lon)
     et = xr.concat(et, dim="member", join="outer").sortby("year")
-    print(f"{et.sizes['member']} of {len(flux_files)} towers have complete years in {time_slice}")
     et = binning.drop_et_outliers(et, cfg.MIN_ANNUAL_ET, label="PLUMBER2 Qle")
     et = et.assign_attrs(long_name="annual mean latent heat flux (Qle) of the flux tower")
     lat = xr.DataArray(lats, dims="member", coords={"member": et["member"]})
     lon = xr.DataArray(lons, dims="member", coords={"member": et["member"]})
+
+    # Keep only each tower's longest run of consecutive complete years, and only towers whose run is at least
+    # `min_consecutive` years. Runs are found on the year values, not positions, since a year with no data
+    # at any tower is missing from `year`
+    years = et["year"].values
+    in_run = xr.DataArray(
+        [np.isin(years, longest_run(years[et.sel(member=m).notnull().values])) for m in et["member"].values],
+        dims=("member", "year"), coords={"member": et["member"], "year": et["year"]},
+    )
+    n_consec = in_run.sum("year")
+    short = n_consec < min_consecutive
+    for m in et["member"].values[short.values]:
+        print(f"{m}: longest run of {int(n_consec.sel(member=m))} consecutive complete years "
+              f"(< {min_consecutive}), skipping")
+    n_out = int((et.notnull() & ~in_run).sel(member=~short).sum())
+    print(f"{n_out} complete tower-years outside the longest runs set to NaN")
+    with xr.set_options(keep_attrs=True):
+        et = et.where(in_run)
+    et, lat, lon = (da.sel(member=~short) for da in (et, lat, lon))
+    print(f"{et.sizes['member']} of {len(flux_files)} towers have >= {min_consecutive} consecutive complete "
+          f"years in {time_slice}")
     return et, lat, lon
 
 
@@ -280,6 +315,7 @@ def main():
         "family": FAMILY, "dataset": "PLUMBER2 flux towers: tower ET, obs LAI/P/Rn/AI at the nearest gridcell",
         "time_period": temporal.period_str(inputs["year"].values), "grid": grid,
         "plumber_root": str(PLUMBER_ROOT), "obs_inputs": str(obs_path), "min_annual_et": cfg.MIN_ANNUAL_ET,
+        "min_consecutive_years": MIN_CONSECUTIVE_YEARS,  # read by bin_plumber_clim.py
     }
     fout = cfg.inputs_path(FAMILY, grid, period)
     fout.parent.mkdir(parents=True, exist_ok=True)

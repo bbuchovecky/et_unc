@@ -9,6 +9,8 @@ make_edges.py                                           steps 12-13  -> common a
 bin_all.py                                              step 14      -> binned ET of every family
 bin_all_clim.py                                         step 14      -> binned climatological ET of every family
 bin_plumber.py                                          step 14      -> binned ET of the PLUMBER2 flux towers
+bin_plumber_clim.py                                     step 14      -> binned climatological ET of the PLUMBER2 flux towers
+regress_lai_aridity.py                                  after 14     -> ET variance explained by LAI and AI (OLS)
 ```
 Run them in that order.
 Every script prints `etunc/config.py` and its own settings into its log (`scripts/run_logged.sh`).
@@ -75,7 +77,11 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 
 `bin_all_clim.py`: step 14 with climatological ET. Each member's annual mean ET is averaged over `year` with the step 10 rule (`temporal.aggregate(et, "clim")`: every year weighs equally, a gridcell's NaN years are skipped), then binned as in `bin_all.py`. Each gridcell is one sample, so every gridcell weighs equally in its bin whatever its number of valid ET years, and the within-bin variance is spatial only. Outputs are named `<family>.et_clim.qbin_*`.
 
-`bin_plumber.py`: step 14 for the PLUMBER2 flux towers (`cfg.PLUMBER_ROOT`). Each complete tower year of Qle in `TIME_SLICE` is one annual mean ET sample, binned by the climatological obs LAI and AI (from the obs inputs) at the gridcell nearest to the tower, once per (LAI, P, Rn) product set, with the `pooled_all` and `pooled_obs` edges. Towers are not masked by the common area mask; towers whose nearest gridcell has no obs data are not binned. It also plots each tower's record-mean ET against the climatological LAI and AI of `SCATTER_PRODUCTS` (GIMMS_LAI4g, GPCPv2.3, GEWEX.SRB Rn) over the years of the longest tower record, computed from the products with steps 1-11.
+`bin_plumber.py`: step 14 for the PLUMBER2 flux towers (`cfg.PLUMBER_ROOT`). Only each tower's longest run of consecutive complete years of Qle in `TIME_SLICE` (after the ET outlier filter) is kept, and towers whose run is shorter than `MIN_CONSECUTIVE_YEARS` are left out. Each year of the run is one annual mean ET sample, binned by the climatological obs LAI and AI (from the obs inputs) at the gridcell nearest to the tower, once per (LAI, P, Rn) product set, with the `pooled_all` and `pooled_obs` edges. Towers are not masked by the common area mask; towers whose nearest gridcell has no obs data are not binned. It also plots each tower's record-mean ET against the climatological LAI and AI of `SCATTER_PRODUCTS` (GIMMS_LAI4g, GPCPv2.3, GEWEX.SRB Rn) over the years of the longest tower record, computed from the products with steps 1-11.
+
+`bin_plumber_clim.py`: `bin_plumber.py` with climatological ET, as `bin_all_clim.py`. It reads the PLUMBER2 inputs of `bin_plumber.py`, so the towers and years follow the same consecutive-year requirement (`min_consecutive_years` in the inputs attrs). Each tower's ET is averaged over its run (`temporal.aggregate(et, "clim")`), so each tower is one sample and weighs equally in its bin. Outputs are named `plumber.et_clim.qbin_*`.
+
+`regress_lai_aridity.py`: how much of the ET variance in the heatmaps climatological LAI and AI explain. Per member, on exactly the samples of `bin_all.py` (annual) and `bin_all_clim.py` (clim), on the common area and unweighted: OLS fits ET ~ LAI, ET ~ AI and ET ~ LAI + AI (`regression.lai_ai_regression`), the partition of R² into unique LAI, unique AI and shared parts (LAI and AI are correlated), and for comparison the fraction of variance explained by the bin means (η², `binning.between_bin_fraction`) with the `pooled_all` and `pooled_<family>` edges. Climatological predictors cannot explain interannual variability, so the annual R² is at most the between-gridcell share of the variance. Outputs: `PROC_ROOT/<family>/regress/<family>.et.regress_lai_ai.*.nc` and `FIG_ROOT/all/all.et.regress_lai_ai.*.png`.
 
 **TODO:** For testing the sensitivity to resolution, keep model output at native resolution by skipping step 7 (needs the common area mask on each native grid).
 
@@ -127,6 +133,11 @@ pool_by_source()                         # members of each source pooled
 drop_zero_width_bins()
 frac_valid()
 test_significance()
+between_bin_fraction()                   # eta2: variance explained by the bin means
 et_product_spread()                      # obs: std of the bin mean across ET products
+
+regression.py:
+ols()                                    # OLS with an intercept: coefficients and R2
+lai_ai_regression()                      # per member, ET ~ LAI, ~ AI, ~ LAI + AI, and the R2 partition
 ```
 Code that the pipeline no longer uses is in `etunc/legacy/` (unmaintained, untested).

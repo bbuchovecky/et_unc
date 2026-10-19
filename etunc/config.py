@@ -49,8 +49,8 @@ CMIP_FX_CATALOG = CMIP_CATALOG_ROOT / "cmip6_fx_glade.csv"  # one sftlf file per
 PROJ_ROOT = Path("/glade/u/home/bbuchovecky/projects/et_unc")
 FIG_ROOT = PROJ_ROOT / "fig"
 
-WORK_ROOT = Path("/glade/derecho/scratch/bbuchovecky/et_unc")
-# WORK_ROOT = Path("/glade/work/bbuchovecky/et_unc")
+# WORK_ROOT = Path("/glade/derecho/scratch/bbuchovecky/et_unc")
+WORK_ROOT = Path("/glade/work/bbuchovecky/et_unc")
 PROC_ROOT = WORK_ROOT / "proc"
 BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
 
