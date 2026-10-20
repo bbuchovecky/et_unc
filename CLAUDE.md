@@ -80,8 +80,8 @@ Layout: `etunc/` (library), `etunc/legacy/` (unmaintained code), `scripts/` (run
 
 ## Hard Rules
 - Do NOT create stub functions
-- Do NOT modify any files outside of /glade/u/home/bbuchovecky/projects/et_unc/
-- Always run tests before reporting a task is complete
+- Do NOT modify any files outside of `/glade/u/home/bbuchovecky/projects/et_unc/`
+- For all changes outside `notebooks/`, always run tests before reporting a task is complete
 
 ## Code Structure and Abstraction
 - This project is scientific, not software engineering. The code should always prioritize readability over abstraction, so that any scientist can easily understand the key assumptions and decisions in the analysis pipeline from loading to preprocessing to binning. Ideally, this pipeline should be made clear in the binning scripts.
