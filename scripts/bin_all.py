@@ -16,7 +16,7 @@ one family; it still uses the common area mask and the edges of all families.
 
 Outputs
 -------
-<family> : obs, era5, cmip, fppe or lens
+<family> : obs, era5, cmip, fppe, ippe or lens
 <var>    : BIN_VARIABLE, et or et_pr
 <edges>  : pooled_all or pooled_<family>
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"

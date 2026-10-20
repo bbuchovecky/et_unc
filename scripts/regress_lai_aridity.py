@@ -27,7 +27,7 @@ member of every family in FAMILIES, separately:
 
 Outputs
 -------
-<family> : obs, era5, cmip, fppe or lens
+<family> : obs, era5, cmip, fppe, ippe or lens
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 

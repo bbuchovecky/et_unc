@@ -2,25 +2,28 @@
 etunc.load.cesm
 ===============
 Load CESM2 ensemble output from the CESM time-series (tseries) archives on glade:
-the FHIST perturbed-parameter ensemble ("fppe"), the GOGA2 10-member ensemble
-("goga") and the CESM2 Large Ensemble ("lens"). Also holds each ensemble's grid
-file (LANDFRAC, LANDAREA, ...) and the FHIST PPE member names.
+the coupled FHIST perturbed-parameter ensemble ("fppe"), its offline CLM
+counterpart ("ippe", same parameter perturbations and member ids), the GOGA2
+10-member ensemble ("goga") and the CESM2 Large Ensemble ("lens"). Also holds
+each ensemble's grid file (LANDFRAC, LANDAREA, ...) and the PPE member names.
 
-Every ensemble loader (`load_fhist_ppe`, `load_cesm2le`; `load_goga2` is in
+Every ensemble loader (`load_ppe`, `load_cesm2le`; `load_goga2` is in
 `etunc.legacy.load_cesm`)
 returns a lazy (dask) Dataset of native monthly fields with a ``member``
 dimension. Its time axis is shifted from CESM's end-of-interval stamps to the
 month the data averages (see ``shift_time``).
 
-For the binning pipeline (scripts/prep_lens.py, prep_fppe.py), `load_native`
-returns the LENS2 or FHIST PPE monthly fields on the native grid in native
-units (step 1), and `load_land_fraction` the grid file's LANDFRAC.
+For the binning pipeline (scripts/prep_lens.py, prep_fppe.py, prep_ippe.py),
+`load_native` returns the LENS2, FHIST PPE or IHIST PPE monthly fields on the
+native grid in native units (step 1), and `load_land_fraction` the grid file's
+LANDFRAC.
 
 Example
 -------
 >>> import etunc.load.cesm as lc
 >>> grid = lc.load_grid("fppe")
->>> ds = lc.load_fhist_ppe("EFLX_LH_TOT", "lnd", "month_1")
+>>> ds = lc.load_ppe("fppe", "EFLX_LH_TOT", "lnd", "month_1")
+>>> ds = lc.load_ppe("ippe", "EFLX_LH_TOT", "lnd", "month_1")   # offline: "lnd" only
 >>> ds = lc.load_cesm2le("EFLX_LH_TOT", "lnd", "month_1", "h0", bb="cmip6")
 >>> lc.ppe_member_name(2)   # "2.dleaf.max"
 >>> variables = {"EFLX_LH_TOT": "lnd", "TLAI": "lnd", "PRECT": "atm", "FSNS": "atm", "FLNS": "atm"}
@@ -66,6 +69,14 @@ VARIABLES_TO_DROP = {
 
 FHIST_PPE_ROOT = Path("/glade/campaign/univ/uwas0155/ppe/historical/coupled_simulations")
 FHIST_PPE_BASENAME = "f.e21.FHIST_BGC.f19_f19_mg17.historical.coupPPE"
+# Offline CLM runs (lnd output only), forced by a coupler history (CPLHIST) shared by all members
+IHIST_PPE_ROOT = Path("/glade/campaign/univ/uwas0155/ppe/historical/offline_simulations")
+IHIST_PPE_BASENAME = "i.e21.CPLHIST_BGC.f19_f19_mg17.historical.coupPPE"
+# {ppe: (root, case basename)}; both PPEs share the member ids of FHIST_PPE_MEMBERS
+PPE_CASES = {
+    "fppe": (FHIST_PPE_ROOT, FHIST_PPE_BASENAME),
+    "ippe": (IHIST_PPE_ROOT, IHIST_PPE_BASENAME),
+}
 LENS2_ROOT = Path("/glade/campaign/collections/gdex/data/d651056/CESM2-LE")
 
 LENS_BRANCH_YEARS = [
@@ -78,8 +89,10 @@ GRID_PATHS = {
     "goga": Path("/glade/campaign/univ/uwas0155/ppe/f.e21.FHIST_BGC.f09_f09.GOGA2.AREA_GRID.nc"),
     "lens": Path("/glade/campaign/univ/uwas0155/ppe/b.e21.BHISTsmbb.f09_g17.LE2.AREA_GRID.nc"),
 }
+# The offline PPE runs on the same f19 grid, with the same LANDFRAC
+GRID_PATHS["ippe"] = GRID_PATHS["fppe"]
 
-# FHIST PPE member id of the minimum and maximum value of each perturbed parameter
+# PPE (FHIST and IHIST) member id of the minimum and maximum value of each perturbed parameter
 FHIST_PPE_MEMBERS = {
     "default": {"default": 0},
     "dleaf": {"max": 2, "min": 1},
@@ -136,16 +149,17 @@ def _drop_cosp(ds: xr.Dataset) -> xr.Dataset:
 # ------------------------------------------------------------------
 
 @lru_cache(maxsize=None)
-def load_grid(source: Literal["fppe", "goga", "lens"]) -> xr.Dataset:
+def load_grid(source: Literal["fppe", "ippe", "goga", "lens"]) -> xr.Dataset:
     """Grid dataset (LANDFRAC, LANDAREA, ...) of a CESM ensemble."""
     return xr.open_dataset(GRID_PATHS[source])
 
 
 # ------------------------------------------------------------------
-# FHIST perturbed-parameter ensemble
+# Perturbed-parameter ensembles: coupled FHIST ("fppe") and offline IHIST ("ippe")
 # ------------------------------------------------------------------
 
 def _glob_member_files(
+    root: Path,
     mcase: str,
     gcomp: str,
     scomp: str,
@@ -157,7 +171,7 @@ def _glob_member_files(
     result: dict[str, list[Path]] = {}
     for v in variables:
         files = sorted(
-            FHIST_PPE_ROOT.glob(
+            root.glob(
                 f"{mcase}/{gcomp}/proc/tseries/{frequency}/"
                 f"{mcase}.{scomp}.{stream}.{v}.*.nc"
             )
@@ -168,6 +182,7 @@ def _glob_member_files(
 
 
 def _load_member_netcdf(
+    ppe: str,
     m: int,
     gcomp: str,
     scomp: str,
@@ -176,7 +191,7 @@ def _load_member_netcdf(
     variables: list[str],
 ) -> tuple[int, xr.Dataset | None]:
     """
-    Load a single PPE member from NetCDF tseries files.
+    Load a single member of PPE `ppe` ("fppe" or "ippe") from NetCDF tseries files.
 
     Opens all per-variable file lists in a single ``open_mfdataset`` call.
     Each tseries file holds one variable, so xarray separates them by name.
@@ -185,8 +200,9 @@ def _load_member_netcdf(
     -------
     (member_id, dataset); dataset is None if no files were found.
     """
-    mcase = f"{FHIST_PPE_BASENAME}.{str(m).zfill(3)}"
-    var_files = _glob_member_files(mcase, gcomp, scomp, frequency, stream, variables)
+    root, basename = PPE_CASES[ppe]
+    mcase = f"{basename}.{str(m).zfill(3)}"
+    var_files = _glob_member_files(root, mcase, gcomp, scomp, frequency, stream, variables)
     if not var_files:
         return m, None
 
@@ -202,7 +218,8 @@ def _load_member_netcdf(
     return m, shift_time(ds)
 
 
-def load_fhist_ppe(
+def load_ppe(
+    ppe: Literal["fppe", "ippe"],
     variable: str | Sequence[str],
     gcomp: str,
     frequency: str,
@@ -213,10 +230,12 @@ def load_fhist_ppe(
     verbose: bool = True,
 ) -> xr.Dataset:
     """
-    Load variables from the FHIST perturbed-parameter ensemble.
+    Load variables from a perturbed-parameter ensemble.
 
     Parameters
     ----------
+    ppe : str
+        "fppe" (coupled FHIST PPE) or "ippe" (offline IHIST PPE, "lnd" output only).
     variable : str or list of str
         CESM variable name(s), e.g. "EFLX_LH_TOT" or "PRECT_calculated".
     gcomp : str
@@ -258,7 +277,7 @@ def load_fhist_ppe(
         member_datasets: list[xr.Dataset] = []
         with ThreadPoolExecutor(max_workers=min(max_workers, len(iter_members))) as pool:
             futures = [
-                pool.submit(_load_member_netcdf, m, gcomp, scomp, frequency, stream, variables)
+                pool.submit(_load_member_netcdf, ppe, m, gcomp, scomp, frequency, stream, variables)
                 for m in iter_members
             ]
             for fut in as_completed(futures):
@@ -312,7 +331,7 @@ def ppe_member_name(
     delimiter: str = ".",
 ) -> str | list[str]:
     """
-    Name of an FHIST PPE member, e.g. "2.dleaf.max" ("dleaf.max" with `no_id`).
+    Name of a PPE (FHIST or IHIST) member, e.g. "2.dleaf.max" ("dleaf.max" with `no_id`).
 
     Accepts one id or a list/array of ids. Returns a list for more than one
     id; unknown ids are skipped.
@@ -447,7 +466,7 @@ def load_cesm2le(
 # ------------------------------------------------------------------
 
 # ------------------------------------------------------------------
-# Monthly fields and land fraction for binning (scripts/prep_lens.py, prep_fppe.py)
+# Monthly fields and land fraction for binning (scripts/prep_lens.py, prep_fppe.py, prep_ippe.py)
 # ------------------------------------------------------------------
 
 def _lens_fields(
@@ -487,19 +506,19 @@ def _fppe_fields(
     {variable: (member, time, lat, lon)} of the FHIST PPE `members` (None = all but
     `drop_outliers`) that have every variable, with member_id = parameter name.
     """
-    # One `load_fhist_ppe` call per component
+    # One `load_ppe` call per component
     by_gcomp: dict[str, list[str]] = {}
     for v, gcomp in variables.items():
         by_gcomp.setdefault(gcomp, []).append(v)
     ds = {}
     for gcomp, vs in by_gcomp.items():
-        d = load_fhist_ppe(vs, gcomp, frequency, stream, members=members, drop_outliers=drop_outliers)
+        d = load_ppe("fppe", vs, gcomp, frequency, stream, members=members, drop_outliers=drop_outliers)
         if not d.data_vars:
             raise RuntimeError(f"No FHIST PPE files found for {vs} ({gcomp})")
         missing = [v for v in vs if v not in d]
         if missing:
             raise RuntimeError(f"Missing FHIST PPE variables {missing} ({gcomp})")
-        # load_fhist_ppe squeezes out `member` when only one member is found
+        # load_ppe squeezes out `member` when only one member is found
         ds[gcomp] = d if "member" in d.dims else d.expand_dims("member")
 
     # A member counts only if it has every variable of every component
@@ -517,8 +536,43 @@ def _fppe_fields(
     }
 
 
+def _ippe_fields(
+    variables: Mapping[str, str],
+    members: Sequence[int] | None,
+    time_slice: slice,
+    frequency: str,
+    stream: str,
+    drop_outliers: Sequence[int],
+) -> dict[str, xr.DataArray]:
+    """
+    {variable: (member, time, lat, lon)} of the offline IHIST PPE `members` (None = all but
+    `drop_outliers`), with member_id = parameter name. Offline CLM has "lnd" output only.
+    """
+    not_lnd = {v: g for v, g in variables.items() if g != "lnd"}
+    if not_lnd:
+        raise ValueError(f"The offline IHIST PPE has only 'lnd' output, not {not_lnd}")
+
+    # One `load_ppe` call: every variable is in "lnd", so each member has all or none of them
+    vs = list(variables)
+    ds = load_ppe("ippe", vs, "lnd", frequency, stream, members=members, drop_outliers=drop_outliers)
+    if not ds.data_vars:
+        raise RuntimeError(f"No IHIST PPE files found for {vs}")
+    missing = [v for v in vs if v not in ds]
+    if missing:
+        raise RuntimeError(f"Missing IHIST PPE variables {missing}")
+    # load_ppe squeezes out `member` when only one member is found
+    ds = ds if "member" in ds.dims else ds.expand_dims("member")
+
+    ids = ds.member.values.tolist()
+    names = [ppe_member_name(m) for m in ids]
+    return {
+        v: ds[v].sel(time=time_slice).reset_coords(drop=True).assign_coords(member_id=("member", names))
+        for v in vs
+    }
+
+
 def load_native(
-    source: Literal["lens", "fppe"],
+    source: Literal["lens", "fppe", "ippe"],
     members: Sequence[str] | Sequence[int] | None,
     time_slice: slice,
     *,
@@ -535,17 +589,20 @@ def load_native(
 
     source : "lens" (LENS2; `members` are ens_names, None = all, `bb` its
         biomass burning forcing) or "fppe" (FHIST PPE; `members` are integer
-        ids, None = all but `drop_outliers`; only members with every variable).
+        ids, None = all but `drop_outliers`; only members with every variable)
+        or "ippe" (offline IHIST PPE; as "fppe", with "lnd" variables only).
     variables : {CESM variable: gcomp ("lnd" or "atm")}.
     """
     if source == "lens":
         return _lens_fields(variables, members, time_slice, frequency, stream, bb)
     if source == "fppe":
         return _fppe_fields(variables, members, time_slice, frequency, stream, drop_outliers)
-    raise ValueError(f"Unsupported CESM source {source!r}; use 'lens' or 'fppe'")
+    if source == "ippe":
+        return _ippe_fields(variables, members, time_slice, frequency, stream, drop_outliers)
+    raise ValueError(f"Unsupported CESM source {source!r}; use 'lens', 'fppe' or 'ippe'")
 
 
-def load_land_fraction(source: Literal["fppe", "goga", "lens"]) -> tuple[xr.DataArray, xr.Dataset]:
+def load_land_fraction(source: Literal["fppe", "ippe", "goga", "lens"]) -> tuple[xr.DataArray, xr.Dataset]:
     """LANDFRAC [0-1] of a CESM ensemble's grid file, and that grid with cell edges for regridding."""
     grid = load_grid(source)
     return grid["LANDFRAC"], bounded_src_grid(grid)

@@ -132,8 +132,8 @@ def test_equal_coords_and_check_same_grid(inputs):
 
 def test_convert_units():
     """
-    convert_units scales pr/et by L and CESM PRECT (m/s) by L times water density, flips the sign of ERA5 mer,
-    and leaves other variables unchanged.
+    convert_units scales pr/et and CLM RAIN/SNOW (mm/s) by L and CESM PRECT (m/s) by L times water density,
+    flips the sign of ERA5 mer, and leaves other variables unchanged.
     """
     da = xr.DataArray([1.0, 2.0])
     np.testing.assert_allclose(units.convert_units("pr", da), da * config.LATENT_HEAT_VAPORIZATION)
@@ -141,6 +141,8 @@ def test_convert_units():
         units.convert_units("PRECT_month_1", da), da * config.LATENT_HEAT_VAPORIZATION * config.LIQ_WATER_DENSITY
     )
     np.testing.assert_allclose(units.convert_units("mer", da), -da * config.LATENT_HEAT_VAPORIZATION)
+    np.testing.assert_allclose(units.convert_units("RAIN", da), da * config.LATENT_HEAT_VAPORIZATION)
+    assert units.convert_units("SNOW", da).attrs["units"] == "W/m2"
     assert units.convert_units("et", da).attrs["units"] == "W/m2"
     assert units.convert_units("mer", da).attrs["units"] == "W/m2"  # kept through the sign flip
     xr.testing.assert_identical(units.convert_units("lai", da), da)
@@ -213,10 +215,11 @@ def test_landfrac_and_greenland_masks():
 # ------------------------------------------------------------------
 
 def test_net_radiation_sign_conventions():
-    """CMIP, CESM and ERA5 net radiation each follow their source's flux sign convention."""
+    """CMIP, CESM, CLM and ERA5 net radiation each follow their source's flux sign convention."""
     one = xr.DataArray(1.0)
     assert float(units.net_radiation_cmip(one * 300, one * 50, one * 350, one * 400)) == 200
     assert float(units.net_radiation_cesm(one * 250, one * 50)) == 200  # FLNS is net LW up
+    assert float(units.net_radiation_clm(one * 250, one * 50)) == 200  # FIRA is net LW up
     assert float(units.net_radiation_era5(one * 250, one * -50)) == 200  # both positive down
 
 

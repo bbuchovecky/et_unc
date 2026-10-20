@@ -75,8 +75,10 @@ MIN_YEARS = 3          # minimum complete years shared by the four products of a
 MIN_ANNUAL_ET = -2.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
 # Variable binned in step 14: "et" (annual mean ET) or "et_pr" (annual evaporation ratio ET/P, with the
 # P of the aridity index; the prep scripts save it only when this is "et_pr")
-BIN_VARIABLE = "et_pr"
-FAMILIES = ("obs", "era5", "cmip", "fppe", "lens")  # families pooled by make_edges.py and binned by bin_all.py
+BIN_VARIABLE = "et"
+# Families pooled by make_edges.py and binned by bin_all.py. fppe (coupled) and ippe (offline CLM) share
+# the parameter perturbations but are separate families
+FAMILIES = ("obs", "era5", "cmip", "fppe", "ippe", "lens")
 
 # Binning settings
 N_XBINS = 15         # aridity index

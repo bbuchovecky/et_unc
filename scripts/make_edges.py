@@ -14,7 +14,9 @@ LAI and AI quantile edges that bin_all.py bins with.
     - "pooled_all": all families, with hierarchical weights
       (`edges.hierarchical_weights`): each family weighs equally, each source
       within a family equally (obs combination, CMIP6 model, PPE/LENS member),
-      and each member within a source equally.
+      and each member within a source equally. The coupled (fppe) and offline
+      (ippe) PPEs share their parameter perturbations but are separate families,
+      so each weighs as much as any other family.
     - "pooled_<family>": one family, its sources weighted equally.
 
 Outputs
@@ -57,7 +59,8 @@ import etunc.temporal as temporal
 # Settings
 # ------------------------------------------------------------------
 
-FAMILIES = cfg.FAMILIES  # every family pooled into the common area and the pooled_all edges
+# FAMILIES = cfg.FAMILIES  # every family pooled into the common area and the pooled_all edges
+FAMILIES = ("obs", "era5", "cmip", "fppe", "lens") #, "ippe")
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
 N_BINS = {"lai": cfg.N_YBINS, "ai": cfg.N_XBINS}

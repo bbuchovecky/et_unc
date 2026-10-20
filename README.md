@@ -75,7 +75,8 @@ pixi run prep-era5        # steps 1-11: binning inputs of ERA5 (ET, P, Rn) with 
 pixi run prep-cmip        # steps 1-11: binning inputs of the CMIP6 historical models
 pixi run prep-lens        # steps 1-11: binning inputs of the CESM2 Large Ensemble historical members
 pixi run prep-fppe        # steps 1-11: binning inputs of the CESM2 FHIST perturbed-parameter ensemble
-qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs  # any prep-* as a Casper job (FAMILY: obs, era5, cmip, lens, fppe)
+pixi run prep-ippe        # steps 1-11: binning inputs of the CESM2 offline (CLM5) perturbed-parameter ensemble
+qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs  # any prep-* as a Casper job (FAMILY: obs, era5, cmip, lens, fppe, ippe)
 pixi run make-edges       # steps 12-13: common area mask and pooled LAI/AI edges (needs every prep-*)
 pixi run bin-all          # step 14: binned ET of every family with the pooled_all and pooled_<family> edges
 pixi run bin-all-clim     # step 14 with climatological ET: one sample per gridcell instead of per gridcell-year
@@ -97,6 +98,17 @@ period, grid, thresholds, number of bins). Each script's docstring lists every
 output file it writes. Every family runs the same steps, written out in the
 script's `main()`; only the loader (step 1), the unit conversion (step 3) and
 the land mask (step 5) differ.
+
+## To reproduce results
+
+```bash
+qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs
+qsub -N prep_cmip -v FAMILY=cmip scripts/prep.pbs
+qsub -N prep_fppe -v FAMILY=ippe scripts/prep.pbs
+qsub -N prep_ippe -v FAMILY=ippe scripts/prep.pbs
+qsub -N prep_lens -v FAMILY=lens scripts/prep.pbs
+pixi run make-edges && pixi run bin-all && pixi run bin-all-clim && pixi run bin-plumber && pixi run bin-plumber-clim
+```
 
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.

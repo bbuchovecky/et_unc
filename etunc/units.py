@@ -3,7 +3,7 @@ etunc.units
 ===========
 Unit conversions and net radiation. Water fluxes become their energy
 equivalent [W/m2] with L = LATENT_HEAT_VAPORIZATION. There are two conversion
-paths: `convert_units` keys on the variable name (CMIP, CESM, ERA5) and
+paths: `convert_units` keys on the variable name (CMIP, CESM, CLM, ERA5) and
 `latent_heat_to_wm2` on the `units` attr (ILAMB; `flux_to_wm2` also takes
 mm/day). `accumulation_to_flux` turns water depths per day, month or year
 (the gridded obs products) into kg m-2 s-1. Net radiation sign
@@ -30,6 +30,13 @@ def convert_units(v: str, da: xr.DataArray, verbose: bool = False) -> xr.DataArr
         if verbose:
             print("Converting units from m/s -> W/m2")
         da = da * LATENT_HEAT_VAPORIZATION * LIQ_WATER_DENSITY
+        da.attrs["units"] = "W/m2"
+
+    # CLM (offline PPE): rain and snow from mm/s (= kg/m2/s) -> W/m2
+    if v in ("RAIN", "SNOW"):
+        if verbose:
+            print("Converting units from mm/s -> W/m2")
+        da = da * LATENT_HEAT_VAPORIZATION
         da.attrs["units"] = "W/m2"
 
     # CMIP6, ERA5, ILAMB: precip and et from kg/m2/s -> W/m2
@@ -130,6 +137,13 @@ def net_radiation_cmip(
 def net_radiation_cesm(fsns: xr.DataArray, flns: xr.DataArray) -> xr.DataArray:
     """CESM net surface radiation [W/m2]; FSNS is net SW *down*, FLNS is net LW *up*."""
     rn = fsns - flns
+    rn.attrs = {"units": "W/m2", "long_name": "net surface radiation"}
+    return rn.rename("rn")
+
+
+def net_radiation_clm(fsa: xr.DataArray, fira: xr.DataArray) -> xr.DataArray:
+    """CLM net surface radiation of the land [W/m2]; FSA is absorbed SW (down), FIRA is net LW *up*."""
+    rn = fsa - fira
     rn.attrs = {"units": "W/m2", "long_name": "net surface radiation"}
     return rn.rename("rn")
 

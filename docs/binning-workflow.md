@@ -1,10 +1,10 @@
 ## Binning Workflow
-Every data family (obs, ERA5, CMIP6, LENS2, FHIST PPE) runs the same numbered steps.
+Every data family (obs, ERA5, CMIP6, LENS2, FHIST PPE, IHIST PPE) runs the same numbered steps.
 They are written out in `main()` of each script. The scripts differ only in
 step 1 (which loader), step 3 (which unit conversion) and step 5 (which land mask).
 
 ```
-prep_{obs,era5,cmip,lens,fppe}.py                      steps 1-11   -> PROC_ROOT/<family>/<family>.inputs.<grid>.<period>.nc
+prep_{obs,era5,cmip,lens,fppe,ippe}.py                 steps 1-11   -> PROC_ROOT/<family>/<family>.inputs.<grid>.<period>.nc
 make_edges.py                                           steps 12-13  -> common area mask, pooled LAI/AI edges
 bin_all.py                                              step 14      -> binned ET of every family
 bin_all_clim.py                                         step 14      -> binned climatological ET of every family
@@ -30,12 +30,13 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 	- Exclude AR6 region 0 (`grid.greenland_mask`)
 
 ## pipeline
-`prep_<family>.py`, once per product (obs, ERA5) or model (CMIP6) or ensemble (LENS2, FHIST PPE):
+`prep_<family>.py`, once per product (obs, ERA5) or model (CMIP6) or ensemble (LENS2, FHIST PPE, IHIST PPE):
 1. Load monthly native-resolution variables (`load/*.load_native`, `lo.load_obs`) [native grid]
 2. The time period is selected by the loader (`TIME_SLICE`) [native grid]
 3. Convert units of ET, P, Rn to W/m2 (`units.*`, written out in the script) [native grid]
 	- $L_v = 2.45 \times 10^6$ J/kg for every water flux
 	- Net radiation with the sign convention of each source (`units.net_radiation_*`)
+	- IHIST PPE (offline CLM, no atmosphere output): P = RAIN + SNOW and Rn = FSA - FIRA, the land's net radiation (`units.net_radiation_clm`); the FHIST PPE uses the CAM gridcell mean FSNS - FLNS
 4. Compute the annual mean (`temporal.aggregate(da, "year")`) [native grid]
 	- Only keep complete calendar years: all 12 months in the time axis, and 12 valid months for ET, P, Rn
 	- Missing LAI months count as zero
@@ -70,7 +71,7 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 	- Report how many gridcells and how much land area is lost compared with each family's own mask
 13. Compute climatological LAI and aridity quantiles pooled across all data products [target grid]
 	- Saved to disk so that the binning script loads the same quantile edges for every family
-	- `pooled_all`: hierarchical weights (`edges.hierarchical_weights`) reduce the contribution of members of the same model and of FPPE and LENS2:
+	- `pooled_all`: hierarchical weights (`edges.hierarchical_weights`) reduce the contribution of members of the same model and of FPPE, IPPE and LENS2:
 	   w = 1/N_families × 1/N_sources(family) × 1/N_members(source) × 1/N_values(member).
 	   A source is an obs combination, a CMIP6 model, or a PPE/LENS member.
 	- `pooled_<family>`: one family, its sources weighted equally
