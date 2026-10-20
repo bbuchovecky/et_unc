@@ -20,9 +20,10 @@ Outputs
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
 PROC_ROOT/cmip/cmip.inputs.<grid>.<period>.nc
-    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); `member` labelled
+    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); with BIN_VARIABLE = "et_pr",
+    also et_pr (member, year, lat, lon); `member` labelled
     "<source_id>.<member_id>", with coords `source` (= source_id) and `member_id`
-FIG_ROOT/cmip/clim/cmip.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai
+FIG_ROOT/cmip/clim/cmip.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     mean, standard deviation and range of the climatology over all members
 FIG_ROOT/cmip/clim/cmip.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI, one line per model
@@ -59,6 +60,7 @@ FIG_ROOT = cfg.FIG_ROOT / FAMILY
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
+BIN_VARIABLE = cfg.BIN_VARIABLE  # "et_pr" also saves the annual evaporation ratio ET/P (binned by bin_all.py)
 
 EXPERIMENT_ID = "historical"
 VARIABLES = ["evspsbl", "lai", "pr", "rsds", "rsus", "rlds", "rlus"]
@@ -170,8 +172,14 @@ def main():
         # 11. Aridity index from the climatological Rn and P
         ai = edges.compute_aridity_index(clim["pr"], clim["rn"])
 
+        # 11b. Annual evaporation ratio ET/P (BIN_VARIABLE = "et_pr" only), with the annual P of the AI's
+        # P (same product and shared years)
+        data = {"et": ann["et"], **clim, "ai": ai}
+        if BIN_VARIABLE == "et_pr":
+            data["et_pr"] = binning.evaporation_ratio(ann["et"], ann["pr"], label=f"{sid}/et_pr")
+
         # The model is the source of its members
-        inputs = xr.Dataset({"et": ann["et"], **clim, "ai": ai})
+        inputs = xr.Dataset(data)
         native_res[sid] = rg.native_res(src_grid)
         per_model.append(inputs.assign_coords(
             member=[f"{sid}.{m}" for m in mids], source=("member", [sid] * len(mids)),

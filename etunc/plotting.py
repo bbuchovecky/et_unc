@@ -26,6 +26,7 @@ from etunc.config import DPI, HIST_BINS, LAT_BNDS, PROJECTION
 # quick_map style of each variable's climatology map (obs and CMIP6 names)
 MAP_KWARGS = {
     "et":      {"cmap": "YlGnBu"},
+    "et_pr":   {"cmap": "YlGnBu"},
     "evspsbl": {"cmap": "YlGnBu"},
     "lai":     {"cmap": "Greens"},
     "pr":      {"cmap": "Blues"},
@@ -271,6 +272,9 @@ def save_clim_diagnostics(
     """
     title = f"{title}, {inputs.attrs.get('time_period', period)}"
     clim = {"et": inputs["et"].mean("year", keep_attrs=True), **{v: inputs[v] for v in ("lai", "pr", "rn", "ai")}}
+    # The annual ET/P, if the prep script saved it (BIN_VARIABLE = "et_pr")
+    if "et_pr" in inputs:
+        clim["et_pr"] = inputs["et_pr"].mean("year", keep_attrs=True)
     for var, da in clim.items():
         save_ensemble_map(da, var, fig_dir / f"{family}.{var}.{grid}.map.{period}.png", title=title)
     sources = list(dict.fromkeys(inputs["source"].values.tolist()))
@@ -493,8 +497,11 @@ def plot_bin_summary(
     return finish(fig, fout)
 
 
-def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: str | Path | None = None):
-    """One heatmap per (lai, pr, rn) product set of `binning.et_product_spread`; hatched bins lack an ET product."""
+def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: str | Path | None = None, label: str = "et"):
+    """
+    One heatmap per (lai, pr, rn) product set of `binning.et_product_spread`; hatched bins lack an ET product.
+    `label` names the binned variable in the colorbar label.
+    """
     groups = spread.lai_pr_rn.values
     fig, axs = plt.subplots(1, len(groups), figsize=(5.5 * len(groups), 4.5), squeeze=False, layout="constrained")
     vmax = float(spread["et_std"].quantile(0.98))
@@ -502,7 +509,7 @@ def plot_et_product_spread(spread: xr.Dataset, title: str = "", fout: str | Path
         s = spread.sel(lai_pr_rn=g)
         plot_bin_field(
             s["et_std"], ax=ax, hatch=s["n_products"] < s["n_et_products"], cmap="viridis", vmin=0, vmax=vmax,
-            extend="max", cbar_kwargs={"label": f"std of bin mean et [{spread.attrs.get('units', '?')}]"},
+            extend="max", cbar_kwargs={"label": f"std of bin mean {label} [{spread.attrs.get('units', '?')}]"},
             title=f"{g}\n{int(s.n_et_products)} ET products",
         )
         ax.set_xlabel("ai $\\rightarrow$")

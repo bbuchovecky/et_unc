@@ -26,9 +26,10 @@ Outputs
 
 PROC_ROOT/obs/obs.inputs.<grid>.<period>.nc
     et (member, year, lat, lon), NaN outside a combination's years; lai, pr, rn, ai (member, lat, lon);
+    with BIN_VARIABLE = "et_pr", also et_pr (member, year, lat, lon), ET/P with the combination's P product;
     `member` labelled "<et>-<lai>-<pr>-<rn>" product names, with coords `source` (= member),
     `et_product`, `lai_product`, `pr_product`, `rn_product`, `n_years` and `time_period`
-FIG_ROOT/obs/clim/obs.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai
+FIG_ROOT/obs/clim/obs.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     mean, standard deviation and range of the climatology over the combinations
 FIG_ROOT/obs/clim/obs.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI, one line per combination
@@ -64,6 +65,7 @@ FIG_ROOT = cfg.FIG_ROOT / FAMILY
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
+BIN_VARIABLE = cfg.BIN_VARIABLE  # "et_pr" also saves the annual evaporation ratio ET/P (binned by bin_all.py)
 MIN_YEARS = cfg.MIN_YEARS  # minimum complete years shared by the four products of a combination
 
 FACTORS = ("et", "lai", "pr", "rn")  # order of the products in a combination
@@ -181,8 +183,14 @@ def main():
         # 11. Aridity index from the climatological Rn and P
         ai = edges.compute_aridity_index(clim["pr"], clim["rn"])
 
+        # 11b. Annual evaporation ratio ET/P (BIN_VARIABLE = "et_pr" only), with the annual P of the
+        # combination's own P product, the one in its AI, over the same shared years
+        data = {"et": fields["et"], **clim, "ai": ai}
+        if BIN_VARIABLE == "et_pr":
+            data["et_pr"] = binning.evaporation_ratio(fields["et"], fields["pr"], label=f"{cid}/et_pr")
+
         # The combination is a source with one member
-        combos.append(xr.Dataset({"et": fields["et"], **clim, "ai": ai}).expand_dims(member=[cid]).assign_coords(
+        combos.append(xr.Dataset(data).expand_dims(member=[cid]).assign_coords(
             source=("member", [cid]),
             **{f"{v}_product": ("member", [p]) for v, p in zip(FACTORS, combo)},
             n_years=("member", [len(years)]),

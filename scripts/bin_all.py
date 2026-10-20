@@ -1,8 +1,9 @@
 """
 bin_all.py
 ==========
-Step 14 of docs/binning-workflow.md: bin annual mean ET by climatological LAI
-and AI, for every family in BIN_FAMILIES and two sets of edges:
+Step 14 of docs/binning-workflow.md: bin annual mean ET (or, with BIN_VARIABLE
+= "et_pr", the annual evaporation ratio ET/P) by climatological LAI and AI,
+for every family in BIN_FAMILIES and two sets of edges:
 
 - "pooled_all": the edges pooled across all families by make_edges.py;
 - "pooled_<family>": the edges pooled within the family by make_edges.py.
@@ -16,23 +17,24 @@ one family; it still uses the common area mask and the edges of all families.
 Outputs
 -------
 <family> : obs, era5, cmip, fppe or lens
+<var>    : BIN_VARIABLE, et or et_pr
 <edges>  : pooled_all or pooled_<family>
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/<family>/qbin/<family>.et.qbin_<edges>.<grid>.<period>.nc
+PROC_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<grid>.<period>.nc
     per member: (member, stats, y_bin, x_bin), with the member coords of the inputs (source, ...)
-PROC_ROOT/<family>/qbin/<family>.et.qbin_<edges>.<grid>.<period>.sources_pooled.nc
+PROC_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<grid>.<period>.sources_pooled.nc
     the members of each source pooled (`binning.pool_members`): (source, stats, y_bin, x_bin).
     Equal to the per-member statistics when every source has one member
-FIG_ROOT/<family>/qbin/<family>.et.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
+FIG_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
     of the sources_pooled statistics; bin_mean_signif hatches bins whose mean is not significantly
     different from 0
 
 Family-specific outputs
-PROC_ROOT/obs/qbin/obs.et.qbin_<edges>.<grid>.<period>.et_product_std.nc (and FIG_ROOT .png)
-    std of the bin mean ET across ET products, for each (lai, pr, rn) product set
-PROC_ROOT/lens/qbin/lens.et.qbin_<edges>.<grid>.<period>.members_pooled.nc
+PROC_ROOT/obs/qbin/obs.<var>.qbin_<edges>.<grid>.<period>.et_product_std.nc (and FIG_ROOT .png)
+    std of the bin mean ET (or ET/P) across ET products, for each (lai, pr, rn) product set
+PROC_ROOT/lens/qbin/lens.<var>.qbin_<edges>.<grid>.<period>.members_pooled.nc
     statistics of all LENS2 members' samples pooled
 """
 
@@ -56,6 +58,7 @@ import etunc.temporal as temporal
 BIN_FAMILIES = cfg.FAMILIES  # families to bin, e.g. ("lens",) for one
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
+BIN_VARIABLE = cfg.BIN_VARIABLE  # "et": annual mean ET; "et_pr": annual evaporation ratio ET/P (saved by prep_<family>.py)
 N_YBINS = cfg.N_YBINS        # LAI
 N_XBINS = cfg.N_XBINS        # AI
 SIGNIF_ALPHA = cfg.SIGNIF_ALPHA
@@ -84,23 +87,25 @@ def main():
         if not path.exists():
             raise FileNotFoundError(f"No {family} inputs at {path}; run scripts/prep_{family}.py first")
         inputs = xr.load_dataset(path)
+        if BIN_VARIABLE not in inputs:
+            raise KeyError(f"No {BIN_VARIABLE} in {path}; rerun scripts/prep_{family}.py with BIN_VARIABLE = {BIN_VARIABLE!r}")
         n_members = inputs.sizes["member"]
 
         for kind in ("pooled_all", f"pooled_{family}"):
             y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, grid, period)
             x_edges = edges.load_bin_edges(kind, "ai", N_XBINS, grid, period)
 
-            # 14. Every (year, gridcell) ET sample of a member, in the common area, binned by that gridcell's
-            # climatological LAI and AI of the same member
+            # 14. Every (year, gridcell) ET (or ET/P) sample of a member, in the common area, binned by that
+            # gridcell's climatological LAI and AI of the same member
             bs = binning.bin_stats(
-                inputs["et"], inputs["lai"], inputs["ai"], y_edges, x_edges,
-                mask=area, member_dim="member", y_name="lai", x_name="ai", name="et",
+                inputs[BIN_VARIABLE], inputs["lai"], inputs["ai"], y_edges, x_edges,
+                mask=area, member_dim="member", y_name="lai", x_name="ai", name=BIN_VARIABLE,
                 attrs={
                     "family": family, "edges": kind, "time_period": inputs.attrs["time_period"], "grid": grid,
                     "n_members": n_members, "area_mask": str(area_path),
                 },
             )
-            stem = f"{family}.et.qbin_{kind}.{grid}.{period}"
+            stem = f"{family}.{BIN_VARIABLE}.qbin_{kind}.{grid}.{period}"
             fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.nc"
             fout.parent.mkdir(parents=True, exist_ok=True)
             bs.to_netcdf(fout)
@@ -115,7 +120,7 @@ def main():
 
             # Figures of the sources; every source shares the edges, so the zero-width bins can be dropped
             n_sources = by_source.sizes["source"]
-            title = f"{family} ET, {n_sources} sources, {kind} edges, {inputs.attrs['time_period']}"
+            title = f"{family} {binning.TARGET_LABELS[BIN_VARIABLE]}, {n_sources} sources, {kind} edges, {inputs.attrs['time_period']}"
             by_source = binning.drop_zero_width_bins(by_source)
             fig_dir = cfg.FIG_ROOT / family / "qbin"
             plotting.plot_bin_summary(by_source, dim="source", title=title, fout=fig_dir / f"{stem}.summary.png")
@@ -142,8 +147,10 @@ def main():
                 spread = binning.et_product_spread(by_source)
                 fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.et_product_std.nc"
                 spread.to_netcdf(fout)
-                plotting.plot_et_product_spread(spread, title=f"obs ET, std of bin mean across ET products, {kind} edges",
-                                                fout=fig_dir / f"{stem}.et_product_std.png")
+                plotting.plot_et_product_spread(
+                    spread, title=f"obs {binning.TARGET_LABELS[BIN_VARIABLE]}, std of bin mean across ET products, {kind} edges",
+                    fout=fig_dir / f"{stem}.et_product_std.png", label=BIN_VARIABLE,
+                )
                 print(fout)
             if family == "lens":
                 # All members' samples pooled: the LENS2 initial-condition ensemble as one distribution

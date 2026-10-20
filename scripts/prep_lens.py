@@ -15,9 +15,10 @@ Outputs
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
 PROC_ROOT/lens/lens.inputs.<grid>.<period>.nc
-    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); `member` labelled by ens_name,
+    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); with BIN_VARIABLE = "et_pr",
+    also et_pr (member, year, lat, lon); `member` labelled by ens_name,
     `source` = member
-FIG_ROOT/lens/clim/lens.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai
+FIG_ROOT/lens/clim/lens.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     member mean, standard deviation and range of the climatology
 FIG_ROOT/lens/clim/lens.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI, one line per member
@@ -51,6 +52,7 @@ FIG_ROOT = cfg.FIG_ROOT / FAMILY
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
+BIN_VARIABLE = cfg.BIN_VARIABLE  # "et_pr" also saves the annual evaporation ratio ET/P (binned by bin_all.py)
 
 FREQUENCY = "month_1"
 STREAM = "h0"
@@ -121,8 +123,14 @@ def main():
     # 11. Aridity index from the climatological Rn and P
     ai = edges.compute_aridity_index(clim["pr"], clim["rn"])
 
+    # 11b. Annual evaporation ratio ET/P (BIN_VARIABLE = "et_pr" only), with the annual P of the AI's
+    # P (same product and shared years)
+    data = {"et": ann["et"], **clim, "ai": ai}
+    if BIN_VARIABLE == "et_pr":
+        data["et_pr"] = binning.evaporation_ratio(ann["et"], ann["pr"], label="et_pr")
+
     # Every member is one source, labelled by its ens_name
-    inputs = xr.Dataset({"et": ann["et"], **clim, "ai": ai})
+    inputs = xr.Dataset(data)
     names = inputs["member_id"].values.tolist()
     inputs = inputs.drop_vars("member_id").assign_coords(member=names, source=("member", names))
     inputs.attrs = {

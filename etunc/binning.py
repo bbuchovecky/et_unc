@@ -7,6 +7,7 @@ post-processing. The full pipeline, from loading to binning, is described in
 docs/binning-workflow.md and written out step by step in the scripts.
 
 - `drop_et_outliers`: the plausibility filter on annual mean ET (step 6).
+- `evaporation_ratio`: annual ET/P, the alternative variable to bin (step 11b).
 - `bin_stats`: statistics of every (year, gridcell) ET sample, binned by its
   gridcell's climatological LAI and AI (step 14), optionally per member.
 - Post-processing: `pool_members`, `pool_by_source`, `drop_zero_width_bins`,
@@ -27,6 +28,9 @@ from etunc.config import LAT_BNDS
 # Order of the `stats` dimension returned by `bin_stats`
 STATS = ("mean", "var_pop", "var_samp", "count", "count_pos")
 
+# Labels of the variables that can be binned (config.BIN_VARIABLE), for titles
+TARGET_LABELS = {"et": "ET", "et_pr": "ET/P"}
+
 
 # ------------------------------------------------------------------
 # ET outlier filter
@@ -46,6 +50,27 @@ def drop_et_outliers(et: xr.DataArray, min_annual_et: float, label: str | None =
           + (f" ({n_binned} within LAT_BNDS; min {float(et.min()):0.3g})" if n else ""))
     with xr.set_options(keep_attrs=True):
         return et.where(~outlier)
+
+
+# ------------------------------------------------------------------
+# Evaporation ratio
+# ------------------------------------------------------------------
+
+def evaporation_ratio(et: xr.DataArray, pr: xr.DataArray, label: str | None = None) -> xr.DataArray:
+    """
+    Evaporation ratio ET/P of annual means (step 11b), NaN where P <= 0. `et` and `pr` are both in W/m2
+    with the same latent heat, so the ratio is dimensionless. They must share coordinates exactly, and
+    `pr` must be the P of the aridity index (same product and years). Prints how many gridcell-years with
+    a valid ET are dropped because P <= 0.
+    """
+    # join="exact" raises on any coordinate mismatch instead of silently reindexing to NaN
+    et, pr = xr.align(et, pr, join="exact")
+    no_pr = et.notnull() & (pr <= 0)
+    print(f"{label or 'et/pr'}: {int(no_pr.sum())} gridcell-years with valid ET and P <= 0 set to NaN in ET/P")
+    ratio = (et / pr.where(pr > 0)).rename("et_pr")
+    # New attrs, not those of ET (binary ops keep the attrs of the first operand)
+    ratio.attrs = {"long_name": "evaporation ratio ET/P of annual means", "units": "1"}
+    return ratio
 
 
 # ------------------------------------------------------------------
@@ -401,7 +426,7 @@ def et_product_spread(bs: xr.DataArray) -> xr.Dataset:
         n = grouped.count("source")
         std = grouped.std("source", ddof=1).where(n >= 2)
     out = xr.Dataset({"et_std": std, "n_products": n.astype("i4")}, attrs=bs.attrs)
-    out["et_std"].attrs["long_name"] = "std of bin mean ET across ET products (ddof=1)"
+    out["et_std"].attrs["long_name"] = f"std of bin mean {TARGET_LABELS.get(bs.name, 'ET')} across ET products (ddof=1)"
     return out.assign_coords(n_et_products=("lai_pr_rn", [labels.count(g) for g in out.lai_pr_rn.values]))
 
 

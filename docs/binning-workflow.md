@@ -13,6 +13,7 @@ bin_plumber_clim.py                                     step 14      -> binned c
 regress_lai_aridity.py                                  after 14     -> ET variance explained by LAI and AI (OLS)
 ```
 Run them in that order.
+`BIN_VARIABLE` (default `cfg.BIN_VARIABLE = "et"`, set at the top of each prep and bin script) chooses what step 14 bins: `"et"`, annual mean ET, or `"et_pr"`, the annual evaporation ratio ET/P (step 11b). Outputs are named `<family>.<BIN_VARIABLE>.qbin_*` and `<family>.<BIN_VARIABLE>_clim.qbin_*`. The common area mask and the edges (steps 12-13) do not depend on it, so ET and ET/P are binned in the same bins.
 Every script prints `etunc/config.py` and its own settings into its log (`scripts/run_logged.sh`).
 
 ## binning
@@ -57,6 +58,10 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 10. Compute the climatological LAI, Rn, and P over those years (`temporal.aggregate(da, "clim")`) [target grid]
 	- Report any missing years, as these will propagate to the aridity calculation
 11. Compute aridity from the climatological Rn and P (`edges.compute_aridity_index`) [target grid]
+11b. `BIN_VARIABLE = "et_pr"` only: the annual evaporation ratio ET/P (`binning.evaporation_ratio`) [target grid]
+	- Annual ET over the annual P of the same year, product and source as the P of the AI (for obs, each combination's own P product), over the shared years of step 9
+	- NaN where P <= 0; no other filter (ET has already been filtered in step 6)
+	- Saved as `et_pr (member, year, lat, lon)` next to `et`, which is always saved
 
 `make_edges.py`:
 
@@ -73,11 +78,11 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 
 `bin_all.py`:
 
-14. Bin ET by climatological LAI and aridity, for every family in `BIN_FAMILIES`, with the `pooled_all` and `pooled_<family>` edges (`binning.bin_stats`, per member) [target grid]
+14. Bin ET (or ET/P, `BIN_VARIABLE`) by climatological LAI and aridity, for every family in `BIN_FAMILIES`, with the `pooled_all` and `pooled_<family>` edges (`binning.bin_stats`, per member) [target grid]
 
-`bin_all_clim.py`: step 14 with climatological ET. Each member's annual mean ET is averaged over `year` with the step 10 rule (`temporal.aggregate(et, "clim")`: every year weighs equally, a gridcell's NaN years are skipped), then binned as in `bin_all.py`. Each gridcell is one sample, so every gridcell weighs equally in its bin whatever its number of valid ET years, and the within-bin variance is spatial only. Outputs are named `<family>.et_clim.qbin_*`.
+`bin_all_clim.py`: step 14 with climatological ET. Each member's annual mean ET is averaged over `year` with the step 10 rule (`temporal.aggregate(et, "clim")`: every year weighs equally, a gridcell's NaN years are skipped), then binned as in `bin_all.py`. Each gridcell is one sample, so every gridcell weighs equally in its bin whatever its number of valid ET years, and the within-bin variance is spatial only. Outputs are named `<family>.et_clim.qbin_*`. With `BIN_VARIABLE = "et_pr"`, the annual ET/P is averaged the same way (the mean of the annual ratios), and outputs are named `<family>.et_pr_clim.qbin_*`.
 
-`bin_plumber.py`: step 14 for the PLUMBER2 flux towers (`cfg.PLUMBER_ROOT`). Only each tower's longest run of consecutive complete years of Qle in `TIME_SLICE` (after the ET outlier filter) is kept, and towers whose run is shorter than `MIN_CONSECUTIVE_YEARS` are left out. Each year of the run is one annual mean ET sample, binned by the climatological obs LAI and AI (from the obs inputs) at the gridcell nearest to the tower, once per (LAI, P, Rn) product set, with the `pooled_all` and `pooled_obs` edges. Towers are not masked by the common area mask; towers whose nearest gridcell has no obs data are not binned. It also plots each tower's record-mean ET against the climatological LAI and AI of `SCATTER_PRODUCTS` (GIMMS_LAI4g, GPCPv2.3, GEWEX.SRB Rn) over the years of the longest tower record, computed from the products with steps 1-11.
+`bin_plumber.py`: step 14 for the PLUMBER2 flux towers (`cfg.PLUMBER_ROOT`). Only each tower's longest run of consecutive complete years of Qle in `TIME_SLICE` (after the ET outlier filter) is kept, and towers whose run is shorter than `MIN_CONSECUTIVE_YEARS` are left out. Each year of the run is one annual mean ET sample, binned by the climatological obs LAI and AI (from the obs inputs) at the gridcell nearest to the tower, once per (LAI, P, Rn) product set, with the `pooled_all` and `pooled_obs` edges. Towers are not masked by the common area mask; towers whose nearest gridcell has no obs data are not binned. It also plots each tower's record-mean ET against the climatological LAI and AI of `SCATTER_PRODUCTS` (GIMMS_LAI4g, GPCPv2.3, GEWEX.SRB Rn) over the years of the longest tower record, computed from the products with steps 1-11. With `BIN_VARIABLE = "et_pr"`, each tower-year's ET is divided by that year's P at the nearest gridcell, from the P product of each product set (the P of its AI); annual P is computed over `TIME_SLICE` with steps 1-8, since the obs inputs end with the obs climatology years. The tower scatter stays ET only.
 
 `bin_plumber_clim.py`: `bin_plumber.py` with climatological ET, as `bin_all_clim.py`. It reads the PLUMBER2 inputs of `bin_plumber.py`, so the towers and years follow the same consecutive-year requirement (`min_consecutive_years` in the inputs attrs). Each tower's ET is averaged over its run (`temporal.aggregate(et, "clim")`), so each tower is one sample and weighs equally in its bin. Outputs are named `plumber.et_clim.qbin_*`.
 

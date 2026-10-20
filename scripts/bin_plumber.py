@@ -19,7 +19,13 @@ mask (make_edges.py).
   source with the most shared years, along the dim `lai_pr_rn`. Product sets
   with a product in EXCLUDE_PRODUCTS are left out.
 
-As in bin_all.py, every (year, tower) ET sample is binned by the tower's
+- ET/P (BIN_VARIABLE = "et_pr" only): each year's tower ET over that year's P
+  at the nearest gridcell, from the pr product of each product set (the P of
+  its AI). Annual P is computed here over TIME_SLICE (steps 1-8 of
+  prep_obs.py), not taken from the obs inputs, whose years end with the obs
+  climatology (2007), so every tower-year keeps its ratio. NaN where P <= 0.
+
+As in bin_all.py, every (year, tower) ET (or ET/P) sample is binned by the tower's
 climatological LAI and AI (`binning.bin_stats`), separately for each product
 set; the samples of all towers are pooled. The towers are not masked by the
 common area mask: `in_common_area` records which towers are in it, and a
@@ -27,6 +33,7 @@ tower whose nearest gridcell has no obs data is not binned.
 
 Outputs
 -------
+<var>    : BIN_VARIABLE, et or et_pr
 <edges>  : pooled_all or pooled_obs
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
@@ -35,10 +42,11 @@ PROC_ROOT/plumber/plumber.inputs.<grid>.<period>.nc
     et (member, year), NaN outside a tower's longest run of consecutive complete years; lai, pr, rn, ai (lai_pr_rn, member).
     `member` is the site name, with coords lat/lon (tower), grid_lat/grid_lon (nearest gridcell),
     n_years, time_period and in_common_area; `lai_pr_rn` has coords obs_source, <v>_product,
-    clim_n_years and clim_period. Also the input of bin_plumber_clim.py
-PROC_ROOT/plumber/qbin/plumber.et.qbin_<edges>.<grid>.<period>.nc
+    clim_n_years and clim_period; with BIN_VARIABLE = "et_pr", also et_pr (lai_pr_rn, member, year).
+    Also the input of bin_plumber_clim.py
+PROC_ROOT/plumber/qbin/plumber.<var>.qbin_<edges>.<grid>.<period>.nc
     (lai_pr_rn, stats, y_bin, x_bin), the samples of all towers pooled
-FIG_ROOT/plumber/qbin/plumber.et.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
+FIG_ROOT/plumber/qbin/plumber.<var>.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
     as in bin_all.py, one panel per product set; bin_mean_signif hatches bins whose mean is not
     significantly different from 0
 
@@ -89,6 +97,7 @@ FAMILY = "plumber"
 PLUMBER_ROOT = cfg.PLUMBER_ROOT
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
+BIN_VARIABLE = cfg.BIN_VARIABLE              # "et": annual tower ET; "et_pr": annual tower ET/P
 N_YBINS = cfg.N_YBINS                      # LAI
 N_XBINS = cfg.N_XBINS                      # AI
 EDGE_KINDS = ("pooled_all", "pooled_obs")  # edge sets of make_edges.py
@@ -307,7 +316,23 @@ def main():
         print(f"{key}: {int(missing.sum())} towers without obs LAI or AI at the nearest gridcell, not binned: "
               f"{missing['member'].values[missing.values].tolist()}")
 
-    inputs = xr.Dataset({"et": et, **at_towers.data_vars}).assign_coords(
+    # ------------------------------------------------------------------
+    # Annual evaporation ratio ET/P of each tower (BIN_VARIABLE = "et_pr" only)
+    # ------------------------------------------------------------------
+    # Tower ET over the annual P at the nearest gridcell, from each product set's pr product (the P of its AI).
+    # P is computed over TIME_SLICE (steps 1-8 of prep_obs.py), not only over the obs climatology years
+    ratio = {}
+    if BIN_VARIABLE == "et_pr":
+        pr_products = clim["pr_product"].values.tolist()
+        pr_at_towers = {pr: nearest_to_towers(obs_annual("pr", pr, TIME_SLICE), site_lat, site_lon)
+                        for pr in dict.fromkeys(pr_products)}
+        # Annual P of each product set on the tower years; NaN in a tower year without P
+        pr_ann = xr.concat(
+            [pr_at_towers[pr].reindex(year=et["year"].values) for pr in pr_products], dim="lai_pr_rn",
+        ).assign_coords(lai_pr_rn=list(sets))
+        ratio["et_pr"] = binning.evaporation_ratio(et, pr_ann, label="PLUMBER2 Qle/P").transpose("lai_pr_rn", "member", "year")
+
+    inputs = xr.Dataset({"et": et, **at_towers.data_vars, **ratio}).assign_coords(
         lat=site_lat, lon=site_lon, n_years=n_years, time_period=("member", time_period),
         in_common_area=in_area,
     )
@@ -323,23 +348,23 @@ def main():
     print(fout)
 
     # ------------------------------------------------------------------
-    # 14. Every (year, tower) ET sample binned by the tower's climatological LAI and AI, per product set
+    # 14. Every (year, tower) ET (or ET/P) sample binned by the tower's climatological LAI and AI, per product set
     # ------------------------------------------------------------------
     for kind in EDGE_KINDS:
         print(f"\n=== {kind} edges ===")
         y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, grid, period)
         x_edges = edges.load_bin_edges(kind, "ai", N_XBINS, grid, period)
         bs = binning.bin_stats(
-            inputs["et"], inputs["lai"], inputs["ai"], y_edges, x_edges,
-            member_dim="lai_pr_rn", y_name="lai", x_name="ai", name="et",
+            inputs[BIN_VARIABLE], inputs["lai"], inputs["ai"], y_edges, x_edges,
+            member_dim="lai_pr_rn", y_name="lai", x_name="ai", name=BIN_VARIABLE,
             attrs={
                 "family": FAMILY, "edges": kind, "time_period": inputs.attrs["time_period"], "grid": grid,
                 "n_towers": inputs.sizes["member"], "obs_inputs": str(obs_path),
             },
         )
-        # bin_stats keeps only the coords of `et` along the member dim, so add those of the product sets
+        # bin_stats keeps only the coords of the binned variable along the member dim, so add those of the product sets
         bs = bs.assign_coords({c: inputs[c] for c in inputs.coords if inputs[c].dims == ("lai_pr_rn",)})
-        stem = f"{FAMILY}.et.qbin_{kind}.{grid}.{period}"
+        stem = f"{FAMILY}.{BIN_VARIABLE}.qbin_{kind}.{grid}.{period}"
         fout = cfg.PROC_ROOT / FAMILY / "qbin" / f"{stem}.nc"
         fout.parent.mkdir(parents=True, exist_ok=True)
         bs.to_netcdf(fout)
@@ -351,7 +376,7 @@ def main():
 
         # Figures as in bin_all.py, one panel per product set; every set shares the edges, so the
         # zero-width bins can be dropped
-        title = f"PLUMBER2 tower ET, {len(sets)} (lai, pr, rn) product sets, {kind} edges, {inputs.attrs['time_period']}"
+        title = f"PLUMBER2 tower {binning.TARGET_LABELS[BIN_VARIABLE]}, {len(sets)} (lai, pr, rn) product sets, {kind} edges, {inputs.attrs['time_period']}"
         bs = binning.drop_zero_width_bins(bs)
         fig_dir = cfg.FIG_ROOT / FAMILY / "qbin"
         plotting.plot_bin_summary(bs, dim="lai_pr_rn", title=title, fout=fig_dir / f"{stem}.summary.png")

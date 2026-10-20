@@ -242,6 +242,30 @@ def test_drop_et_outliers(capsys):
     assert "et: 1 gridcell-years with annual ET < -1.0 W/m2 set to NaN (0 within LAT_BNDS" in capsys.readouterr().out
 
 
+def test_evaporation_ratio(capsys):
+    """ET/P is named "et_pr", dimensionless, NaN where P <= 0 (no inf), and the dropped count is printed."""
+    coords = {"year": [2000, 2001], "lat": [10.0, 20.0]}
+    et = xr.DataArray([[50.0, 20.0], [40.0, np.nan]], dims=("year", "lat"), coords=coords, name="et",
+                      attrs={"units": "W/m2"})
+    pr = xr.DataArray([[100.0, 0.0], [-1.0, 10.0]], dims=("year", "lat"), coords=coords, name="pr",
+                      attrs={"units": "W/m2"})
+    out = binning.evaporation_ratio(et, pr, label="t")
+    np.testing.assert_array_equal(out.values, [[0.5, np.nan], [np.nan, np.nan]])
+    assert out.name == "et_pr" and out.attrs == {"long_name": "evaporation ratio ET/P of annual means", "units": "1"}
+    # The two gridcell-years with valid ET and P <= 0; the NaN ET does not count
+    assert "t: 2 gridcell-years with valid ET and P <= 0 set to NaN" in capsys.readouterr().out
+    # Climatological P broadcasts over years
+    np.testing.assert_allclose(binning.evaporation_ratio(et, pr.isel(year=0, drop=True).clip(min=1)).isel(year=0), [0.5, 20.0])
+
+
+def test_evaporation_ratio_rejects_mismatched_grids():
+    """ET and P whose coords differ raise instead of being aligned."""
+    et = xr.DataArray([1.0, 2.0], dims="lat", coords={"lat": [10.0, 20.0]})
+    pr = et.assign_coords(lat=et.lat + 0.01)
+    with pytest.raises(ValueError):
+        binning.evaporation_ratio(et, pr)
+
+
 # ------------------------------------------------------------------
 # Binning core
 # ------------------------------------------------------------------

@@ -7,7 +7,9 @@ years) is binned instead of each of its annual means, as bin_all_clim.py does
 for the gridded families. One sample per tower instead of one per
 (year, tower), so every tower weighs equally in its bin, whatever its number
 of years, and the within-bin variance is across towers only (no interannual
-variability).
+variability). With BIN_VARIABLE = "et_pr", each tower's annual evaporation
+ratio ET/P of bin_plumber.py is averaged instead (the mean of the annual
+ratios).
 
 The towers and their years come from the inputs of bin_plumber.py, so they
 follow the same consecutive-year requirement: only each tower's longest run
@@ -23,13 +25,14 @@ tower whose nearest gridcell has no obs data is not binned.
 
 Outputs
 -------
+<var>    : BIN_VARIABLE, et or et_pr
 <edges>  : pooled_all or pooled_obs
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/plumber/qbin/plumber.et_clim.qbin_<edges>.<grid>.<period>.nc
+PROC_ROOT/plumber/qbin/plumber.<var>_clim.qbin_<edges>.<grid>.<period>.nc
     (lai_pr_rn, stats, y_bin, x_bin), all towers pooled; `count` is the number of towers
-FIG_ROOT/plumber/qbin/plumber.et_clim.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
+FIG_ROOT/plumber/qbin/plumber.<var>_clim.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
     as in bin_plumber.py, one panel per product set; bin_mean_signif hatches bins whose mean is not
     significantly different from 0
 """
@@ -54,6 +57,7 @@ import etunc.temporal as temporal
 FAMILY = "plumber"
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
+BIN_VARIABLE = cfg.BIN_VARIABLE              # "et": tower ET; "et_pr": tower ET/P (saved by bin_plumber.py)
 N_YBINS = cfg.N_YBINS                      # LAI
 N_XBINS = cfg.N_XBINS                      # AI
 EDGE_KINDS = ("pooled_all", "pooled_obs")  # edge sets of make_edges.py
@@ -79,33 +83,37 @@ def main():
     # The consecutive-year requirement of bin_plumber.py; inputs written before it existed must be remade
     if "min_consecutive_years" not in inputs.attrs:
         raise ValueError(f"{path} has no consecutive-year requirement; rerun scripts/bin_plumber.py")
+    if BIN_VARIABLE not in inputs:
+        raise KeyError(f"No {BIN_VARIABLE} in {path}; rerun scripts/bin_plumber.py with BIN_VARIABLE = {BIN_VARIABLE!r}")
     min_consecutive = int(inputs.attrs["min_consecutive_years"])
     n_towers = inputs.sizes["member"]
     print(f"{n_towers} towers with >= {min_consecutive} consecutive complete years in {inputs.attrs['time_period']}, "
           f"{int(inputs['n_years'].min())} to {int(inputs['n_years'].max())} years per tower")
 
-    # Climatological ET of each tower: (member, year) -> (member), the mean over its longest run of complete years
-    et_clim = temporal.aggregate(inputs["et"], "clim", label="PLUMBER2 Qle")
+    # Climatological ET (or mean ET/P) of each tower: (member, year) -> (member), the mean over its longest run
+    # of complete years
+    target_clim = temporal.aggregate(inputs[BIN_VARIABLE], "clim", label=f"PLUMBER2 {BIN_VARIABLE}")
+    label = binning.TARGET_LABELS[BIN_VARIABLE]
 
     # ------------------------------------------------------------------
-    # 14. Every tower's climatological ET binned by the tower's climatological LAI and AI, per product set
+    # 14. Every tower's climatological ET (or mean ET/P) binned by the tower's climatological LAI and AI, per product set
     # ------------------------------------------------------------------
     for kind in EDGE_KINDS:
         print(f"\n=== {kind} edges ===")
         y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, grid, period)
         x_edges = edges.load_bin_edges(kind, "ai", N_XBINS, grid, period)
         bs = binning.bin_stats(
-            et_clim, inputs["lai"], inputs["ai"], y_edges, x_edges,
-            member_dim="lai_pr_rn", y_name="lai", x_name="ai", name="et",
+            target_clim, inputs["lai"], inputs["ai"], y_edges, x_edges,
+            member_dim="lai_pr_rn", y_name="lai", x_name="ai", name=BIN_VARIABLE,
             attrs={
                 "family": FAMILY, "edges": kind, "time_period": inputs.attrs["time_period"], "grid": grid,
                 "n_towers": n_towers, "min_consecutive_years": min_consecutive, "plumber_inputs": str(path),
-                "et_samples": "climatological annual mean ET, one sample per tower",
+                "et_samples": f"climatological annual mean {label}, one sample per tower",
             },
         )
-        # bin_stats keeps only the coords of `et` along the member dim, so add those of the product sets
+        # bin_stats keeps only the coords of the binned variable along the member dim, so add those of the product sets
         bs = bs.assign_coords({c: inputs[c] for c in inputs.coords if inputs[c].dims == ("lai_pr_rn",)})
-        stem = f"{FAMILY}.et_clim.qbin_{kind}.{grid}.{period}"
+        stem = f"{FAMILY}.{BIN_VARIABLE}_clim.qbin_{kind}.{grid}.{period}"
         fout = cfg.PROC_ROOT / FAMILY / "qbin" / f"{stem}.nc"
         fout.parent.mkdir(parents=True, exist_ok=True)
         bs.to_netcdf(fout)
@@ -118,7 +126,7 @@ def main():
         # Figures as in bin_plumber.py, one panel per product set; every set shares the edges, so the
         # zero-width bins can be dropped
         n_sets = bs.sizes["lai_pr_rn"]
-        title = (f"PLUMBER2 tower climatological ET, {n_sets} (lai, pr, rn) product sets, {kind} edges, "
+        title = (f"PLUMBER2 tower climatological {label}, {n_sets} (lai, pr, rn) product sets, {kind} edges, "
                  f"{inputs.attrs['time_period']}")
         bs = binning.drop_zero_width_bins(bs)
         fig_dir = cfg.FIG_ROOT / FAMILY / "qbin"

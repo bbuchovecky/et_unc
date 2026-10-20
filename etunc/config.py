@@ -73,6 +73,9 @@ def area_mask_path(grid: str, period: str) -> Path:
 TIME_SLICE = slice("1995-01", "2014-12")  # one period for every family
 MIN_YEARS = 3          # minimum complete years shared by the four products of an obs combination
 MIN_ANNUAL_ET = -2.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
+# Variable binned in step 14: "et" (annual mean ET) or "et_pr" (annual evaporation ratio ET/P, with the
+# P of the aridity index; the prep scripts save it only when this is "et_pr")
+BIN_VARIABLE = "et_pr"
 FAMILIES = ("obs", "era5", "cmip", "fppe", "lens")  # families pooled by make_edges.py and binned by bin_all.py
 
 # Binning settings
@@ -130,6 +133,7 @@ def summarize():
     print(f"{'TIME_SLICE':18} = {TIME_SLICE}")
     print(f"{'MIN_YEARS':18} = {MIN_YEARS}")
     print(f"{'MIN_ANNUAL_ET':18} = {MIN_ANNUAL_ET}")
+    print(f"{'BIN_VARIABLE':18} = {BIN_VARIABLE}")
     print(f"{'FAMILIES':18} = {FAMILIES}")
     print(f"{'N_XBINS':18} = {N_XBINS}")
     print(f"{'N_YBINS':18} = {N_YBINS}")
