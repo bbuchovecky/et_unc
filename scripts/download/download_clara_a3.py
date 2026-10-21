@@ -53,6 +53,7 @@ def download_year(client, variable, year):
         "time_aggregation": "monthly_mean",
         "year": [str(year)],
         "month": MONTHS,
+        "day": ["01"],  # required by the CDS; monthly means are labelled with day 01
         "format": "zip",
     }
     zip_path = OUTPUT_ROOT / variable / f"{variable}_{year}.zip"

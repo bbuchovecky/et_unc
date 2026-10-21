@@ -438,6 +438,32 @@ def test_bin_stats_climatological_et(rng, mask, edges):
     np.testing.assert_array_equal(bs.sel(stats="count").sum(("y_bin", "x_bin")), [int(mask.sum())] * 2)
 
 
+def test_bin_stats_land_area(rng, mask, edges):
+    """
+    bin_area.py: binning a (lat, lon) area field repeated over members gives, as mean x count, the total area
+    of each member's masked gridcells in each bin, and keeps the member coords.
+    """
+    y_edges, x_edges = edges
+    inp = make_inputs(rng, mask, members=2)
+    area = xr.DataArray(rg.cell_area(LAT, LON) / 1e6, dims=("lat", "lon"), coords={"lat": LAT, "lon": LON})
+    area_m = area * xr.ones_like(inp["lai"])
+    bs = binning.bin_stats(area_m, inp["lai"], inp["ai"], y_edges, x_edges, mask=mask, member_dim="member")
+    assert list(bs.member_id.values) == ["r1i1p1f1", "r2i1p1f1"]
+    total = (bs.sel(stats="mean") * bs.sel(stats="count")).fillna(0)
+    for m in range(2):
+        # Brute-force sum of the area of each bin's gridcells
+        lai, ai = inp["lai"][m].values.ravel(), inp["ai"][m].values.ravel()
+        a = area.where(mask).values.ravel()
+        valid = np.isfinite(a) & np.isfinite(lai) & np.isfinite(ai)
+        yi = np.clip(np.searchsorted(y_edges.values, lai[valid], side="right") - 1, 0, len(y_edges) - 2)
+        xi = np.clip(np.searchsorted(x_edges.values, ai[valid], side="right") - 1, 0, len(x_edges) - 2)
+        expected = np.zeros(total.shape[1:])
+        np.add.at(expected, (yi, xi), a[valid])
+        np.testing.assert_allclose(total.isel(member=m).values, expected, rtol=1e-12)
+        # Every masked gridcell has valid LAI and AI, so the total is the masked area
+        assert float(total.isel(member=m).sum()) == pytest.approx(float(area.where(mask).sum()), rel=1e-12)
+
+
 def test_pool_by_source(rng, mask, edges):
     """
     pool_by_source pools the members of each source (as pool_members) along `source`, keeping the member

@@ -368,3 +368,18 @@ def test_product_mask_counts_only_the_products_valid_months():
     np.testing.assert_array_equal(rg.product_mask(da, land, 0.6, "test")["product_mask"], [[True, True], [True, False]])
     with pytest.raises(ValueError, match="no valid land data"):
         rg.product_mask(da * np.nan, land, 1.0, "empty")
+
+
+def test_land_area():
+    """
+    Natural Earth land area of a 10 deg target grid (uses the Natural Earth data cached by regionmask): between 0
+    and the cell area, the whole cell in central Africa, 0 in the open Pacific, ~1.47e8 km2 of land globally.
+    """
+    grid = rg.target_grid(10)
+    land = rg.land_area(grid)
+    cell = rg.cell_area(grid.lat.values, grid.lon.values) / 1e6
+    assert land.dims == ("lat", "lon") and land.attrs["units"] == "km2"
+    assert (land >= 0).all() and (land.values <= cell * (1 + 1e-12)).all()
+    assert float(land.sel(lat=5, lon=25)) == pytest.approx(float(cell[9, 20]), rel=1e-3)
+    assert float(land.sel(lat=-5, lon=-145)) == 0
+    assert float(land.sum()) == pytest.approx(1.47e8, rel=0.05)
