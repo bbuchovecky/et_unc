@@ -31,8 +31,8 @@ PROC_ROOT/<family>/qbin/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.n
     the member's binned land area) and n_cells (number of gridcells)
 PROC_ROOT/<family>/qbin/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.sources_pooled.nc
     the same, averaged over the members of each source: (source, y_bin, x_bin)
-FIG_ROOT/<family>/qbin/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.sources_pooled.png
-    land_area_frac of each source
+FIG_ROOT/<family>/qbin/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.png
+    land_area_frac of each source (from the sources_pooled file)
 """
 
 from __future__ import annotations
@@ -165,7 +165,7 @@ def main():
             by_source.to_netcdf(fout)
             print(fout)
 
-            fig = cfg.FIG_ROOT / family / "qbin" / f"{stem}.sources_pooled.png"
+            fig = cfg.FIG_ROOT / family / "qbin" / f"{stem}.png"
             plot_area_frac(
                 by_source["land_area_frac"],
                 title=f"{family} land area by bin, {len(sources)} sources, {kind} edges, {inputs.attrs['time_period']}",
