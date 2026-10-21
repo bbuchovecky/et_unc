@@ -28,14 +28,15 @@ member of every family in FAMILIES, separately:
 Outputs
 -------
 <family> : obs, era5, cmip, fppe, ippe or lens
+<bins>   : lai<N_YBINS>_ai<N_XBINS>, the bin counts, e.g. "lai15_ai15"
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/<family>/regress/<family>.et.regress_lai_ai.<grid>.<period>.nc
+PROC_ROOT/<family>/regress/<family>.et.regress_lai_ai.<bins>.<grid>.<period>.nc
     along (et_samples, member), with the member coords of the inputs (source, ...):
     r2 (predictors = lai, ai, lai+ai), r2_unique_lai, r2_unique_ai, r2_shared,
     intercept, slope_lai, slope_ai, n_samples; eta2 (edges = pooled_all, pooled_<family>)
-FIG_ROOT/all/all.et.regress_lai_ai.<grid>.<period>.png
+FIG_ROOT/all/all.et.regress_lai_ai.<bins>.<grid>.<period>.png
     R2 of LAI, AI, LAI + AI and eta2 of the pooled_all bins, one point per member
 """
 
@@ -173,13 +174,13 @@ def main():
             "area_mask": str(area_path), "model": "OLS, ET ~ LAI + AI with intercept, unweighted samples",
             "et_samples": "annual: every (year, gridcell) annual mean ET; clim: climatological ET per gridcell",
         }
-        fout = cfg.PROC_ROOT / family / "regress" / f"{family}.et.regress_lai_ai.{grid}.{period}.nc"
+        fout = cfg.PROC_ROOT / family / "regress" / f"{family}.et.regress_lai_ai.lai{N_YBINS}_ai{N_XBINS}.{grid}.{period}.nc"
         fout.parent.mkdir(parents=True, exist_ok=True)
         out.to_netcdf(fout)
         print(fout)
         results[family] = out
 
-    fout = FIG_ROOT / f"all.et.regress_lai_ai.{grid}.{period}.png"
+    fout = FIG_ROOT / f"all.et.regress_lai_ai.lai{N_YBINS}_ai{N_XBINS}.{grid}.{period}.png"
     plot_r2_summary(results, title=f"ET variance explained by climatological LAI and AI, {grid}, {period}",
                     fout=fout)
     print(fout)

@@ -19,22 +19,23 @@ Outputs
 <family> : obs, era5, cmip, fppe, ippe or lens
 <var>    : BIN_VARIABLE, et or et_pr
 <edges>  : pooled_all or pooled_<family>
+<bins>   : lai<N_YBINS>_ai<N_XBINS>, the bin counts, e.g. "lai15_ai15"
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<grid>.<period>.nc
+PROC_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<bins>.<grid>.<period>.nc
     per member: (member, stats, y_bin, x_bin), with the member coords of the inputs (source, ...)
-PROC_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<grid>.<period>.sources_pooled.nc
+PROC_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<bins>.<grid>.<period>.sources_pooled.nc
     the members of each source pooled (`binning.pool_members`): (source, stats, y_bin, x_bin).
     Equal to the per-member statistics when every source has one member
-FIG_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
+FIG_ROOT/<family>/qbin/<family>.<var>.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
     of the sources_pooled statistics; bin_mean_signif hatches bins whose mean is not significantly
     different from 0
 
 Family-specific outputs
-PROC_ROOT/obs/qbin/obs.<var>.qbin_<edges>.<grid>.<period>.et_product_std.nc (and FIG_ROOT .png)
+PROC_ROOT/obs/qbin/obs.<var>.qbin_<edges>.<bins>.<grid>.<period>.et_product_std.nc (and FIG_ROOT .png)
     std of the bin mean ET (or ET/P) across ET products, for each (lai, pr, rn) product set
-PROC_ROOT/lens/qbin/lens.<var>.qbin_<edges>.<grid>.<period>.members_pooled.nc
+PROC_ROOT/lens/qbin/lens.<var>.qbin_<edges>.<bins>.<grid>.<period>.members_pooled.nc
     statistics of all LENS2 members' samples pooled
 """
 
@@ -105,7 +106,7 @@ def main():
                     "n_members": n_members, "area_mask": str(area_path),
                 },
             )
-            stem = f"{family}.{BIN_VARIABLE}.qbin_{kind}.{grid}.{period}"
+            stem = f"{family}.{BIN_VARIABLE}.qbin_{kind}.lai{N_YBINS}_ai{N_XBINS}.{grid}.{period}"
             fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.nc"
             fout.parent.mkdir(parents=True, exist_ok=True)
             bs.to_netcdf(fout)

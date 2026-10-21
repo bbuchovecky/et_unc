@@ -59,8 +59,7 @@ import etunc.temporal as temporal
 # Settings
 # ------------------------------------------------------------------
 
-# FAMILIES = cfg.FAMILIES  # every family pooled into the common area and the pooled_all edges
-FAMILIES = ("obs", "era5", "cmip", "fppe", "lens") #, "ippe")
+FAMILIES = cfg.FAMILIES  # every family pooled into the common area and the pooled_all edges
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
 N_BINS = {"lai": cfg.N_YBINS, "ai": cfg.N_XBINS}

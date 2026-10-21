@@ -84,6 +84,9 @@ matplotlib = "==3.10.8"
 cartopy = "==0.25.0"
 freetype = "==2.14.1"       # text rendering in PNGs
 
+# --- Downloads ---
+cdsapi = "==0.7.7"          # scripts/download/download_clara_a3.py (Copernicus CDS)
+
 # --- Tests / notebooks ---
 pytest = "==9.1.1"
 ipykernel = "*"
@@ -104,6 +107,7 @@ prep-ippe = "scripts/run_logged.sh scripts/prep_ippe.py"
 make-edges = "scripts/run_logged.sh scripts/make_edges.py"
 bin-all = "scripts/run_logged.sh scripts/bin_all.py"
 bin-all-clim = "scripts/run_logged.sh scripts/bin_all_clim.py"
+bin-area = "scripts/run_logged.sh scripts/bin_area.py"
 bin-plumber = "scripts/run_logged.sh scripts/bin_plumber.py"
 bin-plumber-clim = "scripts/run_logged.sh scripts/bin_plumber_clim.py"
 regress-lai-aridity = "scripts/run_logged.sh scripts/regress_lai_aridity.py"

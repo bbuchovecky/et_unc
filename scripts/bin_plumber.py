@@ -35,6 +35,7 @@ Outputs
 -------
 <var>    : BIN_VARIABLE, et or et_pr
 <edges>  : pooled_all or pooled_obs
+<bins>   : lai<N_YBINS>_ai<N_XBINS>, the bin counts, e.g. "lai15_ai15"
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
@@ -44,9 +45,9 @@ PROC_ROOT/plumber/plumber.inputs.<grid>.<period>.nc
     n_years, time_period and in_common_area; `lai_pr_rn` has coords obs_source, <v>_product,
     clim_n_years and clim_period; with BIN_VARIABLE = "et_pr", also et_pr (lai_pr_rn, member, year).
     Also the input of bin_plumber_clim.py
-PROC_ROOT/plumber/qbin/plumber.<var>.qbin_<edges>.<grid>.<period>.nc
+PROC_ROOT/plumber/qbin/plumber.<var>.qbin_<edges>.<bins>.<grid>.<period>.nc
     (lai_pr_rn, stats, y_bin, x_bin), the samples of all towers pooled
-FIG_ROOT/plumber/qbin/plumber.<var>.qbin_<edges>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
+FIG_ROOT/plumber/qbin/plumber.<var>.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
     as in bin_all.py, one panel per product set; bin_mean_signif hatches bins whose mean is not
     significantly different from 0
 
@@ -364,7 +365,7 @@ def main():
         )
         # bin_stats keeps only the coords of the binned variable along the member dim, so add those of the product sets
         bs = bs.assign_coords({c: inputs[c] for c in inputs.coords if inputs[c].dims == ("lai_pr_rn",)})
-        stem = f"{FAMILY}.{BIN_VARIABLE}.qbin_{kind}.{grid}.{period}"
+        stem = f"{FAMILY}.{BIN_VARIABLE}.qbin_{kind}.lai{N_YBINS}_ai{N_XBINS}.{grid}.{period}"
         fout = cfg.PROC_ROOT / FAMILY / "qbin" / f"{stem}.nc"
         fout.parent.mkdir(parents=True, exist_ok=True)
         bs.to_netcdf(fout)

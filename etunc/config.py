@@ -81,8 +81,8 @@ BIN_VARIABLE = "et"
 FAMILIES = ("obs", "era5", "cmip", "fppe", "ippe", "lens")
 
 # Binning settings
-N_XBINS = 15         # aridity index
-N_YBINS = 15         # LAI
+N_XBINS = 20         # aridity index
+N_YBINS = 20         # LAI
 SIGNIF_ALPHA = 0.05  # t-test of bin mean ET against 0 (95% confidence)
 SIGNIF_N_MIN = 10    # bins with <= this many samples are never significant
 

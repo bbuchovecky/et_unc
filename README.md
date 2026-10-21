@@ -25,7 +25,7 @@ All of these paths are set in `etunc/config.py`.
 | `etunc/config.py` | Paths, domain and pipeline constants (`TIME_SLICE`, `LAT_BNDS`, `LF_THRESH`, `NA_THRESH`, `MIN_ANNUAL_ET`, `FAMILIES`, L = 2.45e6 J/kg, ...), and the paths of the files passed between the pipeline scripts |
 | `etunc/units.py` | Unit conversions to W/m², net radiation for each data source |
 | `etunc/temporal.py` | Annual means and climatologies (`aggregate`: complete years, missing-month rules, missing-year report), shared years, period strings |
-| `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders (`regrid_with_na_thresh`), grid checks and snapping, native land masks (`landfrac_mask`, `landne_mask`, `mask_to_land`), the common area mask (`valid_area`, `common_area`), cell areas |
+| `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders (`regrid_with_na_thresh`), grid checks and snapping, native land masks (`landfrac_mask`, `landne_mask`, `mask_to_land`), the common area mask (`valid_area`, `common_area`), cell areas (`cell_area`) and Natural Earth land areas (`land_area`) |
 | `etunc/edges.py` | Aridity index, hierarchical weights and weighted quantile edges, saved edges |
 | `etunc/binning.py` | ET outlier filter, bin statistics, post-processing |
 | `etunc/regression.py` | OLS regression of ET on climatological LAI and AI, and the partition of R² between them |
@@ -80,6 +80,7 @@ qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs  # any prep-* as a Casper job (F
 pixi run make-edges       # steps 12-13: common area mask and pooled LAI/AI edges (needs every prep-*)
 pixi run bin-all          # step 14: binned ET of every family with the pooled_all and pooled_<family> edges
 pixi run bin-all-clim     # step 14 with climatological ET: one sample per gridcell instead of per gridcell-year
+pixi run bin-area         # step 14 for land area: total Natural Earth land area in each bin, per member and source
 pixi run bin-plumber      # step 14 for the PLUMBER2 flux towers: tower ET binned by the obs LAI/AI at the nearest gridcell
 pixi run bin-plumber-clim # step 14 for the PLUMBER2 flux towers with climatological ET: one sample per tower (needs bin-plumber)
 pixi run make-mask        # common valid-data mask of the obs products

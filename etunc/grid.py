@@ -46,6 +46,8 @@ Land masks and area masks
 land fraction > LF_THRESH) and `landne_mask` (obs: Natural Earth land) are
 the native land masks of step 5, applied with `mask_to_land`. `valid_area`
 and `common_area` build the area mask shared by every family (step 12).
+`cell_area` gives cell areas, and `land_area` the Natural Earth land area of
+each target-grid cell (binned by scripts/bin_area.py).
 """
 from __future__ import annotations
 
@@ -462,3 +464,20 @@ def cell_area(
 
     return areas
 
+
+
+def land_area(grid: xr.Dataset | xr.DataArray) -> xr.DataArray:
+    """
+    Land area [km2] of each cell of a regular target grid (`target_grid`): the
+    cell area (`cell_area`) times the fraction of the cell covered by Natural
+    Earth land (regionmask `mask_3D_frac_approx`, Natural Earth data cached by
+    regionmask). The same field for every family, so the binned land area
+    (scripts/bin_area.py) differs between families only through their LAI and AI.
+    """
+    # Fractional coverage, unlike `landne_mask` (binary by cell center): coastal cells count only their land part
+    frac = regmask.defined_regions.natural_earth_v5_1_2.land_50.mask_3D_frac_approx(grid.lon, grid.lat)
+    frac = frac.squeeze("region", drop=True).drop_vars(["abbrevs", "names"], errors="ignore")
+    area = (frac * cell_area(grid.lat.values, grid.lon.values) / 1e6).rename("land_area")
+    # New attrs, not those of the region mask
+    area.attrs = {"long_name": "Natural Earth land area of the cell", "units": "km2"}
+    return area
