@@ -101,8 +101,8 @@ def test_bad_names(spec):
 
 
 def test_registered_datasets():
-    """GLEAM and PML are registered, and dataset names are case-insensitive."""
-    assert {"gleam", "pml"} <= set(lo.DATASETS)
+    """GLEAM, PML, SiTHv2 and CLARA-A3 are registered, and dataset names are case-insensitive."""
+    assert {"gleam", "pml", "sith", "clara"} <= set(lo.DATASETS)
     assert lo.get_dataset("PML") is lo.DATASETS["pml"]
 
 
@@ -188,6 +188,30 @@ def test_load_obs_period_files(tmp_path):
     assert np.isnan(da.sel(lat=0.05, lon=0.05)).all()
     np.testing.assert_allclose(da.sel(lat=-0.05), 1.5)
     assert "scale factor" not in da.attrs and da.attrs["units"] == "mm month-1"
+
+
+def test_load_obs_monthly_files(tmp_path):
+    """CLARA-A3 layout: one file per month, {year} twice, {standard_name} directory matched from the path."""
+    s = lo.replace(lo.get_dataset("clara"), root=tmp_path)
+    lat, lon = np.array([-0.125, 0.125]), np.array([-0.125, 0.125])
+    for var, name in (("SRB", "surface_net_downward_radiative_flux"), ("SNS", "surface_net_downward_shortwave_flux")):
+        for year in (2000, 2001):
+            for month in range(1, 13):
+                time = pd.DatetimeIndex([f"{year}-{month:02d}-01"])
+                ds = xr.Dataset({var: (("time", "lat", "lon"), np.full((1, 2, 2), month, "float32"), {"units": "W m-2"})},
+                                coords={"time": time, "lat": lat, "lon": lon})
+                path = tmp_path / f"{name}/{year}/{var}mm{year}{month:02d}01000000319AVPOS01GL.nc"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                ds.to_netcdf(path)
+
+    assert lo.list_variables(s) == ["SNS", "SRB"]
+    assert lo.list_years(s, "SRB") == [2000, 2001]
+    files = lo.find_files(s, "SRB", slice("2001", "2001"))
+    assert len(files) == 12 and all(f.parts[-3] == "surface_net_downward_radiative_flux" for f in files)
+
+    da = lo.load_obs(s, "SRB", slice("2000-11", "2001-02"))
+    assert da.sizes["time"] == 4 and da.attrs["units"] == "W m-2"
+    np.testing.assert_array_equal(da.isel(lat=0, lon=0), [11, 12, 1, 2])  # months in time order
 
 
 def test_at_resolution():

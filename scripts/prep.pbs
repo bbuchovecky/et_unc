@@ -11,7 +11,7 @@
 # through scripts/run_logged.sh, so the full log (with git header) is also saved to
 # WORK_ROOT/logs.
 #
-# Usage (FAMILY is obs, era5, cmip, lens, fppe or ippe):
+# Usage (FAMILY is obs, era5, cmip, lens, fppe, ippe or trendy, the experiment of which is set in prep_trendy.py):
 #   qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs
 #   for f in obs era5 cmip lens fppe ippe; do qsub -N prep_$f -v FAMILY=$f scripts/prep.pbs; done
 # Resources are overridden on the command line, e.g. -l walltime=04:00:00

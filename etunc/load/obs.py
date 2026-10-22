@@ -2,8 +2,8 @@
 etunc.load.obs
 ==============
 Load gridded observational products stored as NetCDF files per variable and
-year (GLEAM v4.3, PML-V2.2) or per variable and multi-year period (SiTHv2) into
-a single DataArray over a time period.
+year (GLEAM v4.3, PML-V2.2), per variable and multi-year period (SiTHv2) or
+per variable and month (CLARA-A3) into a single DataArray over a time period.
 
 Each product is described by an ``ObsDataset`` in ``DATASETS``: its root
 directory, a file path template, its versions and temporal frequencies, and
@@ -15,9 +15,11 @@ DataArray with dims (time, lat, lon), latitude ascending and longitude in
 To add a product, register another ``ObsDataset`` (see ``register_dataset``).
 The path template may use the fields {version}, {freq}, {freq_dir}, {freq_tag},
 {var} and either {year} (one file per year) or {year_start} and {year_end}
-(one file per period, e.g. A1982_2022). A template without any year field (one
-file holding every year) also works. Only files overlapping the requested
-years are opened, and the time selection is applied after opening.
+(one file per period, e.g. A1982_2022), plus {month} with {year} (one file per
+month). Any other field (e.g. {standard_name}) matches any text in that part of
+the path. A template without any year field (one file holding every year) also
+works. Only files overlapping the requested years are opened, and the time
+selection is applied after opening.
 
 ``load_obs_regridded`` reads the native files and conservatively regrids each time step in memory onto
 ``etunc.grid.target_grid(res)`` (used by make_mask.py and
@@ -42,6 +44,7 @@ Example
 >>> et = lo.load_obs("pml", "ET", slice("1995", "2014"), version="V2.2c")
 >>> et = lo.load_obs("pml", "ET", slice("2003", "2005"), version="V2.2a-MODIS", freq="8-day")
 >>> et = lo.load_obs("sith", "ET", slice("1995", "2014"), freq="yearly")
+>>> rn = lo.load_obs("clara", "SRB", slice("1995", "2014"))             # W m-2, monthly means
 >>> et = lo.load_obs_regridded("gleam", "E", slice("1995", "2014"), 0.5)  # regridded in memory
 >>> et = lo.load_obs("gleam", "E", slice("1995", "2014"), res="1")       # saved 1 deg files (deprecated)
 >>> lo.list_variables("gleam"), lo.list_years("pml", "ET", version="V2.2b")
@@ -50,9 +53,10 @@ Example
 
 Notes
 -----
-- Monthly and yearly files of all products hold period *totals* (mm/month,
-  mm/year). PML 8-day and half-month files hold daily rates (mm/day).
-  ``etunc.units.accumulation_to_flux`` converts any of these to kg m-2 s-1.
+- Monthly and yearly files of the ET products (GLEAM, PML, SiTHv2) hold period
+  *totals* (mm/month, mm/year). PML 8-day and half-month files hold daily
+  rates (mm/day). ``etunc.units.accumulation_to_flux`` converts any of these
+  to kg m-2 s-1. CLARA-A3 files hold monthly mean fluxes in W m-2.
 - PML files from the AVHRR era (V2.2b, and V2.2c before 2001) have
   coordinates offset by up to ~1e-5 deg from the MODIS-era files. Coordinates
   are rounded to ``ObsDataset.coord_decimals`` so every year shares one grid
@@ -67,8 +71,12 @@ Notes
   ("scale factor", global "Fill Value"), dims (time, lon, lat) and float32
   coordinates; the loader decodes them to float32 with NaN, transposes to
   (time, lat, lon) and makes lat/lon float64.
+- CLARA-A3 shortwave (SIS, SNS, and so net radiation SRB) is missing in
+  low-sun months (e.g. Nov-Feb at 45-70N; valid as 0 in polar night), and over
+  much of the tropics and subtropics in Oct-Dec 2000 and Jan 1995. Longwave
+  (SDL, SNL) is nearly complete. The loader leaves these gaps as NaN.
 - Time stamps are kept as stored: GLEAM and SiTHv2 mark the end of each period
-  (1980-01-31, 1980-12-31), PML the start (1980-01-01).
+  (1980-01-31, 1980-12-31), PML and CLARA-A3 the start (1980-01-01).
 """
 
 from __future__ import annotations
@@ -234,6 +242,18 @@ register_dataset(ObsDataset(
     preprocess=_decode_sith,
 ))
 
+# CLARA-A3 surface radiation (EUMETSAT CM SAF, 0.25 deg, 1979-2020), one file per variable and month,
+# e.g. surface_net_downward_radiative_flux/2000/SRBmm20000101000000319AVPOS01GL.nc. Variables (W m-2):
+# SRB net radiation (= SNS + SNL), SNS/SNL net shortwave/longwave, SIS/SDL downwelling shortwave/longwave
+register_dataset(ObsDataset(
+    name="clara",
+    root=OBS_ROOT / "clara-a3",
+    # {standard_name} is the CF standard name directory of {var}, matched from the path
+    template="{standard_name}/{year}/{var}{freq_tag}{year}{month}01000000319AVPOS01GL.nc",
+    versions=("A3",),
+    freqs={"monthly": "mm"},  # "mm": monthly mean
+))
+
 
 def get_dataset(dataset: str | ObsDataset) -> ObsDataset:
     """Look up a registered product by name, or pass an `ObsDataset` through."""
@@ -285,7 +305,7 @@ def _scan(spec: ObsDataset, **fields: str) -> list[tuple[dict[str, str], Path]]:
     """
     Files matching `spec.template` with `fields` filled in, and the values of the
     remaining template fields parsed from each path. Unfilled fields match any
-    path component text (year fields match four digits).
+    path component text (year fields match four digits, {month} two).
     """
     glob_parts, regex_parts, seen = [], [], set()
     for literal, field, _, _ in string.Formatter().parse(spec.template):
@@ -302,12 +322,19 @@ def _scan(spec: ObsDataset, **fields: str) -> list[tuple[dict[str, str], Path]]:
                 # A field used twice (e.g. {var}, {version}) must match the same text both times
                 regex_parts.append(f"(?P={field})")
             else:
-                regex_parts.append(rf"(?P<{field}>\d{{4}})" if field in _YEAR_FIELDS else rf"(?P<{field}>[^/]+)")
+                if field in _YEAR_FIELDS:
+                    regex_parts.append(rf"(?P<{field}>\d{{4}})")
+                elif field == "month":
+                    regex_parts.append(rf"(?P<{field}>\d{{2}})")
+                else:
+                    regex_parts.append(rf"(?P<{field}>[^/]+)")
                 seen.add(field)
     regex = re.compile("".join(regex_parts))
 
+    # Adjacent unfilled fields (e.g. {year}{month}) give "**", which pathlib reads as a recursive glob
+    pattern = re.sub(r"\*+", "*", "".join(glob_parts))
     out = []
-    for path in sorted(spec.root.glob("".join(glob_parts))):
+    for path in sorted(spec.root.glob(pattern)):
         m = regex.fullmatch(path.relative_to(spec.root).as_posix())
         if m:
             out.append((m.groupdict(), path))
@@ -437,7 +464,7 @@ def load_obs(
 
     Parameters
     ----------
-    dataset : registered name ("gleam", "pml", "sith", ...) or an `ObsDataset`.
+    dataset : registered name ("gleam", "pml", "sith", "clara", ...) or an `ObsDataset`.
     var : variable name as used in the directory and file names (e.g. "E", "ET").
     time_slice : passed to ``.sel(time=...)``; only files for the years it
         touches are opened.
@@ -488,7 +515,7 @@ def load_obs(
         join="exact",
         parallel=parallel,
     )
-    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML) of each period, so
+    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML, CLARA-A3) of each period, so
     # slice with year or year-month strings rather than exact dates
     da = ds[var].sel(time=time_slice)
     if lat_bnds is not None:

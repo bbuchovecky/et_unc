@@ -40,7 +40,9 @@ CMIP_CATALOG_ROOT = CMIP_FETCH_ROOT / "catalogs"
 CMIP_CATALOG = CMIP_CATALOG_ROOT / "cmip6_bin.csv"  # evspsbl, lai, pr, radiative fluxes
 CMIP_FX_CATALOG = CMIP_CATALOG_ROOT / "cmip6_fx_glade.csv"  # one sftlf file per model
 
-# ESGF_CACHE_CATALOG = CMIP_FETCH_ROOT / "manifests" / "esgf_cache_catalog.csv"  # I don't think this is necessary anymore
+# TRENDY (GCB2025) DGVM output, <MODEL>/<experiment dir>/<prefix>_<S2|S3>_<var>.nc, and the forcing in
+# crujra3/ (CRU-JRA v3) and Radiation/ (scripts/download/trendy/)
+TRENDY_ROOT = Path("/glade/campaign/univ/uwas0155/trendyv14-gcb2025")
 
 
 # ------------------------------------------------------------------
@@ -49,7 +51,6 @@ CMIP_FX_CATALOG = CMIP_CATALOG_ROOT / "cmip6_fx_glade.csv"  # one sftlf file per
 PROJ_ROOT = Path("/glade/u/home/bbuchovecky/projects/et_unc")
 FIG_ROOT = PROJ_ROOT / "fig"
 
-# WORK_ROOT = Path("/glade/derecho/scratch/bbuchovecky/et_unc")
 WORK_ROOT = Path("/glade/work/bbuchovecky/et_unc")
 PROC_ROOT = WORK_ROOT / "proc"
 BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
@@ -126,7 +127,7 @@ def summarize():
     print(f"{'CMIP_CATALOG_ROOT':18} = {CMIP_CATALOG_ROOT}")
     print(f"{'CMIP_CATALOG':18} = {CMIP_CATALOG}")
     print(f"{'CMIP_FX_CATALOG':18} = {CMIP_FX_CATALOG}")
-    # print(f"{'ESGF_CACHE_CATALOG':18} = {ESGF_CACHE_CATALOG}")
+    print(f"{'TRENDY_ROOT':18} = {TRENDY_ROOT}")
     print("\nOutput Paths:")
     print("-------------")
     print(f"{'WORK_ROOT':18} = {WORK_ROOT}")

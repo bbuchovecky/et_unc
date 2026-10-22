@@ -30,12 +30,12 @@ All of these paths are set in `etunc/config.py`.
 | `etunc/binning.py` | ET outlier filter, bin statistics, post-processing |
 | `etunc/regression.py` | OLS regression of ET on climatological LAI and AI, and the partition of R² between them |
 | `etunc/plotting.py` | Maps, LAI/AI histograms, edge plots, bin heatmaps |
-| `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH), `cmip`, `cesm`, `era5`. Each `load_native` returns raw monthly fields on the native grid in native units; the model loaders also have `load_land_fraction` |
+| `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH), `cmip`, `cesm`, `era5`, `trendy` (TRENDY DGVMs and their CRU-JRA precipitation forcing). Each `load_native` returns raw monthly fields on the native grid in native units; the model loaders also have `load_land_fraction` |
 | `etunc/legacy/` | Unmaintained, untested code kept for the notebooks and `scripts/legacy_regrid/`: the former annual loaders, replaced functions, notebook-era helpers |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
 | `docs/binning-workflow.md` | The binning pipeline step by step, with every assumption and choice |
 | `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_*.py`; the analysis `regress_lai_aridity.py`, outside the pipeline, after them), configured by the constants at the top of each file |
-| `scripts/download/` | Download scripts for the obs products |
+| `scripts/download/` | Download scripts for the obs products (and `trendy/` for TRENDY) |
 | `notebooks/` | Exploratory and analysis notebooks |
 | `tests/` | pytest suite (synthetic data, no glade data needed) |
 | `envs/` | Conda environments outside the pixi manifest: `openet.yml`, `lftp.yml` |

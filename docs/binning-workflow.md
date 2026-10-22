@@ -12,6 +12,7 @@ bin_area.py                                             step 14      -> land are
 bin_plumber.py                                          step 14      -> binned ET of the PLUMBER2 flux towers
 bin_plumber_clim.py                                     step 14      -> binned climatological ET of the PLUMBER2 flux towers
 ```
+`prep_trendy.py` (TRENDY DGVMs, one family per experiment: `trendy_s2`, `trendy_s3`) runs steps 1-11 too, but its Rn is a placeholder for now (see [TRENDY](#trendy)), so TRENDY is not in `FAMILIES` and not run by `run_all.sh`.
 Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scripts/run_all.pbs` as one Casper job) runs all of them.
 `regress_lai_aridity.py` is an analysis of the step 14 outputs, not part of the pipeline (see [analyses outside the pipeline](#analyses-outside-the-pipeline)).
 `BIN_VARIABLE` (default `cfg.BIN_VARIABLE = "et"`, set at the top of each prep and bin script) chooses what step 14 bins: `"et"`, annual mean ET, or `"et_pr"`, the annual evaporation ratio ET/P (step 11b). Outputs are named `<family>.<BIN_VARIABLE>.qbin_*` and `<family>.<BIN_VARIABLE>_clim.qbin_*`. The common area mask and the edges (steps 12-13) do not depend on it, so ET and ET/P are binned in the same bins.
@@ -100,12 +101,21 @@ Run by hand after step 14; `scripts/run_all.sh` does not run them.
 
 `regress_lai_aridity.py`: how much of the ET variance in the heatmaps climatological LAI and AI explain. Per member, on exactly the samples of `bin_all.py` (annual) and `bin_all_clim.py` (clim), on the common area and unweighted: OLS fits ET ~ LAI, ET ~ AI and ET ~ LAI + AI (`regression.lai_ai_regression`), the partition of R² into unique LAI, unique AI and shared parts (LAI and AI are correlated), and for comparison the fraction of variance explained by the bin means (η², `binning.between_bin_fraction`) with the `pooled_all` and `pooled_<family>` edges. Climatological predictors cannot explain interannual variability, so the annual R² is at most the between-gridcell share of the variance. Outputs: `PROC_ROOT/<family>/regress/<family>.et.regress_lai_ai.*.nc` and `FIG_ROOT/all/all.et.regress_lai_ai.*.png`.
 
+## TRENDY
+`prep_trendy.py` prepares the TRENDY (GCB2025) DGVMs of one experiment (`EXPERIMENT`: "S2" climate + CO2, "S3" climate + CO2 + land use change) as the family `trendy_s2` or `trendy_s3`, one member (= source) per model. It differs from the other prep scripts in:
+- Step 1 (`load/trendy.py`): the files are not consistent with each other, so every time axis is rebuilt as a monthly series ending in Dec 2024 (the end of every GCB2025 run), checked against the decoded time where it can be decoded; lat/lon names, orders and lon ranges are normalized.
+- P is the CRU-JRA v3 precipitation forcing of every model (6-hourly totals summed to months), not the models' own pr (missing in some models, 12x too small in ED). It runs steps 1-8 once on its own grid and is shared by every model.
+- Step 3: ET is `evapotrans` (kg m-2 s-1). **Rn is a placeholder (all NaN), since the models do not output the radiation terms of the net radiation, so the AI is NaN.** TRENDY is therefore not in `FAMILIES` and not run by `run_all.sh`.
+- Step 5: Natural Earth land (`grid.landne_mask`), since few models provide a land fraction and some fill the ocean with 0; annual LAI missing on land is set to 0, as for CMIP6.
+- Models: every model with `evapotrans` and `lai` (ISAM has no lai), minus `OMIT_MODELS`: CARDAMOM (2003-2024 only) and LPJml, LPJwsl, LPX-Bern and VISIT (implausible LAI, 90th percentile 8-11 m2/m2). CLASSIC S2 is read from its `correctedS2/` upload.
+
 ## code
 Core modules and their respective functions.
 ```
 load/*.py:
 load_native(...)                         # step 1: raw monthly fields in native units
 obs.load_obs(dataset, var, time_slice)   # step 1 for the gridded obs products
+trendy.load_forcing(variable, time_slice)  # step 1 for the TRENDY forcing ("pre": P in mm/month, "dlwrf", "fd")
 load_land_fraction()                     # land fraction and native grid (era5, cmip, cesm)
 
 units.py:
