@@ -28,13 +28,13 @@ pixi run bin-all-clim                                # step 14 with climatologic
 pixi run bin-area                                    # step 14 for land area: total land area in each bin (one sample per gridcell)
 pixi run bin-plumber                                 # step 14 for the PLUMBER2 flux towers (tower ET, obs LAI/AI at the nearest gridcell)
 pixi run bin-plumber-clim                            # step 14 for the PLUMBER2 towers with climatological ET (one sample per tower; reads bin-plumber's inputs)
-pixi run regress-lai-aridity                         # OLS of ET on LAI and AI: variance explained, with the bins' eta2
+pixi run regress-lai-aridity                         # analysis, not pipeline: OLS of ET on LAI and AI, variance explained, with the bins' eta2
 pixi run make-mask                                   # common valid-data mask of the obs products
 pixi run obs-availability                            # data availability of the obs ET products
 scripts/run_logged.sh scripts/prep_obs.py            # what every task runs: output also logged to WORK_ROOT/logs or $LOG_DIR (header: host, python, git commit + branch)
 pixi run kernel                                      # (re)register the `etunc` Jupyter kernel on the pixi env
 qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs      # prep_<FAMILY>.py as a Casper job via run_logged.sh (FAMILY: obs, era5, cmip, lens, fppe, ippe)
-pixi run run-all                                     # scripts/run_all.sh: every prep-*, make-edges, bin-* in order (not regress-lai-aridity, make-mask, obs-availability)
+pixi run run-all                                     # scripts/run_all.sh: the pipeline, every prep-*, make-edges, bin-* in order (not the analyses or make-mask, obs-availability)
 qsub scripts/run_all.pbs                             # run-all as one Casper job (~128 GB)
 qsub scripts/legacy_regrid/regrid_cmip.pbs           # DEPRECATED: saves CMIP6 regridded to 1° (only notebooks read it)
 qsub scripts/legacy_regrid/regrid_obs.pbs            # DEPRECATED: saves GLEAM/PML/SiTH regridded to 0.5° and 1°
@@ -52,7 +52,9 @@ Layout: `etunc/` (library), `etunc/legacy/` (unmaintained code), `scripts/` (run
 - `scripts/bin_all.py`, step 14: for every family in `BIN_FAMILIES`, `binning.bin_stats(member_dim="member", mask=common area)` with both edge sets, per member and with each source's members pooled; with `cfg.AREA_WEIGHTED`, the bin statistics are weighted by each gridcell's land area (`bin_stats(weights=grid.land_area)`, outputs tagged `.area_weighted`, same edges); family-specific outputs (obs spread across ET products, LENS2 members pooled) in a labelled section.
 - `scripts/bin_all_clim.py`, step 14 with climatological ET: as `bin_all.py`, but each member's ET is first averaged over `year` (`temporal.aggregate(et, "clim")`, NaN years skipped), so each gridcell is one sample. Outputs are named `<family>.et_clim[.area_weighted].qbin_*`.
 - `scripts/bin_area.py`, step 14 for land area: each gridcell of the common area, binned by its member's climatological LAI and AI, with its land area as the value (`grid.land_area`: target-grid cell area times fractional Natural Earth land, one field for every family, since obs have no land fraction). Bin total = `mean` x `count` of `bin_stats`; sources average their members. Outputs `<family>.land_area.qbin_*` (`land_area` km2, `land_area_frac`, `n_cells`).
-- `scripts/regress_lai_aridity.py`, after step 14: per member, OLS of ET on climatological LAI and AI (`regression.lai_ai_regression`: R² of ET ~ LAI, ~ AI, ~ LAI + AI and its unique/shared partition) on the samples of `bin_all.py` and `bin_all_clim.py`, with the η² of the bins (`binning.between_bin_fraction`) for comparison. Saved at `PROC_ROOT/<family>/regress/`.
+
+**Analyses outside the pipeline**, run by hand after step 14 (not by `scripts/run_all.sh`):
+- `scripts/regress_lai_aridity.py`: per member, OLS of ET on climatological LAI and AI (`regression.lai_ai_regression`: R² of ET ~ LAI, ~ AI, ~ LAI + AI and its unique/shared partition) on the samples of `bin_all.py` and `bin_all_clim.py`, with the η² of the bins (`binning.between_bin_fraction`) for comparison. Saved at `PROC_ROOT/<family>/regress/`.
 
 **Load modules are as simple as possible:** each `load_native` does step 1 only and returns raw monthly fields on the native grid, in native units, with lon in [-180, 180] and lat ascending (`format_grid`): `il.load_native(variable, product, time_slice)` (DataArray, fill values NaN), `le.load_native(codes, time_slice)` ({code: DataArray}), `cmip.load_native(loader, sid, members, time_slice, variables=, experiment_id=)` ({variable: (member, time, lat, lon)} with `member_id`), `lc.load_native("lens"|"fppe"|"ippe", members, time_slice, variables={CESM variable: gcomp})`. The gridded obs products are read with `lo.load_obs` (lazy, per-year files). `le/cmip/lc.load_land_fraction` return (land fraction [0-1], native grid with cell edges). Monthly regridded loaders for `make_mask.py` and `obs_et_availability.py`: `il.load_ilamb`, `lo.load_obs_regridded`.
 

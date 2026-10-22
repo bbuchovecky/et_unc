@@ -11,9 +11,9 @@ bin_all_clim.py                                         step 14      -> binned c
 bin_area.py                                             step 14      -> land area in each bin, for every family
 bin_plumber.py                                          step 14      -> binned ET of the PLUMBER2 flux towers
 bin_plumber_clim.py                                     step 14      -> binned climatological ET of the PLUMBER2 flux towers
-regress_lai_aridity.py                                  after 14     -> ET variance explained by LAI and AI (OLS)
 ```
-Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scripts/run_all.pbs` as one Casper job) runs all of them except `regress_lai_aridity.py`.
+Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scripts/run_all.pbs` as one Casper job) runs all of them.
+`regress_lai_aridity.py` is an analysis of the step 14 outputs, not part of the pipeline (see [analyses outside the pipeline](#analyses-outside-the-pipeline)).
 `BIN_VARIABLE` (default `cfg.BIN_VARIABLE = "et"`, set at the top of each prep and bin script) chooses what step 14 bins: `"et"`, annual mean ET, or `"et_pr"`, the annual evaporation ratio ET/P (step 11b). Outputs are named `<family>.<BIN_VARIABLE>.qbin_*` and `<family>.<BIN_VARIABLE>_clim.qbin_*`. The common area mask and the edges (steps 12-13) do not depend on it, so ET and ET/P are binned in the same bins.
 `AREA_WEIGHTED` (default `cfg.AREA_WEIGHTED = False`) makes `bin_all.py` and `bin_all_clim.py` weight each sample by its gridcell's land area (`rg.land_area`, one field for every family) in the bin statistics. Outputs then carry `.area_weighted` after the variable (e.g. `<family>.et.area_weighted.qbin_*`, `<family>.et_clim.area_weighted.qbin_*`). The common area mask and the edges do not depend on it, so weighted and unweighted runs use the same bins.
 The bin counts (`N_YBINS` for LAI, `N_XBINS` for AI in `etunc/config.py`) are in the file names, so runs with different counts do not overwrite each other: edges are named `<kind>.<lai|ai>_clim.<n>_quantiles.*`, and the outputs of step 14 and `regress_lai_aridity.py` carry `lai<N_YBINS>_ai<N_XBINS>` (e.g. `<family>.et.qbin_pooled_all.lai15_ai15.1deg.199501-201412.nc`). The common area mask does not depend on them.
@@ -93,9 +93,12 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 
 `bin_plumber_clim.py`: `bin_plumber.py` with climatological ET, as `bin_all_clim.py`. It reads the PLUMBER2 inputs of `bin_plumber.py`, so the towers and years follow the same consecutive-year requirement (`min_consecutive_years` in the inputs attrs). Each tower's ET is averaged over its run (`temporal.aggregate(et, "clim")`), so each tower is one sample and weighs equally in its bin. Outputs are named `plumber.et_clim.qbin_*`.
 
-`regress_lai_aridity.py`: how much of the ET variance in the heatmaps climatological LAI and AI explain. Per member, on exactly the samples of `bin_all.py` (annual) and `bin_all_clim.py` (clim), on the common area and unweighted: OLS fits ET ~ LAI, ET ~ AI and ET ~ LAI + AI (`regression.lai_ai_regression`), the partition of R² into unique LAI, unique AI and shared parts (LAI and AI are correlated), and for comparison the fraction of variance explained by the bin means (η², `binning.between_bin_fraction`) with the `pooled_all` and `pooled_<family>` edges. Climatological predictors cannot explain interannual variability, so the annual R² is at most the between-gridcell share of the variance. Outputs: `PROC_ROOT/<family>/regress/<family>.et.regress_lai_ai.*.nc` and `FIG_ROOT/all/all.et.regress_lai_ai.*.png`.
-
 **TODO:** For testing the sensitivity to resolution, keep model output at native resolution by skipping step 7 (needs the common area mask on each native grid).
+
+## analyses outside the pipeline
+Run by hand after step 14; `scripts/run_all.sh` does not run them.
+
+`regress_lai_aridity.py`: how much of the ET variance in the heatmaps climatological LAI and AI explain. Per member, on exactly the samples of `bin_all.py` (annual) and `bin_all_clim.py` (clim), on the common area and unweighted: OLS fits ET ~ LAI, ET ~ AI and ET ~ LAI + AI (`regression.lai_ai_regression`), the partition of R² into unique LAI, unique AI and shared parts (LAI and AI are correlated), and for comparison the fraction of variance explained by the bin means (η², `binning.between_bin_fraction`) with the `pooled_all` and `pooled_<family>` edges. Climatological predictors cannot explain interannual variability, so the annual R² is at most the between-gridcell share of the variance. Outputs: `PROC_ROOT/<family>/regress/<family>.et.regress_lai_ai.*.nc` and `FIG_ROOT/all/all.et.regress_lai_ai.*.png`.
 
 ## code
 Core modules and their respective functions.

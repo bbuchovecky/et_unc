@@ -25,13 +25,15 @@ from etunc.config import DPI, HIST_BINS, LAT_BNDS, PROJECTION
 
 # quick_map style of each variable's climatology map (obs and CMIP6 names)
 MAP_KWARGS = {
-    "et":      {"cmap": "YlGnBu"},
-    "et_pr":   {"cmap": "YlGnBu"},
-    "evspsbl": {"cmap": "YlGnBu"},
-    "lai":     {"cmap": "Greens"},
-    "pr":      {"cmap": "Blues"},
-    "rn":      {"cmap": "YlOrRd", "vmin": None},  # Rn can be negative; quick_map's default vmin is 0
-    "ai":      {"cmap": "BrBG_r"},
+    "et":        {"cmap": "YlGnBu"},
+    "et_pr":     {"cmap": "YlGnBu"},
+    "evspsbl":   {"cmap": "YlGnBu"},
+    "lai":       {"cmap": "Greens"},
+    "pr":        {"cmap": "Blues"},
+    "rn":        {"cmap": "YlOrRd", "vmin": None},  # Rn can be negative; quick_map's default vmin is 0
+    "ai":        {"cmap": "BrBG_r"},
+    "land_area": {"cmap": "RdPu"},
+    "land_area_fraction": {"cmap": "RdPu"},
 }
 
 

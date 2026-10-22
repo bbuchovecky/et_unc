@@ -8,8 +8,9 @@
 #
 # Not run here:
 #   - scripts/download/                       the data downloads
-#   - make_mask.py, obs_et_availability.py,   diagnostics, no pipeline step reads them
-#     regress_lai_aridity.py
+#   - regress_lai_aridity.py,                 analyses of the step 14 outputs, not part
+#     plot_variance_metrics.py                of the pipeline
+#   - make_mask.py, obs_et_availability.py    diagnostics, no pipeline step reads them
 
 set -euo pipefail
 

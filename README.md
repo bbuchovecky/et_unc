@@ -34,7 +34,7 @@ All of these paths are set in `etunc/config.py`.
 | `etunc/legacy/` | Unmaintained, untested code kept for the notebooks and `scripts/legacy_regrid/`: the former annual loaders, replaced functions, notebook-era helpers |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
 | `docs/binning-workflow.md` | The binning pipeline step by step, with every assumption and choice |
-| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_all.py` or `bin_all_clim.py`; `regress_lai_aridity.py` after them), configured by the constants at the top of each file |
+| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_*.py`; the analysis `regress_lai_aridity.py`, outside the pipeline, after them), configured by the constants at the top of each file |
 | `scripts/download/` | Download scripts for the obs products |
 | `notebooks/` | Exploratory and analysis notebooks |
 | `tests/` | pytest suite (synthetic data, no glade data needed) |
@@ -83,6 +83,10 @@ pixi run bin-all-clim     # step 14 with climatological ET: one sample per gridc
 pixi run bin-area         # step 14 for land area: total Natural Earth land area in each bin, per member and source
 pixi run bin-plumber      # step 14 for the PLUMBER2 flux towers: tower ET binned by the obs LAI/AI at the nearest gridcell
 pixi run bin-plumber-clim # step 14 for the PLUMBER2 flux towers with climatological ET: one sample per tower (needs bin-plumber)
+
+# Analyses of the step 14 outputs, not part of the pipeline
+pixi run regress-lai-aridity   # OLS of ET on LAI and AI: variance explained, with the bins' eta2
+
 pixi run make-mask        # common valid-data mask of the obs products
 pixi run obs-availability # data availability of the obs ET products
 qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
@@ -111,7 +115,7 @@ large node (~128 GB), so run it as one Casper job:
 qsub scripts/run_all.pbs  # or, on a large interactive node: pixi run run-all
 ```
 
-It does not run `regress-lai-aridity`, `make-mask` or `obs-availability`.
+It runs only the pipeline: not the analyses (`regress-lai-aridity`) or the diagnostics (`make-mask`, `obs-availability`).
 
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.
