@@ -34,6 +34,8 @@ pixi run obs-availability                            # data availability of the 
 scripts/run_logged.sh scripts/prep_obs.py            # what every task runs: output also logged to WORK_ROOT/logs or $LOG_DIR (header: host, python, git commit + branch)
 pixi run kernel                                      # (re)register the `etunc` Jupyter kernel on the pixi env
 qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs      # prep_<FAMILY>.py as a Casper job via run_logged.sh (FAMILY: obs, era5, cmip, lens, fppe, ippe)
+pixi run run-all                                     # scripts/run_all.sh: every prep-*, make-edges, bin-* in order (not regress-lai-aridity, make-mask, obs-availability)
+qsub scripts/run_all.pbs                             # run-all as one Casper job (~128 GB)
 qsub scripts/legacy_regrid/regrid_cmip.pbs           # DEPRECATED: saves CMIP6 regridded to 1° (only notebooks read it)
 qsub scripts/legacy_regrid/regrid_obs.pbs            # DEPRECATED: saves GLEAM/PML/SiTH regridded to 0.5° and 1°
 ```

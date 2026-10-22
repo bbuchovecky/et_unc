@@ -13,7 +13,7 @@ bin_plumber.py                                          step 14      -> binned E
 bin_plumber_clim.py                                     step 14      -> binned climatological ET of the PLUMBER2 flux towers
 regress_lai_aridity.py                                  after 14     -> ET variance explained by LAI and AI (OLS)
 ```
-Run them in that order.
+Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scripts/run_all.pbs` as one Casper job) runs all of them except `regress_lai_aridity.py`.
 `BIN_VARIABLE` (default `cfg.BIN_VARIABLE = "et"`, set at the top of each prep and bin script) chooses what step 14 bins: `"et"`, annual mean ET, or `"et_pr"`, the annual evaporation ratio ET/P (step 11b). Outputs are named `<family>.<BIN_VARIABLE>.qbin_*` and `<family>.<BIN_VARIABLE>_clim.qbin_*`. The common area mask and the edges (steps 12-13) do not depend on it, so ET and ET/P are binned in the same bins.
 The bin counts (`N_YBINS` for LAI, `N_XBINS` for AI in `etunc/config.py`) are in the file names, so runs with different counts do not overwrite each other: edges are named `<kind>.<lai|ai>_clim.<n>_quantiles.*`, and the outputs of step 14 and `regress_lai_aridity.py` carry `lai<N_YBINS>_ai<N_XBINS>` (e.g. `<family>.et.qbin_pooled_all.lai15_ai15.1deg.199501-201412.nc`). The common area mask does not depend on them.
 Every script prints `etunc/config.py` and its own settings into its log (`scripts/run_logged.sh`).

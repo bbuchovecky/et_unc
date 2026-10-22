@@ -102,14 +102,16 @@ the land mask (step 5) differ.
 
 ## To reproduce results
 
+After the data are downloaded (`scripts/download/`), `scripts/run_all.sh` runs
+every step in order (all prep-*, make-edges, every bin-*),
+each through `scripts/run_logged.sh`, and stops at the first failure. It needs a
+large node (~128 GB), so run it as one Casper job:
+
 ```bash
-qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs
-qsub -N prep_cmip -v FAMILY=cmip scripts/prep.pbs
-qsub -N prep_fppe -v FAMILY=ippe scripts/prep.pbs
-qsub -N prep_ippe -v FAMILY=ippe scripts/prep.pbs
-qsub -N prep_lens -v FAMILY=lens scripts/prep.pbs
-pixi run make-edges && pixi run bin-all && pixi run bin-all-clim && pixi run bin-plumber && pixi run bin-plumber-clim
+qsub scripts/run_all.pbs  # or, on a large interactive node: pixi run run-all
 ```
+
+It does not run `regress-lai-aridity`, `make-mask` or `obs-availability`.
 
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.

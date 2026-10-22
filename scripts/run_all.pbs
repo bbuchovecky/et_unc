@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -N run_all
+#PBS -A UWAS0155
+#PBS -q casper
+#PBS -l walltime=4:00:00
+#PBS -l select=1:ncpus=8:mem=128GB
+#PBS -j oe
+#PBS -o /glade/work/bbuchovecky/et_unc/logs/
+
+# The whole pipeline (scripts/run_all.sh) as one Casper job. Each step's full log
+# (with git header) is also saved to WORK_ROOT/logs by scripts/run_logged.sh.
+#
+# Usage:
+#   qsub scripts/run_all.pbs
+# Resources are overridden on the command line, e.g. -l walltime=12:00:00
+
+REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
+
+set -euo pipefail
+
+export OMP_NUM_THREADS="${PBS_NCPUS:-8}"
+
+cd "${REPO_DIR}"
+
+echo "Job ${PBS_JOBID} (scripts/run_all.sh) started on $(hostname) at $(date)"
+echo "OMP_NUM_THREADS=${OMP_NUM_THREADS}"
+
+scripts/run_all.sh
+
+echo "Job ${PBS_JOBID} finished at $(date)"
