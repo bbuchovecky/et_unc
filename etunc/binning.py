@@ -9,7 +9,8 @@ docs/binning-workflow.md and written out step by step in the scripts.
 - `drop_et_outliers`: the plausibility filter on annual mean ET (step 6).
 - `evaporation_ratio`: annual ET/P, the alternative variable to bin (step 11b).
 - `bin_stats`: statistics of every (year, gridcell) ET sample, binned by its
-  gridcell's climatological LAI and AI (step 14), optionally per member.
+  gridcell's climatological LAI and AI (step 14), optionally per member and
+  optionally weighted (e.g. by the gridcell's land area, `grid.land_area`).
 - Post-processing: `pool_members`, `pool_by_source`, `drop_zero_width_bins`,
   `frac_valid`, `test_significance`, `between_bin_fraction`, `et_product_spread`,
   `ensemble_spread`.
@@ -25,8 +26,10 @@ import xarray as xr
 from etunc.config import LAT_BNDS
 
 
-# Order of the `stats` dimension returned by `bin_stats`
-STATS = ("mean", "var_pop", "var_samp", "count", "count_pos")
+# Order of the `stats` dimension returned by `bin_stats`. `count` and `count_pos` are raw sample
+# counts; `sum_w` is the sum of the sample weights and `n_eff` the Kish effective sample size
+# (both equal `count` when unweighted)
+STATS = ("mean", "var_pop", "var_samp", "count", "count_pos", "sum_w", "n_eff")
 
 # Labels of the variables that can be binned (config.BIN_VARIABLE), for titles
 TARGET_LABELS = {"et": "ET", "et_pr": "ET/P"}
@@ -83,14 +86,16 @@ def _bin_stats_flat(
     x: np.ndarray,
     y_edges: np.ndarray,
     x_edges: np.ndarray,
+    weights: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     2-D bin statistics of `target` over (y, x) for flat arrays, via np.bincount.
 
     Samples are assigned with searchsorted(side='right'), so values equal to
     duplicate edges go to the last duplicate bin, and values outside the edges
-    are clipped into the first/last bin. Samples with NaN in any of the three
-    arrays are dropped.
+    are clipped into the first/last bin. Samples with NaN in any of the arrays
+    are dropped. With `weights` (e.g. land area), the mean and variances are
+    weighted; without, every sample has weight 1.
 
     Returns
     -------
@@ -98,6 +103,8 @@ def _bin_stats_flat(
     """
     n_y = len(y_edges) - 1
     n_x = len(x_edges) - 1
+    if weights is None:
+        weights = np.ones_like(target, dtype=np.float64)
 
     # Bins are [lower, upper): a value on an interior edge goes to the bin above it. The clip
     # puts the maximum (== last edge, which side="right" places past the last bin) into the
@@ -106,28 +113,35 @@ def _bin_stats_flat(
     x_idx = np.clip(np.searchsorted(x_edges, x, side="right") - 1, 0, n_x - 1)
 
     # NaN samples got a (clipped) index above; they are dropped here
-    valid = np.isfinite(target) & np.isfinite(y) & np.isfinite(x)
-    v = target[valid]
+    valid = np.isfinite(target) & np.isfinite(y) & np.isfinite(x) & np.isfinite(weights)
+    v, w = target[valid], weights[valid]
     lin_idx = y_idx[valid] * n_x + x_idx[valid]
     total_bins = n_y * n_x
 
-    # Unweighted: every (year, gridcell) sample counts once, whatever its cell area
+    # Raw counts: every sample counts once, whatever its weight
     count = np.bincount(lin_idx, minlength=total_bins).astype(np.float64)
-    bin_sum = np.bincount(lin_idx, weights=v, minlength=total_bins)
-    bin_sum2 = np.bincount(lin_idx, weights=v * v, minlength=total_bins)
     count_pos = np.bincount(lin_idx, weights=(v > 0).astype(np.float64), minlength=total_bins)
+    # Weighted sums (with unit weights, sum_w == count and the statistics are unweighted)
+    sum_w = np.bincount(lin_idx, weights=w, minlength=total_bins)
+    sum_w2 = np.bincount(lin_idx, weights=w * w, minlength=total_bins)
+    bin_sum = np.bincount(lin_idx, weights=w * v, minlength=total_bins)
+    bin_sum2 = np.bincount(lin_idx, weights=w * v * v, minlength=total_bins)
 
     with np.errstate(invalid="ignore", divide="ignore"):
-        mean = np.where(count > 0, bin_sum / count, np.nan)
-        ex2 = np.where(count > 0, bin_sum2 / count, np.nan)
+        mean = np.where(count > 0, bin_sum / sum_w, np.nan)
+        ex2 = np.where(count > 0, bin_sum2 / sum_w, np.nan)
+        # Kish effective sample size (sum w)^2 / sum w^2, = count for unit weights; 0 in empty bins
+        n_eff = np.where(count > 0, sum_w * sum_w / sum_w2, 0.0)
 
     # Var(X) = E[X^2] - E[X]^2, floored at 0 against round-off
     var_pop = np.maximum(ex2 - mean * mean, 0.0)
-    # Unbiased sample variance (ddof=1)
+    # Unbiased sample variance with the effective sample size (ddof=1 when unweighted)
     with np.errstate(invalid="ignore", divide="ignore"):
-        var_samp = np.where(count > 1, var_pop * count / (count - 1.0), np.nan)
+        var_samp = np.where(n_eff > 1, var_pop * n_eff / (n_eff - 1.0), np.nan)
 
-    return np.stack((mean, var_pop, var_samp, count, count_pos), axis=0).reshape(len(STATS), n_y, n_x)
+    return np.stack(
+        (mean, var_pop, var_samp, count, count_pos, sum_w, n_eff), axis=0,
+    ).reshape(len(STATS), n_y, n_x)
 
 
 def edges_and_attrs(edges: xr.DataArray | np.ndarray) -> tuple[np.ndarray, dict]:
@@ -148,7 +162,7 @@ def _align_exact(*arrays: xr.DataArray) -> list[xr.DataArray]:
         return list(xr.align(*arrays, join="exact"))
     except ValueError as err:
         raise ValueError(
-            "target, y_var, x_var (and mask) must share identical coordinates. Put them on one grid "
+            "target, y_var, x_var (and weights, mask) must share identical coordinates. Put them on one grid "
             "first, e.g. da.reindex_like(ref, method='nearest', tolerance=1e-3)."
         ) from err
 
@@ -160,6 +174,7 @@ def bin_stats(
     y_edges: xr.DataArray | np.ndarray,
     x_edges: xr.DataArray | np.ndarray,
     *,
+    weights: xr.DataArray | None = None,
     mask: xr.DataArray | None = None,
     member_dim: str | None = None,
     y_name: str = "lai",
@@ -181,7 +196,12 @@ def bin_stats(
     target : variable to bin, e.g. annual mean ET (year, lat, lon[, member])
     y_var, x_var : binning variables, e.g. climatological LAI and AI
     y_edges, x_edges : bin edges (from `pooled_bin_edges` or a plain array)
-    mask : optional mask (True/1 = keep) applied to all three fields
+    weights : optional weight of each sample, broadcast like y_var/x_var, e.g.
+        the (lat, lon) land area of `grid.land_area`, repeated over `year` and
+        `member`. The mean and variances are then weighted, `sum_w` is the sum
+        of the weights and `n_eff` the Kish effective sample size. Without
+        weights every sample counts once (sum_w = n_eff = count)
+    mask : optional mask (True/1 = keep) applied to all fields
     member_dim : if given and in the broadcast dims, statistics are computed
         separately for each member; otherwise all samples are pooled
     y_name, x_name : names of the binning variables, stored in attrs
@@ -197,21 +217,25 @@ def bin_stats(
     y_edges, y_edge_attrs = edges_and_attrs(y_edges)
     x_edges, x_edge_attrs = edges_and_attrs(x_edges)
     n_y, n_x = len(y_edges) - 1, len(x_edges) - 1
+    weights_name = "none" if weights is None else (weights.name or "weights")
+    if weights is None:
+        # Unweighted: every sample has weight 1
+        weights = xr.ones_like(y_var)
 
     # join="exact" raises on any coordinate mismatch instead of silently reindexing to NaN
     if mask is not None:
-        target, y_var, x_var, mask = _align_exact(target, y_var, x_var, mask)
+        target, y_var, x_var, weights, mask = _align_exact(target, y_var, x_var, weights, mask)
         keep = mask == 1
         target, y_var, x_var = target.where(keep), y_var.where(keep), x_var.where(keep)
     else:
-        target, y_var, x_var = _align_exact(target, y_var, x_var)
+        target, y_var, x_var, weights = _align_exact(target, y_var, x_var, weights)
 
-    # The key step: (lat, lon) LAI and AI are repeated over `year` (and `member`), so each
-    # (year, gridcell) ET value is one sample. A gridcell's weight in its bin therefore
+    # The key step: (lat, lon) LAI, AI (and weights) are repeated over `year` (and `member`), so
+    # each (year, gridcell) ET value is one sample. A gridcell's weight in its bin therefore
     # scales with its number of valid ET years
-    tgt_b, y_b, x_b = xr.broadcast(target, y_var, x_var)
+    tgt_b, y_b, x_b, w_b = xr.broadcast(target, y_var, x_var, weights)
     dims = tgt_b.dims
-    y_b, x_b = y_b.transpose(*dims), x_b.transpose(*dims)
+    y_b, x_b, w_b = y_b.transpose(*dims), x_b.transpose(*dims), w_b.transpose(*dims)
     if verbose:
         print(f"target: {target.dims} {target.shape} -> {dims} {tgt_b.shape}")
         print(f"y_var: {y_var.dims} {y_var.shape}\nx_var: {x_var.dims} {x_var.shape}")
@@ -219,21 +243,22 @@ def bin_stats(
     per_member = member_dim is not None and member_dim in dims
     if per_member:
         order = (member_dim,) + tuple(d for d in dims if d != member_dim)
-        tgt_b, y_b, x_b = (da.transpose(*order) for da in (tgt_b, y_b, x_b))
+        tgt_b, y_b, x_b, w_b = (da.transpose(*order) for da in (tgt_b, y_b, x_b, w_b))
 
     tgt_np = np.asarray(tgt_b.values, dtype=float)
     y_np = np.asarray(y_b.values, dtype=float)
     x_np = np.asarray(x_b.values, dtype=float)
+    w_np = np.asarray(w_b.values, dtype=float)
 
     if per_member:
         result = np.stack([
-            _bin_stats_flat(tgt_np[m].ravel(), y_np[m].ravel(), x_np[m].ravel(), y_edges, x_edges)
+            _bin_stats_flat(tgt_np[m].ravel(), y_np[m].ravel(), x_np[m].ravel(), y_edges, x_edges, w_np[m].ravel())
             for m in range(tgt_np.shape[0])
         ])
         out_dims = (member_dim, "stats", "y_bin", "x_bin")
     else:
         # Without member_dim, the samples of all members (if any) are pooled into one set of stats
-        result = _bin_stats_flat(tgt_np.ravel(), y_np.ravel(), x_np.ravel(), y_edges, x_edges)
+        result = _bin_stats_flat(tgt_np.ravel(), y_np.ravel(), x_np.ravel(), y_edges, x_edges, w_np.ravel())
         out_dims = ("stats", "y_bin", "x_bin")
 
     if verbose:
@@ -273,6 +298,7 @@ def bin_stats(
             "x_bin_edges": x_edges,
             "n_y_bins": n_y,
             "n_x_bins": n_x,
+            "weights": weights_name,
             **(attrs or {}),
         },
     )
@@ -283,19 +309,29 @@ def bin_stats(
 
 
 def pool_members(bs: xr.DataArray) -> xr.DataArray:
-    """Combine per-member bin statistics into the statistics of all members' samples pooled."""
-    mean, var_pop, count, count_pos = (bs.sel(stats=s, drop=True) for s in ("mean", "var_pop", "count", "count_pos"))
+    """
+    Combine per-member bin statistics into the statistics of all members' samples pooled (weighted
+    by `sum_w`, so it also holds for weighted `bin_stats`).
+    """
+    mean, var_pop, count, count_pos, sum_w, n_eff = (
+        bs.sel(stats=s, drop=True) for s in ("mean", "var_pop", "count", "count_pos", "sum_w", "n_eff")
+    )
     n = count.sum("member")
-    # Count-weighted, so the result equals binning all members' samples together. A member
-    # with an empty bin has a NaN mean and count 0; the sums skip the NaN
+    w = sum_w.sum("member")
+    # Weighted by each member's sum of weights (= count when unweighted), so the result equals
+    # binning all members' samples together. A member with an empty bin has a NaN mean and
+    # sum_w 0; the sums skip the NaN
     with np.errstate(invalid="ignore", divide="ignore"):
-        pooled_mean = (mean * count).sum("member") / n
+        pooled_mean = (mean * sum_w).sum("member") / w
         # Pooled E[X^2] from each member's var_pop + mean^2, then Var = E[X^2] - E[X]^2
-        pooled_var = ((var_pop + mean**2) * count).sum("member") / n - pooled_mean**2
+        pooled_var = ((var_pop + mean**2) * sum_w).sum("member") / w - pooled_mean**2
         pooled_var = pooled_var.clip(min=0)
-        var_samp = xr.where(n > 1, pooled_var * n / (n - 1), np.nan)
+        # Kish n_eff of the pooled samples, (sum w)^2 / sum w^2, with each member's sum w^2 = sum_w^2 / n_eff
+        pooled_n_eff = (w**2 / (sum_w**2 / n_eff).where(n_eff > 0, 0).sum("member")).where(n > 0, 0)
+        var_samp = xr.where(pooled_n_eff > 1, pooled_var * pooled_n_eff / (pooled_n_eff - 1), np.nan)
     out = xr.concat(
-        [pooled_mean.where(n > 0), pooled_var.where(n > 0), var_samp, n, count_pos.sum("member")], dim="stats",
+        [pooled_mean.where(n > 0), pooled_var.where(n > 0), var_samp, n, count_pos.sum("member"), w, pooled_n_eff],
+        dim="stats",
     ).assign_coords(stats=list(STATS)).transpose("stats", "y_bin", "x_bin")
     out = out.drop_vars([c for c in out.coords if "member" in out[c].dims or c == "member_id"], errors="ignore")
     # Members named by member_id if present (CMIP6), else by the member labels
@@ -376,17 +412,18 @@ def test_significance(
 ) -> xr.DataArray:
     """
     Two-sided t-test of the binned means against H0: mu = 0. A bin is also
-    required to hold more than `n_min` samples to count as significant.
+    required to hold more than `n_min` (effective) samples to count as significant.
     """
     import scipy.stats as stats
 
     means = bs.sel(stats="mean")
     stds = np.sqrt(bs.sel(stats="var_samp"))
-    ns = bs.sel(stats="count")
+    # Kish effective sample size of the weights (= count when unweighted)
+    ns = bs.sel(stats="n_eff")
 
     # Treats every (year, gridcell) sample as independent. Successive years of a gridcell and
     # neighbouring gridcells are correlated, so the effective sample size is smaller than
-    # `count` and significance is overstated. Bins with count <= 1 get a NaN statistic or
+    # `n_eff` and significance is overstated. Bins with n_eff <= 1 get a NaN statistic or
     # critical value, so they compare False (not significant)
     t_critical = xr.apply_ufunc(stats.t.ppf, 1 - alpha / 2, ns - 1)
     t_statistic = means / (stds / np.sqrt(ns))
@@ -398,17 +435,19 @@ def between_bin_fraction(bs: xr.DataArray) -> xr.DataArray:
     """
     Fraction of the variance of the binned samples explained by the bins (eta2): the R2 of
     predicting every sample by the mean of its bin, = between-bin / total sum of squares,
-    from the `count`, `mean` and `var_pop` of `bs`. Per member if `bs` has a member dim.
-    Comparable to the R2 of `regression.lai_ai_regression` on the same samples.
+    from the `sum_w`, `mean` and `var_pop` of `bs` (weighted sums of squares if `bs` is
+    weighted). Per member if `bs` has a member dim. Comparable to the R2 of
+    `regression.lai_ai_regression` (unweighted) on the same samples, for unweighted `bs`.
     """
-    count = bs.sel(stats="count", drop=True)
-    # Empty bins have NaN mean and variance but count 0, so they add nothing
+    # Sum of the weights of each bin (= count when unweighted)
+    sum_w = bs.sel(stats="sum_w", drop=True)
+    # Empty bins have NaN mean and variance but sum_w 0, so they add nothing
     mean = bs.sel(stats="mean", drop=True).fillna(0)
     var_pop = bs.sel(stats="var_pop", drop=True).fillna(0)
     bins = ("y_bin", "x_bin")
-    grand_mean = (count * mean).sum(bins) / count.sum(bins)
-    between = (count * (mean - grand_mean) ** 2).sum(bins)
-    within = (count * var_pop).sum(bins)
+    grand_mean = (sum_w * mean).sum(bins) / sum_w.sum(bins)
+    between = (sum_w * (mean - grand_mean) ** 2).sum(bins)
+    within = (sum_w * var_pop).sum(bins)
     return (between / (between + within)).rename("eta2").assign_attrs(
         long_name="fraction of the variance explained by the bin means (eta2)")
 

@@ -15,6 +15,7 @@ regress_lai_aridity.py                                  after 14     -> ET varia
 ```
 Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scripts/run_all.pbs` as one Casper job) runs all of them except `regress_lai_aridity.py`.
 `BIN_VARIABLE` (default `cfg.BIN_VARIABLE = "et"`, set at the top of each prep and bin script) chooses what step 14 bins: `"et"`, annual mean ET, or `"et_pr"`, the annual evaporation ratio ET/P (step 11b). Outputs are named `<family>.<BIN_VARIABLE>.qbin_*` and `<family>.<BIN_VARIABLE>_clim.qbin_*`. The common area mask and the edges (steps 12-13) do not depend on it, so ET and ET/P are binned in the same bins.
+`AREA_WEIGHTED` (default `cfg.AREA_WEIGHTED = False`) makes `bin_all.py` and `bin_all_clim.py` weight each sample by its gridcell's land area (`rg.land_area`, one field for every family) in the bin statistics. Outputs then carry `.area_weighted` after the variable (e.g. `<family>.et.area_weighted.qbin_*`, `<family>.et_clim.area_weighted.qbin_*`). The common area mask and the edges do not depend on it, so weighted and unweighted runs use the same bins.
 The bin counts (`N_YBINS` for LAI, `N_XBINS` for AI in `etunc/config.py`) are in the file names, so runs with different counts do not overwrite each other: edges are named `<kind>.<lai|ai>_clim.<n>_quantiles.*`, and the outputs of step 14 and `regress_lai_aridity.py` carry `lai<N_YBINS>_ai<N_XBINS>` (e.g. `<family>.et.qbin_pooled_all.lai15_ai15.1deg.199501-201412.nc`). The common area mask does not depend on them.
 Every script prints `etunc/config.py` and its own settings into its log (`scripts/run_logged.sh`).
 
@@ -22,7 +23,8 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 - Annual-mean (gridcell, year) ET is binned by that gridcell's climatological LAI and aridity.
 - Inputs *must* share coordinates exactly.
 - Duplicate quantile edges are kept: tied values are put in the *last* duplicate bin, leaving zero-width empty bins that are then removed. Out-of-range values are clipped into the edge bins.
-- Every (year, gridcell) sample counts once (no area weighting), so a gridcell's weight in its bin scales with its number of valid ET years.
+- By default every (year, gridcell) sample counts once (no area weighting), so a gridcell's weight in its bin scales with its number of valid ET years.
+- With `AREA_WEIGHTED`, each sample is weighted by its gridcell's land area (`binning.bin_stats(weights=)`): the bin `mean`, `var_pop` and `var_samp` are weighted, `sum_w` is the bin's summed land area and `n_eff = (Σw)²/Σw²` its Kish effective sample size, which sets `var_samp` = `var_pop`·n_eff/(n_eff−1) and the t-test of `binning.test_significance`. `count` stays the raw number of samples. Unweighted, `sum_w` = `n_eff` = `count`. Members are pooled (`binning.pool_members`) by `sum_w`, and η² (`binning.between_bin_fraction`) weights bins by `sum_w`.
 
 ## domain
 - `TIME_SLICE = slice("1995-01", "2014-12")` for every family (`etunc/config.py`)
@@ -81,7 +83,7 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 
 `bin_all.py`:
 
-14. Bin ET (or ET/P, `BIN_VARIABLE`) by climatological LAI and aridity, for every family in `BIN_FAMILIES`, with the `pooled_all` and `pooled_<family>` edges (`binning.bin_stats`, per member) [target grid]
+14. Bin ET (or ET/P, `BIN_VARIABLE`) by climatological LAI and aridity, for every family in `BIN_FAMILIES`, with the `pooled_all` and `pooled_<family>` edges (`binning.bin_stats`, per member; with `AREA_WEIGHTED`, each sample weighted by its gridcell's land area) [target grid]
 
 `bin_all_clim.py`: step 14 with climatological ET. Each member's annual mean ET is averaged over `year` with the step 10 rule (`temporal.aggregate(et, "clim")`: every year weighs equally, a gridcell's NaN years are skipped), then binned as in `bin_all.py`. Each gridcell is one sample, so every gridcell weighs equally in its bin whatever its number of valid ET years, and the within-bin variance is spatial only. Outputs are named `<family>.et_clim.qbin_*`. With `BIN_VARIABLE = "et_pr"`, the annual ET/P is averaged the same way (the mean of the annual ratios), and outputs are named `<family>.et_pr_clim.qbin_*`.
 

@@ -150,6 +150,30 @@ def test_between_bin_fraction_matches_direct_computation(fields):
     assert eta2.dims == ("member",)
 
 
+def test_between_bin_fraction_weighted_matches_direct_computation(fields):
+    """With weighted bin stats, eta2 is the weighted R2 of predicting each sample by its bin's weighted mean."""
+    et, lai, ai = fields
+    y_edges, x_edges = np.linspace(0, 6, 5), np.linspace(0, 5, 4)
+    area = xr.DataArray(np.cos(np.deg2rad(LAT))[:, None] * np.ones(len(LON)), dims=("lat", "lon"),
+                        coords={"lat": LAT, "lon": LON})
+    bs = binning.bin_stats(et, lai, ai, y_edges, x_edges, weights=area, member_dim="member")
+    eta2 = binning.between_bin_fraction(bs)
+
+    e = et.isel(member=0)
+    l, a, w = (da.broadcast_like(e) for da in (lai.isel(member=0), ai.isel(member=0), area))
+    y, x1, x2, w = (da.values.ravel() for da in (e, l, a, w))
+    ok = np.isfinite(y) & np.isfinite(x1) & np.isfinite(x2)
+    y, x1, x2, w = y[ok], x1[ok], x2[ok], w[ok]
+    iy = np.clip(np.searchsorted(y_edges, x1, side="right") - 1, 0, len(y_edges) - 2)
+    ix = np.clip(np.searchsorted(x_edges, x2, side="right") - 1, 0, len(x_edges) - 2)
+    b = iy * (len(x_edges) - 1) + ix
+    sum_w = np.bincount(b, weights=w)
+    bin_mean = np.bincount(b, weights=w * y) / np.where(sum_w > 0, sum_w, 1)  # empty bins are never indexed
+    grand_mean = np.average(y, weights=w)
+    expected = 1 - np.sum(w * (y - bin_mean[b]) ** 2) / np.sum(w * (y - grand_mean) ** 2)
+    assert float(eta2.isel(member=0)) == pytest.approx(expected)
+
+
 def test_between_bin_fraction_is_one_without_within_bin_variance():
     # A target constant within each bin is fully explained by the bins
     lai = xr.DataArray(np.repeat([0.5, 1.5, 2.5], 4), dims="cell")

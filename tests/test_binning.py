@@ -83,24 +83,28 @@ def edges(inputs):
     return quantile_edges(inputs["lai"], 5, "lai"), quantile_edges(inputs["ai"], 4, "ai")
 
 
-def brute_force_stats(target, y, x, y_edges, x_edges):
+def brute_force_stats(target, y, x, y_edges, x_edges, weights=None):
     """Reference implementation: loop over bins, same assignment rule as the module."""
     n_y, n_x = len(y_edges) - 1, len(x_edges) - 1
-    valid = np.isfinite(target) & np.isfinite(y) & np.isfinite(x)
-    t, y, x = target[valid], y[valid], x[valid]
+    weights = np.ones_like(target) if weights is None else weights
+    valid = np.isfinite(target) & np.isfinite(y) & np.isfinite(x) & np.isfinite(weights)
+    t, y, x, w = target[valid], y[valid], x[valid], weights[valid]
     yi = np.clip(np.searchsorted(y_edges, y, side="right") - 1, 0, n_y - 1)
     xi = np.clip(np.searchsorted(x_edges, x, side="right") - 1, 0, n_x - 1)
     out = np.full((len(binning.STATS), n_y, n_x), np.nan)
     for j in range(n_y):
         for i in range(n_x):
-            v = t[(yi == j) & (xi == i)]
+            in_bin = (yi == j) & (xi == i)
+            v, wb = t[in_bin], w[in_bin]
             out[3, j, i] = v.size
             out[4, j, i] = np.sum(v > 0)
+            out[5, j, i] = wb.sum()
+            out[6, j, i] = wb.sum() ** 2 / np.sum(wb**2) if v.size else 0  # Kish effective n
             if v.size:
-                out[0, j, i] = v.mean()
-                out[1, j, i] = v.var()
-            if v.size > 1:
-                out[2, j, i] = v.var(ddof=1)
+                out[0, j, i] = np.average(v, weights=wb)
+                out[1, j, i] = np.average((v - out[0, j, i]) ** 2, weights=wb)
+            if out[6, j, i] > 1:
+                out[2, j, i] = out[1, j, i] * out[6, j, i] / (out[6, j, i] - 1)
     return out
 
 
@@ -318,6 +322,35 @@ def test_bin_stats_flat_count_pos_and_empty_bins():
     np.testing.assert_allclose(stats["mean"], 4 / 3)
     np.testing.assert_allclose(stats["var_samp"], np.var(t, ddof=1))
     assert np.isnan(result[0, 1, 1]) and result[3, 1, 1] == 0
+    # Unweighted: sum_w and n_eff equal the count
+    assert stats["sum_w"] == 3 and stats["n_eff"] == 3
+
+
+def test_bin_stats_flat_weighted_matches_brute_force(rng):
+    """With weights, the mean and variances are weighted and n_eff is Kish's; counts stay raw counts."""
+    n = 2000
+    t = rng.normal(size=n)
+    y = rng.gamma(2, 1, n)
+    x = rng.random(n) * 3
+    w = rng.uniform(0.2, 3.0, n)
+    t[::17] = np.nan
+    w[::29] = np.nan  # a NaN weight drops the sample
+    y_edges = np.quantile(y, np.linspace(0, 1, 6))
+    x_edges = np.linspace(0, 3, 5)
+    result = binning._bin_stats_flat(t, y, x, y_edges, x_edges, w)
+    np.testing.assert_allclose(result, brute_force_stats(t, y, x, y_edges, x_edges, w), equal_nan=True)
+
+
+def test_bin_stats_flat_unit_weights_are_unweighted(rng):
+    """Unit weights give exactly the unweighted statistics, with sum_w = n_eff = count."""
+    n = 500
+    t, y, x = rng.normal(size=n), rng.random(n), rng.random(n)
+    edges = np.linspace(0, 1, 4)
+    unweighted = binning._bin_stats_flat(t, y, x, edges, edges)
+    np.testing.assert_array_equal(binning._bin_stats_flat(t, y, x, edges, edges, np.ones(n)), unweighted)
+    count = unweighted[binning.STATS.index("count")]
+    np.testing.assert_array_equal(unweighted[binning.STATS.index("sum_w")], count)
+    np.testing.assert_array_equal(unweighted[binning.STATS.index("n_eff")], count)
 
 
 # ------------------------------------------------------------------
@@ -411,6 +444,40 @@ def test_pool_members_matches_binning_pooled_samples(rng, mask, edges):
     assert pooled.attrs["members"] == ["r1i1p1f1", "r2i1p1f1", "r3i1p1f1"]
     assert "member_id" not in pooled.coords
     np.testing.assert_allclose(pooled.values, direct.values, rtol=1e-9, atol=1e-9, equal_nan=True)
+
+
+def test_bin_stats_land_area_weights(rng, mask, edges):
+    """
+    bin_all.py with AREA_WEIGHTED: a (lat, lon) land area weight is repeated over year and member, so each
+    (year, gridcell) sample carries its gridcell's area, matching a weighted brute force per member.
+    """
+    y_edges, x_edges = edges
+    inp = make_inputs(rng, mask, members=2)
+    area = xr.DataArray(rg.cell_area(LAT, LON) / 1e6, dims=("lat", "lon"), coords={"lat": LAT, "lon": LON},
+                        name="land_area")
+    bs = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, weights=area, mask=mask,
+                           member_dim="member")
+    assert bs.attrs["weights"] == "land_area"
+    for m in range(2):
+        et = inp["et"][m]
+        lai, ai, w = (da.broadcast_like(et).values.ravel() for da in (inp["lai"][m], inp["ai"][m], area))
+        expected = brute_force_stats(et.values.ravel(), lai, ai, y_edges.values, x_edges.values, w)
+        np.testing.assert_allclose(bs.isel(member=m).values, expected, equal_nan=True)
+    # Each gridcell's area is counted once per valid year
+    n_years = inp["et"].sizes["year"]
+    expected_w = float(area.where(mask).sum()) * n_years
+    np.testing.assert_allclose(bs.sel(stats="sum_w").sum(("y_bin", "x_bin")), [expected_w] * 2)
+
+
+def test_pool_members_weighted(rng, mask, edges):
+    """Pooling weighted per-member statistics gives the weighted statistics of all members' samples together."""
+    y_edges, x_edges = edges
+    inp = make_inputs(rng, mask, members=3)
+    area = xr.DataArray(rg.cell_area(LAT, LON) / 1e6, dims=("lat", "lon"), coords={"lat": LAT, "lon": LON})
+    kwargs = {"weights": area, "name": "et"}
+    bs = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, member_dim="member", **kwargs)
+    direct = binning.bin_stats(inp["et"], inp["lai"], inp["ai"], y_edges, x_edges, **kwargs)
+    np.testing.assert_allclose(binning.pool_members(bs).values, direct.values, rtol=1e-9, atol=1e-9, equal_nan=True)
 
 
 def test_bin_stats_climatological_et(rng, mask, edges):
@@ -567,7 +634,8 @@ def make_bs(means, counts, var_samp=None, y_edges=None, x_edges=None, dim="sid")
     means = np.asarray(means, dtype=float)
     counts = np.broadcast_to(np.asarray(counts, dtype=float), means.shape)
     var_samp = np.ones_like(means) if var_samp is None else np.broadcast_to(var_samp, means.shape)
-    data = np.stack([means, var_samp, var_samp, counts, counts], axis=1)
+    # Unweighted: sum_w = n_eff = count
+    data = np.stack([means, var_samp, var_samp, counts, counts, counts, counts], axis=1)
     n_y, n_x = means.shape[1:]
     y_edges = np.arange(n_y + 1.0) if y_edges is None else np.asarray(y_edges)
     x_edges = np.arange(n_x + 1.0) if x_edges is None else np.asarray(x_edges)

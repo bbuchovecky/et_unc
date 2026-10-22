@@ -76,6 +76,9 @@ MIN_ANNUAL_ET = -2.0   # W/m2; gridcell-years with lower annual mean ET are NaN 
 # Variable binned in step 14: "et" (annual mean ET) or "et_pr" (annual evaporation ratio ET/P, with the
 # P of the aridity index; the prep scripts save it only when this is "et_pr")
 BIN_VARIABLE = "et"
+# Step 14 (bin_all.py, bin_all_clim.py): weight each sample by its gridcell's land area (grid.land_area) in the
+# bin statistics (True), or count every sample once (False). Weighted outputs are tagged ".area_weighted"
+AREA_WEIGHTED = False
 # Families pooled by make_edges.py and binned by bin_all.py. fppe (coupled) and ippe (offline CLM) share
 # the parameter perturbations but are separate families
 FAMILIES = ("obs", "era5", "cmip", "fppe", "ippe", "lens")
@@ -136,6 +139,7 @@ def summarize():
     print(f"{'MIN_YEARS':18} = {MIN_YEARS}")
     print(f"{'MIN_ANNUAL_ET':18} = {MIN_ANNUAL_ET}")
     print(f"{'BIN_VARIABLE':18} = {BIN_VARIABLE}")
+    print(f"{'AREA_WEIGHTED':18} = {AREA_WEIGHTED}")
     print(f"{'FAMILIES':18} = {FAMILIES}")
     print(f"{'N_XBINS':18} = {N_XBINS}")
     print(f"{'N_YBINS':18} = {N_YBINS}")
