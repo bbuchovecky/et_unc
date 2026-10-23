@@ -39,15 +39,15 @@ Outputs
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/plumber/plumber.inputs.<grid>.<period>.nc
+PROC_ROOT/plumber/inputs/<period>/plumber.inputs.<grid>.<period>.nc
     et (member, year), NaN outside a tower's longest run of consecutive complete years; lai, pr, rn, ai (lai_pr_rn, member).
     `member` is the site name, with coords lat/lon (tower), grid_lat/grid_lon (nearest gridcell),
     n_years, time_period and in_common_area; `lai_pr_rn` has coords obs_source, <v>_product,
     clim_n_years and clim_period; with BIN_VARIABLE = "et_pr", also et_pr (lai_pr_rn, member, year).
     Also the input of bin_plumber_clim.py
-PROC_ROOT/plumber/qbin/plumber.<var>.qbin_<edges>.<bins>.<grid>.<period>.nc
+PROC_ROOT/plumber/qbin/<period>/<bins>/plumber.<var>.qbin_<edges>.<bins>.<grid>.<period>.nc
     (lai_pr_rn, stats, y_bin, x_bin), the samples of all towers pooled
-FIG_ROOT/plumber/qbin/plumber.<var>.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
+FIG_ROOT/plumber/qbin/<period>/<bins>/plumber.<var>.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
     as in bin_all.py, one panel per product set; bin_mean_signif hatches bins whose mean is not
     significantly different from 0
 
@@ -58,12 +58,12 @@ the climatological LAI and AI of SCATTER_PRODUCTS at its nearest gridcell. The c
 covers the years of the longest tower record, so it is computed here from the products
 (steps 1-11 of prep_obs.py) rather than taken from the obs inputs (MODIS LAI ends in 2005).
 
-<clim_period> : YYYYMM-YYYYMM of the longest tower record
+<clim_period> : YYYYMM-YYYYMM of the longest tower record (the folder is <period>, of TIME_SLICE)
 
-PROC_ROOT/plumber/plumber.tower_clim.<grid>.<clim_period>.nc
+PROC_ROOT/plumber/clim/<period>/plumber.tower_clim.<grid>.<clim_period>.nc
     et, n_years (member): mean annual ET and number of years of each tower's longest run of complete years;
     lai, pr, rn, ai (member): climatology of SCATTER_PRODUCTS at the nearest gridcell
-FIG_ROOT/plumber/plumber.tower_scatter.<grid>.<clim_period>.png
+FIG_ROOT/plumber/clim/<period>/plumber.tower_scatter.<grid>.<clim_period>.png
     AI (x) vs LAI (y), colored by tower ET, marker area proportional to the record length
 """
 
@@ -276,6 +276,7 @@ def main():
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
+    bins = cfg.bins_tag(N_YBINS, N_XBINS)  # bin counts, in the folder and file names
 
     obs_path = cfg.inputs_path("obs", grid, period)
     area_path = cfg.area_mask_path(grid, period)
@@ -351,10 +352,12 @@ def main():
     # ------------------------------------------------------------------
     # 14. Every (year, tower) ET (or ET/P) sample binned by the tower's climatological LAI and AI, per product set
     # ------------------------------------------------------------------
+    qbin_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "qbin", period, bins)
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "qbin", period, bins)
     for kind in EDGE_KINDS:
         print(f"\n=== {kind} edges ===")
-        y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, grid, period)
-        x_edges = edges.load_bin_edges(kind, "ai", N_XBINS, grid, period)
+        y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, N_XBINS, grid, period)
+        x_edges = edges.load_bin_edges(kind, "ai", N_YBINS, N_XBINS, grid, period)
         bs = binning.bin_stats(
             inputs[BIN_VARIABLE], inputs["lai"], inputs["ai"], y_edges, x_edges,
             member_dim="lai_pr_rn", y_name="lai", x_name="ai", name=BIN_VARIABLE,
@@ -365,8 +368,8 @@ def main():
         )
         # bin_stats keeps only the coords of the binned variable along the member dim, so add those of the product sets
         bs = bs.assign_coords({c: inputs[c] for c in inputs.coords if inputs[c].dims == ("lai_pr_rn",)})
-        stem = f"{FAMILY}.{BIN_VARIABLE}.qbin_{kind}.lai{N_YBINS}_ai{N_XBINS}.{grid}.{period}"
-        fout = cfg.PROC_ROOT / FAMILY / "qbin" / f"{stem}.nc"
+        stem = f"{FAMILY}.{BIN_VARIABLE}.qbin_{kind}.{bins}.{grid}.{period}"
+        fout = qbin_dir / f"{stem}.nc"
         fout.parent.mkdir(parents=True, exist_ok=True)
         bs.to_netcdf(fout)
         count = bs.sel(stats="count").sum(("y_bin", "x_bin"))
@@ -379,7 +382,6 @@ def main():
         # zero-width bins can be dropped
         title = f"PLUMBER2 tower {binning.TARGET_LABELS[BIN_VARIABLE]}, {len(sets)} (lai, pr, rn) product sets, {kind} edges, {inputs.attrs['time_period']}"
         bs = binning.drop_zero_width_bins(bs)
-        fig_dir = cfg.FIG_ROOT / FAMILY / "qbin"
         plotting.plot_bin_summary(bs, dim="lai_pr_rn", title=title, fout=fig_dir / f"{stem}.summary.png")
         plotting.plot_bin_means(bs, "lai_pr_rn", title=f"{title}, bin mean", fout=fig_dir / f"{stem}.bin_mean.png")
         # Hatch non-empty bins whose mean is not significantly different from 0
@@ -429,11 +431,12 @@ def main():
     no_obs = towers["lai"].isnull() | towers["ai"].isnull()
     print(f"{int(no_obs.sum())} towers without LAI or AI at the nearest gridcell, not plotted: "
           f"{towers['member'].values[no_obs.values].tolist()}")
-    fout = cfg.PROC_ROOT / FAMILY / f"{FAMILY}.tower_clim.{grid}.{clim_period}.nc"
+    fout = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "clim", period) / f"{FAMILY}.tower_clim.{grid}.{clim_period}.nc"
+    fout.parent.mkdir(parents=True, exist_ok=True)
     towers.to_netcdf(fout)
     print(fout)
 
-    fout = cfg.FIG_ROOT / FAMILY / f"{FAMILY}.tower_scatter.{grid}.{clim_period}.png"
+    fout = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period) / f"{FAMILY}.tower_scatter.{grid}.{clim_period}.png"
     plot_tower_scatter(
         towers.where(~no_obs, drop=True),
         title=f"PLUMBER2 towers (n = {int((~no_obs).sum())}), LAI and AI climatology {towers.attrs['clim_period']}",

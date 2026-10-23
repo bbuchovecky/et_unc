@@ -13,7 +13,7 @@ the repo:
 | --- | --- |
 | Inputs (shared, read-only) | `/glade/campaign/univ/uwas0155/` (ILAMB and gridded obs, regridded obs and CMIP6) |
 | CMIP6 catalogs | `/glade/derecho/scratch/$USER/cmip_intake_esgf_fetch/` (purgeable scratch; see `etunc/config.py`) |
-| Outputs | `/glade/work/$USER/et_unc/{proc,fig}` |
+| Outputs | `/glade/work/$USER/et_unc/proc` and `fig/`, as `<root>/<family>/<kind>/<period>/[lai<N>_ai<N>/]` (`cfg.output_dir`) |
 
 All of these paths are set in `etunc/config.py`.
 

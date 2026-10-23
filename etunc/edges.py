@@ -34,7 +34,7 @@ import warnings
 import numpy as np
 import xarray as xr
 
-from etunc.config import BIN_EDGES_ROOT
+from etunc.config import BIN_EDGES_ROOT, bins_tag
 
 
 # Attributes of the LAI and AI bin edges
@@ -166,14 +166,19 @@ def pooled_bin_edges(
 # Saved edges
 # ------------------------------------------------------------------
 
-def edges_path(kind: str, variable: str, n_bins: int, grid: str, period: str) -> Path:
-    """File of the `kind` edges ("pooled_all", "pooled_cmip", ...) of `variable` ("lai", "ai")."""
-    return BIN_EDGES_ROOT / f"{kind}.{variable}_clim.{n_bins}_quantiles.{grid}.{period}.nc"
+def edges_path(kind: str, variable: str, n_ybins: int, n_xbins: int, grid: str, period: str) -> Path:
+    """
+    File of the `kind` edges ("pooled_all", "pooled_cmip", ...) of `variable` ("lai": `n_ybins` bins, "ai":
+    `n_xbins` bins), in the folder of the bin counts: BIN_EDGES_ROOT/<period>/lai<n_ybins>_ai<n_xbins>/.
+    """
+    n_bins = n_ybins if variable == "lai" else n_xbins
+    folder = BIN_EDGES_ROOT / period / bins_tag(n_ybins, n_xbins)
+    return folder / f"{kind}.{variable}_clim.{n_bins}_quantiles.{grid}.{period}.nc"
 
 
-def load_bin_edges(kind: str, variable: str, n_bins: int, grid: str, period: str) -> xr.DataArray:
+def load_bin_edges(kind: str, variable: str, n_ybins: int, n_xbins: int, grid: str, period: str) -> xr.DataArray:
     """Edges saved by make_edges.py; raises FileNotFoundError if make_edges.py has not written them."""
-    path = edges_path(kind, variable, n_bins, grid, period)
+    path = edges_path(kind, variable, n_ybins, n_xbins, grid, period)
     if not path.exists():
         raise FileNotFoundError(f"No {kind} {variable} edges at {path}; run scripts/make_edges.py first")
     with xr.open_dataarray(path) as da:

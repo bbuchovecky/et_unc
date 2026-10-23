@@ -24,14 +24,14 @@ Outputs
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/obs/obs.inputs.<grid>.<period>.nc
+PROC_ROOT/obs/inputs/<period>/obs.inputs.<grid>.<period>.nc
     et (member, year, lat, lon), NaN outside a combination's years; lai, pr, rn, ai (member, lat, lon);
     with BIN_VARIABLE = "et_pr", also et_pr (member, year, lat, lon), ET/P with the combination's P product;
     `member` labelled "<et>-<lai>-<pr>-<rn>" product names, with coords `source` (= member),
     `et_product`, `lai_product`, `pr_product`, `rn_product`, `n_years` and `time_period`
-FIG_ROOT/obs/clim/obs.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
+FIG_ROOT/obs/clim/<period>/obs.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     mean, standard deviation and range of the climatology over the combinations
-FIG_ROOT/obs/clim/obs.{lai,ai}_clim.<grid>.hist.<period>.png
+FIG_ROOT/obs/clim/<period>/obs.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI, one line per combination
 """
 
@@ -61,7 +61,6 @@ warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will
 # ------------------------------------------------------------------
 
 FAMILY = "obs"
-FIG_ROOT = cfg.FIG_ROOT / FAMILY
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
@@ -220,7 +219,8 @@ def main():
     print(f"{fout}")
 
     # Diagnostics: climatology maps and LAI/AI histograms
-    plotting.save_clim_diagnostics(inputs, FIG_ROOT / "clim", FAMILY, grid, period, title="obs")
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period)
+    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, grid, period, title="obs")
 
 
 if __name__ == "__main__":

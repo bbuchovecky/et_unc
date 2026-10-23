@@ -31,9 +31,9 @@ Outputs
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/plumber/qbin/plumber.<var>_clim.qbin_<edges>.<bins>.<grid>.<period>.nc
+PROC_ROOT/plumber/qbin/<period>/<bins>/plumber.<var>_clim.qbin_<edges>.<bins>.<grid>.<period>.nc
     (lai_pr_rn, stats, y_bin, x_bin), all towers pooled; `count` is the number of towers
-FIG_ROOT/plumber/qbin/plumber.<var>_clim.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
+FIG_ROOT/plumber/qbin/<period>/<bins>/plumber.<var>_clim.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
     as in bin_plumber.py, one panel per product set; bin_mean_signif hatches bins whose mean is not
     significantly different from 0
 """
@@ -75,6 +75,7 @@ def main():
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
+    bins = cfg.bins_tag(N_YBINS, N_XBINS)  # bin counts, in the folder and file names
 
     # Tower ET and the obs LAI, P, Rn, AI at the nearest gridcell (bin_plumber.py)
     path = cfg.inputs_path(FAMILY, grid, period)
@@ -99,10 +100,12 @@ def main():
     # ------------------------------------------------------------------
     # 14. Every tower's climatological ET (or mean ET/P) binned by the tower's climatological LAI and AI, per product set
     # ------------------------------------------------------------------
+    qbin_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "qbin", period, bins)
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "qbin", period, bins)
     for kind in EDGE_KINDS:
         print(f"\n=== {kind} edges ===")
-        y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, grid, period)
-        x_edges = edges.load_bin_edges(kind, "ai", N_XBINS, grid, period)
+        y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, N_XBINS, grid, period)
+        x_edges = edges.load_bin_edges(kind, "ai", N_YBINS, N_XBINS, grid, period)
         bs = binning.bin_stats(
             target_clim, inputs["lai"], inputs["ai"], y_edges, x_edges,
             member_dim="lai_pr_rn", y_name="lai", x_name="ai", name=BIN_VARIABLE,
@@ -114,8 +117,8 @@ def main():
         )
         # bin_stats keeps only the coords of the binned variable along the member dim, so add those of the product sets
         bs = bs.assign_coords({c: inputs[c] for c in inputs.coords if inputs[c].dims == ("lai_pr_rn",)})
-        stem = f"{FAMILY}.{BIN_VARIABLE}_clim.qbin_{kind}.lai{N_YBINS}_ai{N_XBINS}.{grid}.{period}"
-        fout = cfg.PROC_ROOT / FAMILY / "qbin" / f"{stem}.nc"
+        stem = f"{FAMILY}.{BIN_VARIABLE}_clim.qbin_{kind}.{bins}.{grid}.{period}"
+        fout = qbin_dir / f"{stem}.nc"
         fout.parent.mkdir(parents=True, exist_ok=True)
         bs.to_netcdf(fout)
         count = bs.sel(stats="count").sum(("y_bin", "x_bin"))
@@ -130,7 +133,6 @@ def main():
         title = (f"PLUMBER2 tower climatological {label}, {n_sets} (lai, pr, rn) product sets, {kind} edges, "
                  f"{inputs.attrs['time_period']}")
         bs = binning.drop_zero_width_bins(bs)
-        fig_dir = cfg.FIG_ROOT / FAMILY / "qbin"
         plotting.plot_bin_summary(bs, dim="lai_pr_rn", title=title, fout=fig_dir / f"{stem}.summary.png")
         plotting.plot_bin_means(bs, "lai_pr_rn", title=f"{title}, bin mean", fout=fig_dir / f"{stem}.bin_mean.png")
         # Hatch non-empty bins whose mean is not significantly different from 0 (towers as independent samples)

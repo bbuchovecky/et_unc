@@ -26,12 +26,12 @@ Outputs
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/<family>/qbin/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.nc
+PROC_ROOT/<family>/qbin/<period>/<bins>/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.nc
     per member, (member, y_bin, x_bin): land_area [km2] (0 in empty bins), land_area_frac (fraction of
     the member's binned land area) and n_cells (number of gridcells)
-PROC_ROOT/<family>/qbin/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.sources_pooled.nc
+PROC_ROOT/<family>/qbin/<period>/<bins>/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.sources_pooled.nc
     the same, averaged over the members of each source: (source, y_bin, x_bin)
-FIG_ROOT/<family>/qbin/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.png
+FIG_ROOT/<family>/qbin/<period>/<bins>/<family>.land_area.qbin_<edges>.<bins>.<grid>.<period>.png
     land_area_frac of each source (from the sources_pooled file)
 """
 
@@ -96,6 +96,7 @@ def main():
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
+    bins = cfg.bins_tag(N_YBINS, N_XBINS)  # bin counts, in the folder and file names
 
     # Common area mask of all families (make_edges.py)
     area_path = cfg.area_mask_path(grid, period)
@@ -120,9 +121,11 @@ def main():
         # The land area repeated for every member, with the member coords (source, member_id, ...) of the inputs
         land_m = land * xr.ones_like(inputs["lai"])
 
+        qbin_dir = cfg.output_dir(cfg.PROC_ROOT, family, "qbin", period, bins)
+        fig_dir = cfg.output_dir(cfg.FIG_ROOT, family, "qbin", period, bins)
         for kind in ("pooled_all", f"pooled_{family}"):
-            y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, grid, period)
-            x_edges = edges.load_bin_edges(kind, "ai", N_XBINS, grid, period)
+            y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, N_XBINS, grid, period)
+            x_edges = edges.load_bin_edges(kind, "ai", N_YBINS, N_XBINS, grid, period)
 
             # 14. Every gridcell's land area, in the common area, binned by that gridcell's climatological LAI
             # and AI of the member
@@ -147,8 +150,8 @@ def main():
                 },
                 attrs={k: v for k, v in bs.attrs.items() if k not in ("long_name", "units")},
             )
-            stem = f"{family}.land_area.qbin_{kind}.lai{N_YBINS}_ai{N_XBINS}.{grid}.{period}"
-            fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.nc"
+            stem = f"{family}.land_area.qbin_{kind}.{bins}.{grid}.{period}"
+            fout = qbin_dir / f"{stem}.nc"
             fout.parent.mkdir(parents=True, exist_ok=True)
             ds.to_netcdf(fout)
             # Every member covers the whole common area, so its total is the common land area
@@ -161,11 +164,11 @@ def main():
             # Mean over the members of each source (not the sum), in the order of the inputs
             sources = list(dict.fromkeys(ds["source"].values.tolist()))
             by_source = ds.groupby("source").mean("member").sel(source=sources)
-            fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.sources_pooled.nc"
+            fout = qbin_dir / f"{stem}.sources_pooled.nc"
             by_source.to_netcdf(fout)
             print(fout)
 
-            fig = cfg.FIG_ROOT / family / "qbin" / f"{stem}.png"
+            fig = fig_dir / f"{stem}.png"
             plot_area_frac(
                 by_source["land_area_frac"],
                 title=f"{family} land area by bin, {len(sources)} sources, {kind} edges, {inputs.attrs['time_period']}",

@@ -16,13 +16,13 @@ Outputs
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/era5/era5.inputs.<grid>.<period>.nc
+PROC_ROOT/era5/inputs/<period>/era5.inputs.<grid>.<period>.nc
     et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); with BIN_VARIABLE = "et_pr",
     also et_pr (member, year, lat, lon); `member` labelled
     "ERA5-<LAI_PRODUCT>", `source` = member, coord `lai_product`
-FIG_ROOT/era5/clim/era5.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
+FIG_ROOT/era5/clim/<period>/era5.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     climatology maps
-FIG_ROOT/era5/clim/era5.{lai,ai}_clim.<grid>.hist.<period>.png
+FIG_ROOT/era5/clim/<period>/era5.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI
 """
 
@@ -51,7 +51,6 @@ warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will
 # ------------------------------------------------------------------
 
 FAMILY = "era5"
-FIG_ROOT = cfg.FIG_ROOT / FAMILY
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
@@ -148,7 +147,8 @@ def main():
     print(f"\n{name}, {inputs.attrs['time_period']}\n{fout}")
 
     # Diagnostics: climatology maps and LAI/AI histograms
-    plotting.save_clim_diagnostics(inputs, FIG_ROOT / "clim", FAMILY, grid, period, title="ERA5")
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period)
+    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, grid, period, title="ERA5")
 
 
 if __name__ == "__main__":

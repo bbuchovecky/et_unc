@@ -29,19 +29,19 @@ Outputs
 <grid>      : grid tag of TARGET_RES, e.g. "1deg"
 <period>    : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/<family>/qbin/<family>.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.nc
+PROC_ROOT/<family>/qbin/<period>/<bins>/<family>.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.nc
     per member: (member, stats, y_bin, x_bin), with the member coords of the inputs (source, ...)
-PROC_ROOT/<family>/qbin/<family>.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.sources_pooled.nc
+PROC_ROOT/<family>/qbin/<period>/<bins>/<family>.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.sources_pooled.nc
     the members of each source pooled (`binning.pool_members`): (source, stats, y_bin, x_bin).
     Equal to the per-member statistics when every source has one member
-FIG_ROOT/<family>/qbin/<family>.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
+FIG_ROOT/<family>/qbin/<period>/<bins>/<family>.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
     of the sources_pooled statistics; bin_mean_signif hatches bins whose mean is not significantly
     different from 0
 
 Family-specific outputs
-PROC_ROOT/obs/qbin/obs.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.et_product_std.nc (and FIG_ROOT .png)
+PROC_ROOT/obs/qbin/<period>/<bins>/obs.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.et_product_std.nc (and FIG_ROOT .png)
     std of the bin mean ET (or ET/P) across ET products, for each (lai, pr, rn) product set
-PROC_ROOT/lens/qbin/lens.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.members_pooled.nc
+PROC_ROOT/lens/qbin/<period>/<bins>/lens.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.members_pooled.nc
     statistics of all LENS2 members' samples pooled
 """
 
@@ -82,6 +82,7 @@ def main():
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
+    bins = cfg.bins_tag(N_YBINS, N_XBINS)  # bin counts, in the folder and file names
 
     # Common area mask of all families (make_edges.py)
     area_path = cfg.area_mask_path(grid, period)
@@ -107,9 +108,11 @@ def main():
             raise KeyError(f"No {BIN_VARIABLE} in {path}; rerun scripts/prep_{family}.py with BIN_VARIABLE = {BIN_VARIABLE!r}")
         n_members = inputs.sizes["member"]
 
+        qbin_dir = cfg.output_dir(cfg.PROC_ROOT, family, "qbin", period, bins)
+        fig_dir = cfg.output_dir(cfg.FIG_ROOT, family, "qbin", period, bins)
         for kind in ("pooled_all", f"pooled_{family}"):
-            y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, grid, period)
-            x_edges = edges.load_bin_edges(kind, "ai", N_XBINS, grid, period)
+            y_edges = edges.load_bin_edges(kind, "lai", N_YBINS, N_XBINS, grid, period)
+            x_edges = edges.load_bin_edges(kind, "ai", N_YBINS, N_XBINS, grid, period)
 
             # 14. Every (year, gridcell) ET (or ET/P) sample of a member, in the common area, binned by that
             # gridcell's climatological LAI and AI of the same member (weighted by its land area if AREA_WEIGHTED)
@@ -121,8 +124,8 @@ def main():
                     "n_members": n_members, "area_mask": str(area_path),
                 },
             )
-            stem = f"{family}.{BIN_VARIABLE}{weight_tag}.qbin_{kind}.lai{N_YBINS}_ai{N_XBINS}.{grid}.{period}"
-            fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.nc"
+            stem = f"{family}.{BIN_VARIABLE}{weight_tag}.qbin_{kind}.{bins}.{grid}.{period}"
+            fout = qbin_dir / f"{stem}.nc"
             fout.parent.mkdir(parents=True, exist_ok=True)
             bs.to_netcdf(fout)
             count = bs.sel(stats="count").sum(("y_bin", "x_bin"))
@@ -130,7 +133,7 @@ def main():
                   f"per member\n{fout}")
 
             by_source = binning.pool_by_source(bs)
-            fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.sources_pooled.nc"
+            fout = qbin_dir / f"{stem}.sources_pooled.nc"
             by_source.to_netcdf(fout)
             print(fout)
 
@@ -139,7 +142,6 @@ def main():
             title = (f"{family} {binning.TARGET_LABELS[BIN_VARIABLE]}{weight_title}, {n_sources} sources, {kind} edges, "
                      f"{inputs.attrs['time_period']}")
             by_source = binning.drop_zero_width_bins(by_source)
-            fig_dir = cfg.FIG_ROOT / family / "qbin"
             plotting.plot_bin_summary(by_source, dim="source", title=title, fout=fig_dir / f"{stem}.summary.png")
             plotting.plot_bin_means(by_source, "source", title=f"{title}, bin mean", fout=fig_dir / f"{stem}.bin_mean.png")
             # Hatch non-empty bins whose mean is not significantly different from 0
@@ -162,7 +164,7 @@ def main():
             if family == "obs":
                 # Spread across ET products, with the other three products fixed
                 spread = binning.et_product_spread(by_source)
-                fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.et_product_std.nc"
+                fout = qbin_dir / f"{stem}.et_product_std.nc"
                 spread.to_netcdf(fout)
                 plotting.plot_et_product_spread(
                     spread, title=(f"obs {binning.TARGET_LABELS[BIN_VARIABLE]}{weight_title}, std of bin mean across "
@@ -172,7 +174,7 @@ def main():
                 print(fout)
             if family == "lens":
                 # All members' samples pooled: the LENS2 initial-condition ensemble as one distribution
-                fout = cfg.PROC_ROOT / family / "qbin" / f"{stem}.members_pooled.nc"
+                fout = qbin_dir / f"{stem}.members_pooled.nc"
                 binning.pool_members(bs).to_netcdf(fout)
                 print(fout)
 

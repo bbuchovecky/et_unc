@@ -29,12 +29,12 @@ Outputs
 <grid>   : grid tag of TARGET_RES, e.g. "1deg"
 <period> : YYYYMM-YYYYMM of TIME_SLICE
 
-PROC_ROOT/<family>/<family>.inputs.<grid>.<period>.nc
+PROC_ROOT/<family>/inputs/<period>/<family>.inputs.<grid>.<period>.nc
     et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); with BIN_VARIABLE = "et_pr",
     also et_pr (member, year, lat, lon); `member` and `source` = model name. rn and ai are NaN
-FIG_ROOT/<family>/clim/<family>.<var>.<grid>.map.<period>.png        var in et, lai, pr
+FIG_ROOT/<family>/clim/<period>/<family>.<var>.<grid>.map.<period>.png        var in et, lai, pr
     mean, standard deviation and range of the climatology over all models
-FIG_ROOT/<family>/clim/<family>.lai_clim.<grid>.hist.<period>.png
+FIG_ROOT/<family>/clim/<period>/<family>.lai_clim.<grid>.hist.<period>.png
     histograms of climatological LAI, one line per model
 """
 
@@ -64,7 +64,6 @@ warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will
 
 EXPERIMENT = "S3"  # "S2": climate + CO2; "S3": climate + CO2 + land use change
 FAMILY = f"trendy_{EXPERIMENT.lower()}"
-FIG_ROOT = cfg.FIG_ROOT / FAMILY
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
@@ -219,7 +218,7 @@ def main():
 
     # Diagnostics: climatology maps of ET, LAI and P, and LAI histograms. Rn and AI are all NaN, so
     # plotting.save_clim_diagnostics (as in the other prep scripts) is used once Rn exists
-    fig_dir = FIG_ROOT / "clim"
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period)
     title = f"TRENDY {EXPERIMENT}, {inputs.attrs['time_period']}"
     clim = {"et": inputs["et"].mean("year", keep_attrs=True), "lai": inputs["lai"], "pr": inputs["pr"]}
     for var, da in clim.items():

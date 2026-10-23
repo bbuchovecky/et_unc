@@ -2,8 +2,8 @@
 etunc.config
 ============
 Paths and domain constants shared by the package and the scripts, the
-paths of the files passed between the pipeline scripts (`inputs_path`,
-`area_mask_path`), and the two functions that print the constants
+output layout (`output_dir`, `bins_tag`) and the paths of the files passed
+between the pipeline scripts (`inputs_path`, `area_mask_path`), and the two functions that print the constants
 (`summarize`) and a script's own settings (`summarize_settings`) to the log. Dataset-specific settings stay at the top
 of each script.
 
@@ -56,14 +56,30 @@ PROC_ROOT = WORK_ROOT / "proc"
 BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
 
 
+# Output layout, the same under PROC_ROOT and FIG_ROOT:
+#   <root>/<family>/<kind>/<period>/[<bins>/]<file>
+# kind: inputs, clim, mask, qbin or regress; period: "199501-201412"; bins: "lai15_ai15" (qbin and regress only).
+# File names keep the grid, period and bin counts, so a file is self-describing outside its folder
+
+def bins_tag(n_ybins: int, n_xbins: int) -> str:
+    """Bin counts in file and folder names: LAI (y) and AI (x) bins, e.g. "lai15_ai15"."""
+    return f"lai{n_ybins}_ai{n_xbins}"
+
+
+def output_dir(root: Path, family: str, kind: str, period: str, bins: str | None = None) -> Path:
+    """Folder of one kind of output: root/<family>/<kind>/<period>[/<bins>]."""
+    out = root / family / kind / period
+    return out / bins if bins else out
+
+
 def inputs_path(family: str, grid: str, period: str) -> Path:
     """Binning inputs of one family, written by scripts/prep_<family>.py."""
-    return PROC_ROOT / family / f"{family}.inputs.{grid}.{period}.nc"
+    return output_dir(PROC_ROOT, family, "inputs", period) / f"{family}.inputs.{grid}.{period}.nc"
 
 
 def area_mask_path(grid: str, period: str) -> Path:
     """Common area mask of all families, written by scripts/make_edges.py."""
-    return PROC_ROOT / "all" / f"all.area_mask.{grid}.{period}.nc"
+    return output_dir(PROC_ROOT, "all", "mask", period) / f"all.area_mask.{grid}.{period}.nc"
 
 
 # ------------------------------------------------------------------

@@ -4,7 +4,7 @@ They are written out in `main()` of each script. The scripts differ only in
 step 1 (which loader), step 3 (which unit conversion) and step 5 (which land mask).
 
 ```
-prep_{obs,era5,cmip,lens,fppe,ippe}.py                 steps 1-11   -> PROC_ROOT/<family>/<family>.inputs.<grid>.<period>.nc
+prep_{obs,era5,cmip,lens,fppe,ippe}.py                 steps 1-11   -> PROC_ROOT/<family>/inputs/<period>/<family>.inputs.<grid>.<period>.nc
 make_edges.py                                           steps 12-13  -> common area mask, pooled LAI/AI edges
 bin_all.py                                              step 14      -> binned ET of every family
 bin_all_clim.py                                         step 14      -> binned climatological ET of every family
@@ -19,6 +19,8 @@ Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scrip
 `AREA_WEIGHTED` (default `cfg.AREA_WEIGHTED = False`) makes `bin_all.py` and `bin_all_clim.py` weight each sample by its gridcell's land area (`rg.land_area`, one field for every family) in the bin statistics. Outputs then carry `.area_weighted` after the variable (e.g. `<family>.et.area_weighted.qbin_*`, `<family>.et_clim.area_weighted.qbin_*`). The common area mask and the edges do not depend on it, so weighted and unweighted runs use the same bins.
 The bin counts (`N_YBINS` for LAI, `N_XBINS` for AI in `etunc/config.py`) are in the file names, so runs with different counts do not overwrite each other: edges are named `<kind>.<lai|ai>_clim.<n>_quantiles.*`, and the outputs of step 14 and `regress_lai_aridity.py` carry `lai<N_YBINS>_ai<N_XBINS>` (e.g. `<family>.et.qbin_pooled_all.lai15_ai15.1deg.199501-201412.nc`). The common area mask does not depend on them.
 Every script prints `etunc/config.py` and its own settings into its log (`scripts/run_logged.sh`).
+
+**Output layout.** Every output, under `PROC_ROOT` (netCDF) and `FIG_ROOT` (figures) alike, is in `<root>/<family>/<kind>/<period>/[<bins>/]` (`cfg.output_dir`), so runs with a different `TIME_SLICE` or different bin counts are kept apart: `<kind>` is `inputs` (prep_*.py), `clim` (climatology diagnostics, PLUMBER2 tower climatology), `mask` (common area mask), `qbin` (binned statistics and the edge figures) or `regress`; `<period>` is the `YYYYMM-YYYYMM` of `TIME_SLICE`; `<bins>` is `lai<N_YBINS>_ai<N_XBINS>` (`cfg.bins_tag`), for `qbin` and `regress` only. The common area mask and the LAI/AI histograms of make_edges.py are `family` = `all`. The edges are in `BIN_EDGES_ROOT/<period>/<bins>/`. File names are unchanged and still carry the grid, period and bin counts, so a file is self-describing outside its folder.
 
 ## binning
 - Annual-mean (gridcell, year) ET is binned by that gridcell's climatological LAI and aridity.
@@ -88,7 +90,7 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 
 `bin_all_clim.py`: step 14 with climatological ET. Each member's annual mean ET is averaged over `year` with the step 10 rule (`temporal.aggregate(et, "clim")`: every year weighs equally, a gridcell's NaN years are skipped), then binned as in `bin_all.py`. Each gridcell is one sample, so every gridcell weighs equally in its bin whatever its number of valid ET years, and the within-bin variance is spatial only. Outputs are named `<family>.et_clim.qbin_*`. With `BIN_VARIABLE = "et_pr"`, the annual ET/P is averaged the same way (the mean of the annual ratios), and outputs are named `<family>.et_pr_clim.qbin_*`.
 
-`bin_area.py`: step 14 for land area: the total land area in each bin. Each gridcell of the common area is one sample, as in `bin_all_clim.py`, binned by its climatological LAI and AI of the member, with its land area as the value (`rg.land_area`: the target-grid cell area times its fractional Natural Earth land cover, regionmask `mask_3D_frac_approx`). It is one field for every family, since the obs products have no land fraction of their own and native area variables no longer apply after regridding, so the binned area differs between families and members only through their LAI and AI. A bin's total is the `mean` x `count` of `binning.bin_stats`. Each member's total is the land area of the common area mask. Sources average their members' areas. Outputs: `PROC_ROOT/<family>/qbin/<family>.land_area.qbin_*` (`land_area` [km2], `land_area_frac`, `n_cells`).
+`bin_area.py`: step 14 for land area: the total land area in each bin. Each gridcell of the common area is one sample, as in `bin_all_clim.py`, binned by its climatological LAI and AI of the member, with its land area as the value (`rg.land_area`: the target-grid cell area times its fractional Natural Earth land cover, regionmask `mask_3D_frac_approx`). It is one field for every family, since the obs products have no land fraction of their own and native area variables no longer apply after regridding, so the binned area differs between families and members only through their LAI and AI. A bin's total is the `mean` x `count` of `binning.bin_stats`. Each member's total is the land area of the common area mask. Sources average their members' areas. Outputs: `PROC_ROOT/<family>/qbin/<period>/<bins>/<family>.land_area.qbin_*` (`land_area` [km2], `land_area_frac`, `n_cells`).
 
 `bin_plumber.py`: step 14 for the PLUMBER2 flux towers (`cfg.PLUMBER_ROOT`). Only each tower's longest run of consecutive complete years of Qle in `TIME_SLICE` (after the ET outlier filter) is kept, and towers whose run is shorter than `MIN_CONSECUTIVE_YEARS` are left out. Each year of the run is one annual mean ET sample, binned by the climatological obs LAI and AI (from the obs inputs) at the gridcell nearest to the tower, once per (LAI, P, Rn) product set, with the `pooled_all` and `pooled_obs` edges. Towers are not masked by the common area mask; towers whose nearest gridcell has no obs data are not binned. It also plots each tower's record-mean ET against the climatological LAI and AI of `SCATTER_PRODUCTS` (GIMMS_LAI4g, GPCPv2.3, GEWEX.SRB Rn) over the years of the longest tower record, computed from the products with steps 1-11. With `BIN_VARIABLE = "et_pr"`, each tower-year's ET is divided by that year's P at the nearest gridcell, from the P product of each product set (the P of its AI); annual P is computed over `TIME_SLICE` with steps 1-8, since the obs inputs end with the obs climatology years. The tower scatter stays ET only.
 
@@ -99,7 +101,7 @@ Every script prints `etunc/config.py` and its own settings into its log (`script
 ## analyses outside the pipeline
 Run by hand after step 14; `scripts/run_all.sh` does not run them.
 
-`regress_lai_aridity.py`: how much of the ET variance in the heatmaps climatological LAI and AI explain. Per member, on exactly the samples of `bin_all.py` (annual) and `bin_all_clim.py` (clim), on the common area and unweighted: OLS fits ET ~ LAI, ET ~ AI and ET ~ LAI + AI (`regression.lai_ai_regression`), the partition of R² into unique LAI, unique AI and shared parts (LAI and AI are correlated), and for comparison the fraction of variance explained by the bin means (η², `binning.between_bin_fraction`) with the `pooled_all` and `pooled_<family>` edges. Climatological predictors cannot explain interannual variability, so the annual R² is at most the between-gridcell share of the variance. Outputs: `PROC_ROOT/<family>/regress/<family>.et.regress_lai_ai.*.nc` and `FIG_ROOT/all/all.et.regress_lai_ai.*.png`.
+`regress_lai_aridity.py`: how much of the ET variance in the heatmaps climatological LAI and AI explain. Per member, on exactly the samples of `bin_all.py` (annual) and `bin_all_clim.py` (clim), on the common area and unweighted: OLS fits ET ~ LAI, ET ~ AI and ET ~ LAI + AI (`regression.lai_ai_regression`), the partition of R² into unique LAI, unique AI and shared parts (LAI and AI are correlated), and for comparison the fraction of variance explained by the bin means (η², `binning.between_bin_fraction`) with the `pooled_all` and `pooled_<family>` edges. Climatological predictors cannot explain interannual variability, so the annual R² is at most the between-gridcell share of the variance. Outputs: `PROC_ROOT/<family>/regress/<period>/<bins>/<family>.et.regress_lai_ai.*.nc` and `FIG_ROOT/all/regress/<period>/<bins>/all.et.regress_lai_ai.*.png`.
 
 ## TRENDY
 `prep_trendy.py` prepares the TRENDY (GCB2025) DGVMs of one experiment (`EXPERIMENT`: "S2" climate + CO2, "S3" climate + CO2 + land use change) as the family `trendy_s2` or `trendy_s3`, one member (= source) per model. It differs from the other prep scripts in:
@@ -148,7 +150,7 @@ edges.py:
 compute_aridity_index()
 hierarchical_weights()
 pooled_bin_edges()
-edges_path() / load_bin_edges()
+edges_path() / load_bin_edges()          # BIN_EDGES_ROOT/<period>/<bins>/
 
 binning.py:
 drop_et_outliers()                       # step 6

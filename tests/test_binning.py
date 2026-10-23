@@ -625,6 +625,17 @@ def test_valid_and_common_area(capsys):
     assert "common  :      1 gridcells" in out
 
 
+def test_output_layout(tmp_path, monkeypatch):
+    """Outputs go to <root>/<family>/<kind>/<period>[/<bins>]; file names keep the grid, period and bins."""
+    monkeypatch.setattr(config, "PROC_ROOT", tmp_path)
+    period = "199501-201412"
+    assert config.bins_tag(15, 20) == "lai15_ai20"
+    assert config.output_dir(tmp_path, "obs", "clim", period) == tmp_path / "obs" / "clim" / period
+    assert config.output_dir(tmp_path, "obs", "qbin", period, "lai15_ai20") == tmp_path / "obs/qbin" / period / "lai15_ai20"
+    assert config.inputs_path("obs", "1deg", period) == tmp_path / "obs/inputs" / period / f"obs.inputs.1deg.{period}.nc"
+    assert config.area_mask_path("1deg", period) == tmp_path / "all/mask" / period / f"all.area_mask.1deg.{period}.nc"
+
+
 # ------------------------------------------------------------------
 # Post-processing
 # ------------------------------------------------------------------
