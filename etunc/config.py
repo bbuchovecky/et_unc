@@ -12,6 +12,7 @@ Every output root derives from ``WORK_ROOT``.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import cartopy.crs as ccrs
@@ -49,16 +50,17 @@ TRENDY_ROOT = Path("/glade/campaign/univ/uwas0155/trendyv14-gcb2025")
 # Outputs
 # ------------------------------------------------------------------
 PROJ_ROOT = Path("/glade/u/home/bbuchovecky/projects/et_unc")
-FIG_ROOT = PROJ_ROOT / "fig"
 
 WORK_ROOT = Path("/glade/work/bbuchovecky/et_unc")
 PROC_ROOT = WORK_ROOT / "proc"
 BIN_EDGES_ROOT = PROC_ROOT / "qbin_edges"
 
+FIG_ROOT = WORK_ROOT / "fig"
+
 
 # Output layout, the same under PROC_ROOT and FIG_ROOT:
 #   <root>/<family>/<kind>/<period>/[<bins>/]<file>
-# kind: inputs, clim, mask, qbin or regress; period: "199501-201412"; bins: "lai15_ai15" (qbin and regress only).
+# kind: inputs, clim, mask, qbin, regress or coverage; period: "199501-201412"; bins: "lai15_ai15" (qbin and regress only).
 # File names keep the grid, period and bin counts, so a file is self-describing outside its folder
 
 def bins_tag(n_ybins: int, n_xbins: int) -> str:
@@ -82,6 +84,26 @@ def area_mask_path(grid: str, period: str) -> Path:
     return output_dir(PROC_ROOT, "all", "mask", period) / f"all.area_mask.{grid}.{period}.nc"
 
 
+def _env(name: str, default, parse):
+    """Setting `name` from the environment variable ETUNC_<name> if set (parsed by `parse`), else `default`."""
+    value = os.environ.get(f"ETUNC_{name}")
+    return default if value is None else parse(value)
+
+
+def _parse_bin_variable(value: str) -> str:
+    if value not in ("et", "et_pr"):
+        raise ValueError(f"ETUNC_BIN_VARIABLE must be 'et' or 'et_pr', not {value!r}")
+    return value
+
+
+def _parse_bool(value: str) -> bool:
+    if value.lower() in ("1", "true"):
+        return True
+    if value.lower() in ("0", "false"):
+        return False
+    raise ValueError(f"ETUNC_AREA_WEIGHTED must be 1/0/true/false, not {value!r}")
+
+
 # ------------------------------------------------------------------
 # Constants
 # ------------------------------------------------------------------
@@ -90,19 +112,23 @@ def area_mask_path(grid: str, period: str) -> Path:
 TIME_SLICE = slice("1995-01", "2014-12")  # one period for every family
 MIN_YEARS = 3          # minimum complete years shared by the four products of an obs combination
 MIN_ANNUAL_ET = -2.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
+# BIN_VARIABLE, AREA_WEIGHTED, N_XBINS and N_YBINS can be overridden by the environment variables
+# ETUNC_BIN_VARIABLE, ETUNC_AREA_WEIGHTED (1/0/true/false), ETUNC_N_XBINS and ETUNC_N_YBINS, so
+# scripts/run_all.sh can run any combination without editing this file. The values below are the defaults.
+
 # Variable binned in step 14: "et" (annual mean ET) or "et_pr" (annual evaporation ratio ET/P, with the
 # P of the aridity index; the prep scripts save it only when this is "et_pr")
-BIN_VARIABLE = "et"
+BIN_VARIABLE = _env("BIN_VARIABLE", "et", _parse_bin_variable)
 # Step 14 (bin_all.py, bin_all_clim.py): weight each sample by its gridcell's land area (grid.land_area) in the
 # bin statistics (True), or count every sample once (False). Weighted outputs are tagged ".area_weighted"
-AREA_WEIGHTED = False
+AREA_WEIGHTED = _env("AREA_WEIGHTED", False, _parse_bool)
 # Families pooled by make_edges.py and binned by bin_all.py. fppe (coupled) and ippe (offline CLM) share
 # the parameter perturbations but are separate families
 FAMILIES = ("obs", "era5", "cmip", "fppe", "ippe", "lens")
 
 # Binning settings
-N_XBINS = 15         # aridity index
-N_YBINS = 15         # LAI
+N_XBINS = _env("N_XBINS", 15, int)  # aridity index
+N_YBINS = _env("N_YBINS", 15, int)  # LAI
 SIGNIF_ALPHA = 0.05  # t-test of bin mean ET against 0 (95% confidence)
 SIGNIF_N_MIN = 10    # bins with <= this many samples are never significant
 

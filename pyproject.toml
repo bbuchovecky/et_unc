@@ -114,5 +114,7 @@ bin-plumber = "scripts/run_logged.sh scripts/bin_plumber.py"
 bin-plumber-clim = "scripts/run_logged.sh scripts/bin_plumber_clim.py"
 regress-lai-aridity = "scripts/run_logged.sh scripts/regress_lai_aridity.py"
 run-all = "scripts/run_all.sh"
+run-all-sweep = { cmd = "scripts/run_all.sh", env = { SWEEP = "1" } }  # every combination, see run_all.sh
 make-mask = "scripts/run_logged.sh scripts/make_mask.py"
 obs-availability = "scripts/run_logged.sh scripts/obs_et_availability.py"
+diagnose-obs = "scripts/run_logged.sh scripts/diagnose_obs.py"

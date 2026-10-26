@@ -89,6 +89,7 @@ pixi run regress-lai-aridity   # OLS of ET on LAI and AI: variance explained, wi
 
 pixi run make-mask        # common valid-data mask of the obs products
 pixi run obs-availability # data availability of the obs ET products
+pixi run diagnose-obs     # coverage of every obs ET, LAI, P and Rn product (docs/obs-availability.md)
 qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
 qsub scripts/legacy_regrid/regrid_cmip.pbs       # deprecated: save CMIP6 fields regridded to 1°
 
@@ -115,7 +116,16 @@ large node (~128 GB), so run it as one Casper job:
 qsub scripts/run_all.pbs  # or, on a large interactive node: pixi run run-all
 ```
 
-It runs only the pipeline: not the analyses (`regress-lai-aridity`) or the diagnostics (`make-mask`, `obs-availability`).
+`BIN_VARIABLE`, `AREA_WEIGHTED`, `N_XBINS` and `N_YBINS` of `etunc/config.py` can be set by
+environment variables (`ETUNC_BIN_VARIABLE`, ...), `SKIP_PREP=1` starts at make-edges, and
+`SWEEP=1` runs every combination (et/et_pr, unweighted/area-weighted, 10/15/20 bins) in one go:
+
+```bash
+qsub -v ETUNC_BIN_VARIABLE=et_pr,ETUNC_AREA_WEIGHTED=1,ETUNC_N_XBINS=20,ETUNC_N_YBINS=20 scripts/run_all.pbs
+qsub -v SWEEP=1 scripts/run_all.pbs  # or: pixi run run-all-sweep
+```
+
+It runs only the pipeline: not the analyses (`regress-lai-aridity`) or the diagnostics (`make-mask`, `obs-availability`, `diagnose-obs`).
 
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.
