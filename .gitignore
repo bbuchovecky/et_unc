@@ -6,3 +6,6 @@ dask-worker*
 *.egg-info/
 .pytest_cache/
 .pixi/
+
+# symlink
+fig
