@@ -20,6 +20,8 @@ PROC_ROOT/lens/inputs/<period>/lens.inputs.<grid>.<period>.nc
     `source` = member
 FIG_ROOT/lens/clim/<period>/lens.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     member mean, standard deviation and range of the climatology
+FIG_ROOT/lens/clim/<period>/lens.<var>.<grid>.map_members.<period>.png    var in lai, pr, rn
+    the climatology of every member, on one color scale (more than one member only)
 FIG_ROOT/lens/clim/<period>/lens.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI, one line per member
 """

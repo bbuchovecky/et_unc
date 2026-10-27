@@ -31,6 +31,8 @@ PROC_ROOT/obs/inputs/<period>/obs.inputs.<grid>.<period>.nc
     `et_product`, `lai_product`, `pr_product`, `rn_product`, `n_years` and `time_period`
 FIG_ROOT/obs/clim/<period>/obs.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     mean, standard deviation and range of the climatology over the combinations
+FIG_ROOT/obs/clim/<period>/obs.<var>.<grid>.map_members.<period>.png    var in lai, pr, rn
+    the climatology of every member, on one color scale (more than one member only)
 FIG_ROOT/obs/clim/<period>/obs.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI, one line per combination
 """

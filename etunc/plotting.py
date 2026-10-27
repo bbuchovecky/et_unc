@@ -169,6 +169,45 @@ def save_ensemble_map(
     return fig
 
 
+def save_member_maps(
+    da: xr.DataArray,
+    variable: str,
+    fout: str | Path | None = None,
+    dim: str = "member",
+    ncols: int = 5,
+    title: str = "",
+    lat_bnds: slice = LAT_BNDS,
+):
+    """
+    One map per member (along `dim`) of a climatology of `variable`, in rows
+    of `ncols`, titled with the member label. Every panel shares one color
+    scale (MAP_KWARGS style) from the 2nd to 98th percentile over all
+    members, with vmin = 0 unless the style sets it, so members compare
+    directly. Saved (path printed) if `fout` is given.
+    """
+    kwargs = {"vmin": 0, **MAP_KWARGS[variable]}
+    lo, hi = np.nanpercentile(da.values, [2, 98])
+    if kwargs["vmin"] is None:
+        kwargs["vmin"] = lo
+    kwargs["vmax"] = hi
+    n = da.sizes[dim]
+    fig, axs = facets(n, ncols=ncols, maps=True, panel_size=(3.2, 1.6))
+    for i, ax in enumerate(axs):
+        pm = da.isel({dim: i}).plot.pcolormesh(
+            ax=ax, transform=ccrs.PlateCarree(), add_colorbar=False, add_labels=False, **kwargs,
+        )
+        ax.set_title(str(da[dim].values[i]), fontsize=8)
+        map_ax(ax, lat_bnds)
+    # One horizontal colorbar under all panels; values outside [vmin, vmax] are saturated
+    fig.colorbar(pm, ax=axs, location="bottom", shrink=0.5, aspect=40, extend="max" if kwargs["vmin"] == 0 else "both",
+                 label=f"{variable} [{da.attrs.get('units', '?')}]")
+    fig.suptitle(f"{title}, {n} members" if title else f"{n} members")
+    finish(fig, fout)
+    if fout is not None:
+        print(fout)
+    return fig
+
+
 def plot_mask_agreement(
     masks: xr.DataArray,
     land: xr.DataArray,
@@ -268,9 +307,11 @@ def save_clim_diagnostics(
     """
     Diagnostics of the binning inputs of one family (written by the prep
     scripts): maps of the climatological ET, LAI, P, Rn and AI (mean,
-    standard deviation and range over members; one map for one member), and
-    histograms of climatological LAI and AI on `config.HIST_BINS`, one line
-    per source. Saved as fig_dir/<family>.<var>.<grid>.{map,hist}.<period>.png.
+    standard deviation and range over members; one map for one member),
+    maps of the climatological LAI, P and Rn of every member (with more than
+    one member), and histograms of climatological LAI and AI on
+    `config.HIST_BINS`, one line per source. Saved as
+    fig_dir/<family>.<var>.<grid>.{map,map_members,hist}.<period>.png.
     """
     title = f"{title}, {inputs.attrs.get('time_period', period)}"
     clim = {"et": inputs["et"].mean("year", keep_attrs=True), **{v: inputs[v] for v in ("lai", "pr", "rn", "ai")}}
@@ -279,6 +320,9 @@ def save_clim_diagnostics(
         clim["et_pr"] = inputs["et_pr"].mean("year", keep_attrs=True)
     for var, da in clim.items():
         save_ensemble_map(da, var, fig_dir / f"{family}.{var}.{grid}.map.{period}.png", title=title)
+    if inputs.sizes["member"] > 1:
+        for var in ("lai", "pr", "rn"):
+            save_member_maps(inputs[var], var, fig_dir / f"{family}.{var}.{grid}.map_members.{period}.png", title=title)
     sources = list(dict.fromkeys(inputs["source"].values.tolist()))
     for var in ("lai", "ai"):
         fields = {s: inputs[var].where(inputs["source"] == s) for s in sources}

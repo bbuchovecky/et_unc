@@ -25,6 +25,8 @@ PROC_ROOT/cmip/inputs/<period>/cmip.inputs.<grid>.<period>.nc
     "<source_id>.<member_id>", with coords `source` (= source_id) and `member_id`
 FIG_ROOT/cmip/clim/<period>/cmip.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     mean, standard deviation and range of the climatology over all members
+FIG_ROOT/cmip/clim/<period>/cmip.<var>.<grid>.map_members.<period>.png    var in lai, pr, rn
+    the climatology of every member, on one color scale (more than one member only)
 FIG_ROOT/cmip/clim/<period>/cmip.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI, one line per model
 """

@@ -27,6 +27,8 @@ PROC_ROOT/ippe/inputs/<period>/ippe.inputs.<grid>.<period>.nc
     name (e.g. "2.dleaf.max"), `source` = member
 FIG_ROOT/ippe/clim/<period>/ippe.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     member mean, standard deviation and range of the climatology
+FIG_ROOT/ippe/clim/<period>/ippe.<var>.<grid>.map_members.<period>.png    var in lai, pr, rn
+    the climatology of every member, on one color scale (more than one member only)
 FIG_ROOT/ippe/clim/<period>/ippe.{lai,ai}_clim.<grid>.hist.<period>.png
     histograms of climatological LAI and AI, one line per member
 """

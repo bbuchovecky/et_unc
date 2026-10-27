@@ -858,8 +858,25 @@ def test_plot_clim_hist_fixed_bins_and_outside_note(capsys):
     plt.close(fig)
 
 
+def test_save_member_maps_one_panel_per_member(tmp_path, inputs, capsys):
+    """save_member_maps draws one map per member, titled with its label, on one shared color scale."""
+    lai = inputs["lai"].assign_attrs(units="m2/m2")
+    da = xr.concat([lai, lai + 1, lai + 3], dim="member").assign_coords(member=["a", "b", "c"])
+    fout = tmp_path / "lai.png"
+    fig = plotting.save_member_maps(da, "lai", fout, ncols=2, title="LAI")
+    assert fout.exists() and str(fout) in capsys.readouterr().out
+    maps = [ax for ax in fig.axes if hasattr(ax, "projection")]
+    assert [ax.get_title() for ax in maps] == ["a", "b", "c"]
+    assert len({ax.collections[0].get_clim() for ax in maps}) == 1  # shared color scale
+    assert fig._suptitle.get_text() == "LAI, 3 members"
+    plt.close("all")
+
+
 def test_save_clim_diagnostics_writes_maps_and_hists(tmp_path, inputs, capsys):
-    """Five climatology maps and two histograms per family, named <family>.<var>.<grid>.{map,hist}.<period>.png."""
+    """
+    Five climatology maps, three per-member maps and two histograms per family, named
+    <family>.<var>.<grid>.{map,map_members,hist}.<period>.png.
+    """
     members = [f"m{i}" for i in range(3)]
     ds = xr.concat([xr.Dataset({**inputs, "pr": inputs["lai"], "rn": inputs["lai"]})] * 3, dim="member")
     ds = ds.assign_coords(member=members, source=("member", ["s1", "s1", "s2"]))
@@ -867,9 +884,10 @@ def test_save_clim_diagnostics_writes_maps_and_hists(tmp_path, inputs, capsys):
     names = sorted(p.name for p in tmp_path.iterdir())
     assert names == sorted(
         [f"fam.{v}.1deg.map.200001-200212.png" for v in ("et", "lai", "pr", "rn", "ai")]
+        + [f"fam.{v}.1deg.map_members.200001-200212.png" for v in ("lai", "pr", "rn")]
         + [f"fam.{v}_clim.1deg.hist.200001-200212.png" for v in ("lai", "ai")]
     )
     plotting.save_clim_diagnostics(ds.isel(member=[0]), tmp_path / "one", "fam", "1deg", "200001-200212")
-    assert len(list((tmp_path / "one").iterdir())) == 7  # one member: single maps
+    assert len(list((tmp_path / "one").iterdir())) == 7  # one member: single maps, no member maps
     plt.close("all")
 
