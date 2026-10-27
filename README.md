@@ -1,21 +1,43 @@
 # et_unc
 
-Research code for quantifying evapotranspiration (ET) uncertainty. Annual-mean
-ET is binned in a 2-D space of climatological leaf area index (LAI) and aridity
-index (AI = Rn / Lv×P), so that observational products (ILAMB, PML-V2.2,
-GLEAM v4.3, SiTHv2), ERA5, CMIP6 models and CESM2 ensembles can be compared bin by
-bin.
+Research code for quantifying evapotranspiration (ET) uncertainty. ET is binned in
+a 2-D space of climatological leaf area index (LAI) and aridity index (AI = Rn / Lv×P),
+so that observational products (ILAMB, PML-V2.2, GLEAM v4.3, SiTHv2), ERA5, CMIP6 models,
+CESM2 perturbed parameter ensembles, and the CESM2 Large Ensemble can be compared bin by bin.
 
-The code runs on NCAR's glade (Casper/Derecho). Inputs and outputs live outside
+The code runs on NCAR's HPC system (Casper/Derecho). Inputs and outputs live outside
 the repo:
 
 | | Path |
 | --- | --- |
-| Inputs (shared, read-only) | `/glade/campaign/univ/uwas0155/` (ILAMB and gridded obs, regridded obs and CMIP6) |
+| Inputs (shared, read-only) | `/glade/campaign/univ/uwas0155/` (ILAMB and gridded obs, and CMIP6) |
 | CMIP6 catalogs | `/glade/derecho/scratch/$USER/cmip_intake_esgf_fetch/` (purgeable scratch; see `etunc/config.py`) |
 | Outputs | `/glade/work/$USER/et_unc/proc` and `fig/`, as `<root>/<family>/<kind>/<period>/[lai<N>_ai<N>/]` (`cfg.output_dir`) |
 
 All of these paths are set in `etunc/config.py`.
+
+## Data products
+
+Each data product in the binning pipeline is organized into families (e.g., gridded observations, CMIP6, ERA5, CESM2 FPPE). Within each family, there can exist members (e.g., observational data products, CMIP6 models, CESM2 ensemble members, TRENDY models). Each member then can have multiple sources (e.g., CMIP6 ensemble members with different r-i-p-f- IDs). For now, a single CMIP6 model-member combination is used.
+
+| Data product | Abbreviation | Reference |
+| -------------| ------------ | --------- |
+| Gridded observational products | `obs` |  |
+| ERA5 | `era5` |  |
+| CMIP6 Historical Experiment | `cmip` |  |
+| CESM2 Historical PPE, coupled | `fppe` |  |
+| CESM2 Historical PPE, offline | `ippe` |  |
+| CESM2 Large Ensemble | `lens` |  |
+| TRENDY, Global Carbon Budget 2025 | `trendy` |  |
+| PLUMBER2 flux towers | `plumber` |  |
+
+### Observations
+The following product choices and corresponding time periods were made:
+- `199501-201412` uses GEWEX.SRB for net surface radiation, GIMMS_LAI4g for LAI, and GPCPv2.3 for precipitation.
+- `200101-201412` uses CERESed4.2 for net surface radiation, GIMMS_LAI4g for LAI, and GPCPv2.3 for precipitation.
+
+### TRENDY
+The LSMs and DVGMs participating in TRENDY do not provide upwelling surface radiation, so ERA5 net surface radiation is used for the aridity calculation. A full comparison of CERESed4.2, ERA5, and the CRU-JRA3 (downwelling-only) is done with `scripts/compare_rn.py`.
 
 ## Layout
 
@@ -44,7 +66,7 @@ All of these paths are set in `etunc/config.py`.
 ## Setup
 
 The `etunc` env is managed by [pixi](https://pixi.sh). One-time setup, so the
-env (~3 GB) and the package cache go to /glade/work instead of home:
+env (~3 GB) and the package cache go to `/glade/work` instead of home:
 
 ```bash
 curl -fsSL https://pixi.sh/install.sh | bash
@@ -62,14 +84,14 @@ pixi run kernel    # registers the `etunc` Jupyter kernel for the notebooks
 The package is installed editable, so changes under `etunc/` take effect
 without reinstalling. Add or change a dependency with `pixi add <pkg>` (or edit
 `[tool.pixi.dependencies]`, then `pixi install`); either way, commit the updated
-`pixi.lock`. `notebooks/check-disalexi.ipynb` uses the separate conda env
-`openet` (`envs/openet.yml`).
+`pixi.lock`.
 
 ## Running
 
 The binning pipeline (described step by step in `docs/binning-workflow.md`) has three stages:
 
 ```bash
+# Stage 1
 pixi run prep-obs         # steps 1-11: binning inputs of every obs product combination
 pixi run prep-era5        # steps 1-11: binning inputs of ERA5 (ET, P, Rn) with obs LAI (GIMMS_LAI4g)
 pixi run prep-cmip        # steps 1-11: binning inputs of the CMIP6 historical models
@@ -77,7 +99,11 @@ pixi run prep-lens        # steps 1-11: binning inputs of the CESM2 Large Ensemb
 pixi run prep-fppe        # steps 1-11: binning inputs of the CESM2 FHIST perturbed-parameter ensemble
 pixi run prep-ippe        # steps 1-11: binning inputs of the CESM2 offline (CLM5) perturbed-parameter ensemble
 qsub -N prep_obs -v FAMILY=obs scripts/prep.pbs  # any prep-* as a Casper job (FAMILY: obs, era5, cmip, lens, fppe, ippe)
+
+# Stage 2
 pixi run make-edges       # steps 12-13: common area mask and pooled LAI/AI edges (needs every prep-*)
+
+# Stage 3
 pixi run bin-all          # step 14: binned ET of every family with the pooled_all and pooled_<family> edges
 pixi run bin-all-clim     # step 14 with climatological ET: one sample per gridcell instead of per gridcell-year
 pixi run bin-area         # step 14 for land area: total Natural Earth land area in each bin, per member and source
@@ -86,16 +112,13 @@ pixi run bin-plumber-clim # step 14 for the PLUMBER2 flux towers with climatolog
 
 # Analyses of the step 14 outputs, not part of the pipeline
 pixi run regress-lai-aridity   # OLS of ET on LAI and AI: variance explained, with the bins' eta2
-pixi run make-mask        # common valid-data mask of the obs products
-pixi run obs-availability # data availability of the obs ET products
-pixi run diagnose-obs     # coverage of every obs ET, LAI, P and Rn product (docs/obs-availability.md)
+pixi run make-mask             # common valid-data mask of the obs products
+pixi run diagnose-obs          # coverage of every obs ET, LAI, P and Rn product (docs/obs-availability.md)
 qsub scripts/diagnose_obs.pbs  # diagnose-obs as a Casper job (too large for a login node)
-pixi run compare-rn       # ERA5, CERES and CRU-JRA (TRENDY forcing) surface radiation, for the Rn of prep_trendy.py
+pixi run compare-rn            # ERA5, CERES and CRU-JRA3 (TRENDY forcing) surface radiation, for the Rn of prep_trendy.py
 qsub scripts/compare_rn.pbs    # compare-rn as a Casper job
-qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
-qsub scripts/legacy_regrid/regrid_cmip.pbs       # deprecated: save CMIP6 fields regridded to 1°
 
-pixi run test             # all tests (~6 min)
+pixi run test                  # all tests (~6 min)
 ```
 
 Each task is `scripts/run_logged.sh scripts/<name>.py`, which logs the output,
@@ -107,15 +130,14 @@ output file it writes. Every family runs the same steps, written out in the
 script's `main()`; only the loader (step 1), the unit conversion (step 3) and
 the land mask (step 5) differ.
 
-## To reproduce results
+## To reproduce all results
 
 After the data are downloaded (`scripts/download/`), `scripts/run_all.sh` runs
-every step in order (all prep-*, make-edges, every bin-*),
-each through `scripts/run_logged.sh`, and stops at the first failure. It needs a
-large node (~128 GB), so run it as one Casper job:
+every step in order (prep-\*, make-edges, bin-\*), each through `scripts/run_logged.sh`,
+and stops at the first failure. It needs a large node (~128 GB), so run it as one job:
 
 ```bash
-qsub scripts/run_all.pbs  # or, on a large interactive node: pixi run run-all
+qsub scripts/run_all.pbs
 ```
 
 `BIN_VARIABLE`, `AREA_WEIGHTED`, `N_XBINS` and `N_YBINS` of `etunc/config.py` can be set by
@@ -124,20 +146,17 @@ environment variables (`ETUNC_BIN_VARIABLE`, ...), `SKIP_PREP=1` starts at make-
 
 ```bash
 qsub -v ETUNC_BIN_VARIABLE=et_pr,ETUNC_AREA_WEIGHTED=1,ETUNC_N_XBINS=20,ETUNC_N_YBINS=20 scripts/run_all.pbs
-qsub -v SWEEP=1 scripts/run_all.pbs  # or: pixi run run-all-sweep
+qsub -v SWEEP=1 scripts/run_all.pbs
 ```
 
 It runs only the pipeline: not the analyses (`regress-lai-aridity`) or the diagnostics (`make-mask`, `obs-availability`, `diagnose-obs`).
 
-## Observational product choice
-- `199501-201412` uses GEWEX.SRB for net surface radiation, GIMMS_LAI4g for LAI, and GPCPv2.3 for precipitation.
-- `200101-201412` uses CERESed4.2 for net surface radiation, GIMMS_LAI4g for LAI, and GPCPv2.3 for precipitation.
-
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.
 Binning settings (e.g., `N_XBINS`, `N_YBINS`) exist there but they also can changed at
-the top of each run script. For consistent analysis, all run script should have the
-same binning settings.
+the top of each run script. `BIN_VARIABLE`, `AREA_WEIGHTED`, `N_XBINS` and `N_YBINS` can
+also be set by environment variables (`ETUNC_BIN_VARIABLE`, ...). For consistent analysis,
+all run script should have the same binning settings.
 
 ## TODO
 - Allow data families to use their own valid area for binning, instead of using the common area mask.
