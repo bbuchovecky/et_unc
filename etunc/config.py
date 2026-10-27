@@ -109,7 +109,7 @@ def _parse_bool(value: str) -> bool:
 # ------------------------------------------------------------------
 
 # Pipeline settings shared by every family (docs/binning-workflow.md)
-TIME_SLICE = slice("1995-01", "2014-12")  # one period for every family
+TIME_SLICE = slice("2001-01", "2014-12")  # one period for every family
 MIN_YEARS = 3          # minimum complete years shared by the four products of an obs combination
 MIN_ANNUAL_ET = -2.0   # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
 # BIN_VARIABLE, AREA_WEIGHTED, N_XBINS and N_YBINS can be overridden by the environment variables

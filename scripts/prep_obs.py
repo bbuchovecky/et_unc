@@ -77,7 +77,7 @@ ILAMB_PRODUCTS = {
     "et":  list(il.PRODUCTS["et"]),  # every ILAMB ET product
     "lai": ["GIMMS_LAI4g"],
     "pr":  ["GPCPv2.3"],
-    "rn":  ["GEWEX.SRB"],
+    "rn":  ["CERESed4.2"],
 }
 
 # Gridded ET products, read from their native files: {label: (load_obs dataset, version, variable, freq)}
