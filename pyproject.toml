@@ -104,7 +104,7 @@ prep-cmip = "scripts/run_logged.sh scripts/prep_cmip.py"
 prep-lens = "scripts/run_logged.sh scripts/prep_lens.py"
 prep-fppe = "scripts/run_logged.sh scripts/prep_fppe.py"
 prep-ippe = "scripts/run_logged.sh scripts/prep_ippe.py"
-# TRENDY: one experiment per run (EXPERIMENT in the script); not in run-all while Rn is a placeholder
+# TRENDY: one experiment per run (EXPERIMENT in the script); not in run-all
 prep-trendy = "scripts/run_logged.sh scripts/prep_trendy.py"
 make-edges = "scripts/run_logged.sh scripts/make_edges.py"
 bin-all = "scripts/run_logged.sh scripts/bin_all.py"
@@ -118,3 +118,4 @@ run-all-sweep = { cmd = "scripts/run_all.sh", env = { SWEEP = "1" } }  # every c
 make-mask = "scripts/run_logged.sh scripts/make_mask.py"
 obs-availability = "scripts/run_logged.sh scripts/obs_et_availability.py"
 diagnose-obs = "scripts/run_logged.sh scripts/diagnose_obs.py"
+compare-rn = "scripts/run_logged.sh scripts/compare_rn.py"

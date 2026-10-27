@@ -57,6 +57,13 @@ PRODUCTS = {
         "CLASS":      ("rns/CLASS/rns.nc", "rns"),
         "GEWEX.SRB":  ("rns/GEWEX.SRB/rns_0.5x0.5.nc", "rns"),
     },
+    # Downward shortwave and longwave at the surface (scripts/compare_rn.py only)
+    "rsds": {
+        "CERESed4.2": ("rsds/CERESed4.2/rsds.nc", "rsds"),
+    },
+    "rlds": {
+        "CERESed4.2": ("rlds/CERESed4.2/rlds.nc", "rlds"),
+    },
 }
 
 

@@ -1,0 +1,32 @@
+#!/bin/bash
+#PBS -N compare_rn
+#PBS -A UWAS0155
+#PBS -q casper
+#PBS -l walltime=1:00:00
+#PBS -l select=1:ncpus=8:mem=96GB
+#PBS -j oe
+#PBS -o /glade/work/bbuchovecky/et_unc/logs/
+
+# Surface radiation of ERA5, CERES and the CRU-JRA forcing of TRENDY: runs scripts/compare_rn.py
+# through scripts/run_logged.sh, so the full log (with git header) is also saved to WORK_ROOT/logs.
+#
+# Usage:
+#   qsub scripts/compare_rn.pbs
+# Resources are overridden on the command line, e.g. -l walltime=02:00:00
+
+REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
+
+set -euo pipefail
+
+script="scripts/compare_rn.py"
+
+export OMP_NUM_THREADS="${PBS_NCPUS:-8}"
+
+cd "${REPO_DIR}"
+
+echo "Job ${PBS_JOBID} (${script}) started on $(hostname) at $(date)"
+echo "OMP_NUM_THREADS=${OMP_NUM_THREADS}"
+
+scripts/run_logged.sh "${script}"
+
+echo "Job ${PBS_JOBID} finished at $(date)"

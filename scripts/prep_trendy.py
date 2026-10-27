@@ -15,10 +15,12 @@ used. The native land mask is Natural Earth land (as for the obs), since few
 models provide a land fraction and some fill the ocean with 0, without
 Greenland and Iceland; annual LAI missing on land is set to 0.
 
-Rn is a PLACEHOLDER: TRENDY models do not output the radiation terms of the
-net radiation, so Rn and the aridity index are all NaN for now. The inputs
-are saved for inspection, but TRENDY is not in cfg.FAMILIES, so make_edges.py
-and the bin scripts do not read them.
+Rn is the ERA5 net surface radiation (msnswrf + msnlwrf, as in prep_era5.py),
+the same field for every model: the models output at most the downward
+shortwave (rsds), not the upward terms of the net radiation. Its native land
+mask is ERA5 LANDFRAC > LF_THRESH, as in prep_era5.py. So the AI is the same
+for every model and the models differ only in ET and LAI. TRENDY is not in
+cfg.FAMILIES, so make_edges.py and the bin scripts do not read the inputs.
 
 Models: every model directory with VARIABLES for EXPERIMENT (ISAM has no lai),
 minus OMIT_MODELS.
@@ -31,11 +33,13 @@ Outputs
 
 PROC_ROOT/<family>/inputs/<period>/<family>.inputs.<grid>.<period>.nc
     et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); with BIN_VARIABLE = "et_pr",
-    also et_pr (member, year, lat, lon); `member` and `source` = model name. rn and ai are NaN
-FIG_ROOT/<family>/clim/<period>/<family>.<var>.<grid>.map.<period>.png        var in et, lai, pr
+    also et_pr (member, year, lat, lon); `member` and `source` = model name
+FIG_ROOT/<family>/clim/<period>/<family>.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
     mean, standard deviation and range of the climatology over all models
-FIG_ROOT/<family>/clim/<period>/<family>.lai_clim.<grid>.hist.<period>.png
-    histograms of climatological LAI, one line per model
+FIG_ROOT/<family>/clim/<period>/<family>.<var>.<grid>.map_members.<period>.png     var in lai, pr, rn
+    the climatology of every model, on one color scale
+FIG_ROOT/<family>/clim/<period>/<family>.{lai,ai}_clim.<grid>.hist.<period>.png
+    histograms of climatological LAI and AI, one line per model
 """
 
 from __future__ import annotations
@@ -44,7 +48,6 @@ import warnings
 
 import matplotlib
 matplotlib.use("Agg")
-import numpy as np
 import xarray as xr
 
 import etunc.config as cfg
@@ -54,6 +57,7 @@ import etunc.grid as rg
 import etunc.plotting as plotting
 import etunc.temporal as temporal
 import etunc.units as units
+import etunc.load.era5 as le
 import etunc.load.trendy as lt
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
@@ -69,8 +73,10 @@ TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
 BIN_VARIABLE = cfg.BIN_VARIABLE  # "et_pr" also saves the annual evaporation ratio ET/P (binned by bin_all.py)
 
-# Model variables (P is the CRU-JRA forcing, Rn is a placeholder)
+# Model variables (P is the CRU-JRA forcing, Rn is ERA5's)
 VARIABLES = ["evapotrans", "lai"]
+# GDEX "meanflux" parameter codes of the ERA5 net radiation: net shortwave and net longwave
+ERA5_RN_CODES = ["msnswrf", "msnlwrf"]
 
 # None = every model directory with all VARIABLES, minus OMIT_MODELS
 MODELS: list[str] | None = None
@@ -83,8 +89,6 @@ OMIT_MODELS: dict[str, str] = {
     "LPX-Bern": "implausible LAI",
     "VISIT": "implausible LAI",
 }
-
-RN_PLACEHOLDER = "PLACEHOLDER: all NaN; TRENDY models do not output the radiation terms of the net radiation"
 
 
 # ------------------------------------------------------------------
@@ -126,6 +130,23 @@ def main():
     # 8. Domain without Antarctica
     pr = pr.sel(lat=cfg.LAT_BNDS)
 
+    # Rn: the ERA5 net surface radiation, the same for every model, so steps 1-8 run once, on the ERA5 grid
+    print("\n=== ERA5 net radiation (the same for every model) ===")
+    # 1-2. Monthly mean net fluxes [W/m2, positive downward] over TIME_SLICE, and the ERA5 land fraction
+    era5 = le.load_native(ERA5_RN_CODES, TIME_SLICE)
+    landfrac, era5_grid = le.load_land_fraction()
+    # 3. Rn = net shortwave + net longwave [W/m2]
+    rn = units.net_radiation_era5(era5["msnswrf"], era5["msnlwrf"])
+    # 4. Annual means over complete years (all 12 months needed)
+    rn = temporal.aggregate(rn, "year", label="era5/rn")
+    # 5. Native land mask: ERA5 LANDFRAC > LF_THRESH (as in prep_era5.py), without Greenland/Iceland
+    rn = rg.mask_to_land(rn, rg.landfrac_mask(landfrac, cfg.LF_THRESH), "era5/rn")
+    # 7. Conservative regridding onto the target grid (NaN where more than NA_THRESH is missing)
+    regridder = rg.bounded_conservative_regridder(era5_grid, TARGET_RES)
+    rn = rg.on_grid(rg.regrid_with_na_thresh(rn, regridder, cfg.NA_THRESH), TARGET_RES, "era5/rn")
+    # 8. Domain without Antarctica
+    rn = rn.sel(lat=cfg.LAT_BNDS)
+
     per_model = []
     native_res = {}  # {model: native resolution}, of the models that are saved
     for model in models:
@@ -138,15 +159,13 @@ def main():
             continue
         src_grid = rg.bounded_src_grid(raw["evapotrans"])
 
-        # 3. ET and Rn in W/m2 (P is the forcing's, above)
+        # 3. ET in W/m2 (P is the forcing's and Rn ERA5's, above)
         monthly = {
             "et": units.convert_units("et", raw["evapotrans"]),  # kg m-2 s-1 x L
             "lai": raw["lai"].assign_attrs(units="m2/m2"),
-            # Rn PLACEHOLDER: all NaN until a source of net radiation is chosen, so the AI is NaN
-            "rn": xr.full_like(raw["evapotrans"], np.nan).assign_attrs(units="W/m2", note=RN_PLACEHOLDER),
         }
 
-        # 4. Annual means over complete years: ET and Rn need all 12 months, a missing LAI month counts as 0
+        # 4. Annual means over complete years: ET needs all 12 months, a missing LAI month counts as 0
         ann = {
             k: temporal.aggregate(da, "year", require_all_months=(k != "lai"), label=f"{model}/{k}")
             for k, da in monthly.items()
@@ -175,18 +194,19 @@ def main():
         # 8. Domain without Antarctica
         ann = {k: da.sel(lat=cfg.LAT_BNDS) for k, da in ann.items()}
 
-        # 9. Complete years shared by ET, LAI, Rn and the forcing P
-        years = temporal.shared_years(*ann.values(), pr)
+        # 9. Complete years shared by ET, LAI, the forcing P and the ERA5 Rn
+        years = temporal.shared_years(*ann.values(), pr, rn)
         if len(years) < cfg.MIN_YEARS:
             print(f"{model}: only {len(years)} shared years, fewer than MIN_YEARS = {cfg.MIN_YEARS}, skipping")
             continue
         ann = {k: da.sel(year=years) for k, da in ann.items()}
         ann["pr"] = pr.sel(year=years)
+        ann["rn"] = rn.sel(year=years)
 
         # 10. Climatological LAI, P and Rn over those years
         clim = {k: temporal.aggregate(ann[k], "clim", label=f"{model}/{k}") for k in ("lai", "pr", "rn")}
 
-        # 11. Aridity index from the climatological Rn and P (NaN while Rn is the placeholder)
+        # 11. Aridity index from the climatological Rn and P
         ai = edges.compute_aridity_index(clim["pr"], clim["rn"])
 
         # 11b. Annual evaporation ratio ET/P (BIN_VARIABLE = "et_pr" only), with the annual forcing P
@@ -205,10 +225,10 @@ def main():
         "family": FAMILY, "dataset": f"TRENDY (GCB2025) {EXPERIMENT}", "experiment": EXPERIMENT,
         "time_period": temporal.period_str(inputs.year.values), "grid": grid,
         "native_res": "; ".join(f"{m}: {res}" for m, res in native_res.items()),
-        "na_thresh": cfg.NA_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
-        "land_mask": "Natural Earth land, without Greenland/Iceland",
+        "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
+        "land_mask": "models: Natural Earth land; ERA5 Rn: LANDFRAC > lf_thresh; both without Greenland/Iceland",
         "pr_source": "CRU-JRA v3.02 precipitation forcing (the same for every model)",
-        "rn": RN_PLACEHOLDER,
+        "rn_source": "ERA5 net surface radiation msnswrf + msnlwrf (the same for every model)",
         "omitted_models": "; ".join(f"{m}: {why}" for m, why in OMIT_MODELS.items()),
     }
     fout = cfg.inputs_path(FAMILY, grid, period)
@@ -216,18 +236,9 @@ def main():
     inputs.to_netcdf(fout)
     print(f"\n{inputs.sizes['member']} models, {inputs.attrs['time_period']}\n{fout}")
 
-    # Diagnostics: climatology maps of ET, LAI and P, and LAI histograms. Rn and AI are all NaN, so
-    # plotting.save_clim_diagnostics (as in the other prep scripts) is used once Rn exists
+    # Diagnostics: climatology maps and LAI/AI histograms
     fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period)
-    title = f"TRENDY {EXPERIMENT}, {inputs.attrs['time_period']}"
-    clim = {"et": inputs["et"].mean("year", keep_attrs=True), "lai": inputs["lai"], "pr": inputs["pr"]}
-    for var, da in clim.items():
-        plotting.save_ensemble_map(da, var, fig_dir / f"{FAMILY}.{var}.{grid}.map.{period}.png", title=title)
-    fields = {m: inputs["lai"].sel(member=m) for m in inputs["member"].values.tolist()}
-    fout = fig_dir / f"{FAMILY}.lai_clim.{grid}.hist.{period}.png"
-    plotting.plot_clim_hist(fields, cfg.HIST_BINS["lai"], xlabel="climatological lai",
-                            title=f"{title}, {len(fields)} models", fout=fout)
-    print(fout)
+    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, grid, period, title=f"TRENDY {EXPERIMENT}")
 
 
 if __name__ == "__main__":

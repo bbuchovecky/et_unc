@@ -90,6 +90,8 @@ pixi run regress-lai-aridity   # OLS of ET on LAI and AI: variance explained, wi
 pixi run make-mask        # common valid-data mask of the obs products
 pixi run obs-availability # data availability of the obs ET products
 pixi run diagnose-obs     # coverage of every obs ET, LAI, P and Rn product (docs/obs-availability.md)
+pixi run compare-rn       # ERA5, CERES and CRU-JRA (TRENDY forcing) surface radiation, for the Rn of prep_trendy.py
+qsub scripts/compare_rn.pbs    # compare-rn as a Casper job
 qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
 qsub scripts/legacy_regrid/regrid_cmip.pbs       # deprecated: save CMIP6 fields regridded to 1°
 
