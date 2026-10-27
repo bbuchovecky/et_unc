@@ -86,10 +86,10 @@ pixi run bin-plumber-clim # step 14 for the PLUMBER2 flux towers with climatolog
 
 # Analyses of the step 14 outputs, not part of the pipeline
 pixi run regress-lai-aridity   # OLS of ET on LAI and AI: variance explained, with the bins' eta2
-
 pixi run make-mask        # common valid-data mask of the obs products
 pixi run obs-availability # data availability of the obs ET products
 pixi run diagnose-obs     # coverage of every obs ET, LAI, P and Rn product (docs/obs-availability.md)
+qsub scripts/diagnose_obs.pbs  # diagnose-obs as a Casper job (too large for a login node)
 pixi run compare-rn       # ERA5, CERES and CRU-JRA (TRENDY forcing) surface radiation, for the Rn of prep_trendy.py
 qsub scripts/compare_rn.pbs    # compare-rn as a Casper job
 qsub scripts/legacy_regrid/regrid_obs.pbs        # deprecated: save GLEAM/PML/SiTH regridded to 0.5° and 1°
@@ -128,6 +128,10 @@ qsub -v SWEEP=1 scripts/run_all.pbs  # or: pixi run run-all-sweep
 ```
 
 It runs only the pipeline: not the analyses (`regress-lai-aridity`) or the diagnostics (`make-mask`, `obs-availability`, `diagnose-obs`).
+
+## Observational product choice
+- `199501-201412` uses GEWEX.SRB for net surface radiation, GIMMS_LAI4g for LAI, and GPCPv2.3 for precipitation.
+- `200101-201412` uses CERESed4.2 for net surface radiation, GIMMS_LAI4g for LAI, and GPCPv2.3 for precipitation.
 
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.

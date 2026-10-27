@@ -34,6 +34,7 @@ pixi run regress-lai-aridity                         # analysis, not pipeline: O
 pixi run make-mask                                   # common valid-data mask of the obs products
 pixi run obs-availability                            # data availability of the obs ET products
 pixi run diagnose-obs                                # coverage of every obs ET, LAI, P and Rn product (~15 min on a Casper node)
+qsub scripts/diagnose_obs.pbs                        # diagnose-obs as a Casper job via run_logged.sh (it exceeds the 30 GB login-node limit)
 pixi run compare-rn                                  # ERA5, CERES and CRU-JRA (TRENDY forcing) surface radiation: SW down, LW down, Rn
 qsub scripts/compare_rn.pbs                          # compare-rn as a Casper job via run_logged.sh (~10 min)
 scripts/run_logged.sh scripts/prep_obs.py            # what every task runs: output also logged to WORK_ROOT/logs or $LOG_DIR (header: host, python, git commit + branch)

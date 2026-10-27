@@ -43,6 +43,7 @@ prep_steps=(
     scripts/prep_lens.py
     scripts/prep_fppe.py
     scripts/prep_ippe.py
+    scripts/prep_trendy.py
 )
 # Steps 12-14: common area mask and pooled edges, then binning (bin_plumber_clim.py
 # reads bin_plumber.py's inputs)

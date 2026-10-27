@@ -9,3 +9,5 @@ dask-worker*
 
 # symlink
 fig
+proc
+logs

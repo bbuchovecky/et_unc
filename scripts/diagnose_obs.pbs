@@ -1,0 +1,32 @@
+#!/bin/bash
+#PBS -N diagnose_obs
+#PBS -A UWAS0155
+#PBS -q casper
+#PBS -l walltime=2:00:00
+#PBS -l select=1:ncpus=8:mem=128GB
+#PBS -j oe
+#PBS -o /glade/work/bbuchovecky/et_unc/logs/
+
+# Coverage of every obs ET, LAI, P and Rn product: runs scripts/diagnose_obs.py through
+# scripts/run_logged.sh, so the full log (with git header) is also saved to WORK_ROOT/logs.
+#
+# Usage:
+#   qsub scripts/diagnose_obs.pbs
+# Resources are overridden on the command line, e.g. -l walltime=04:00:00
+
+REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
+
+set -euo pipefail
+
+script="scripts/diagnose_obs.py"
+
+export OMP_NUM_THREADS="${PBS_NCPUS:-8}"
+
+cd "${REPO_DIR}"
+
+echo "Job ${PBS_JOBID} (${script}) started on $(hostname) at $(date)"
+echo "OMP_NUM_THREADS=${OMP_NUM_THREADS}"
+
+scripts/run_logged.sh "${script}"
+
+echo "Job ${PBS_JOBID} finished at $(date)"
