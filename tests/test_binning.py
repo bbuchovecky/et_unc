@@ -859,14 +859,21 @@ def test_plot_clim_hist_fixed_bins_and_outside_note(capsys):
 
 
 def test_save_member_maps_one_panel_per_member(tmp_path, inputs, capsys):
-    """save_member_maps draws one map per member, titled with its label, on one shared color scale."""
+    """
+    save_member_maps draws one map per member, titled with its label and area-weighted mean,
+    on one shared color scale.
+    """
     lai = inputs["lai"].assign_attrs(units="m2/m2")
     da = xr.concat([lai, lai + 1, lai + 3], dim="member").assign_coords(member=["a", "b", "c"])
     fout = tmp_path / "lai.png"
     fig = plotting.save_member_maps(da, "lai", fout, ncols=2, title="LAI")
     assert fout.exists() and str(fout) in capsys.readouterr().out
     maps = [ax for ax in fig.axes if hasattr(ax, "projection")]
-    assert [ax.get_title() for ax in maps] == ["a", "b", "c"]
+    # Mean over the valid cells only, each weighted by its cell area
+    area = np.broadcast_to(rg.cell_area(lai.lat.values, lai.lon.values), lai.shape)
+    valid = np.isfinite(lai.values)
+    mean = np.average(lai.values[valid], weights=area[valid])
+    assert [ax.get_title() for ax in maps] == [f"{m}: {mean + d:.3g}" for m, d in (("a", 0), ("b", 1), ("c", 3))]
     assert len({ax.collections[0].get_clim() for ax in maps}) == 1  # shared color scale
     assert fig._suptitle.get_text() == "LAI, 3 members"
     plt.close("all")

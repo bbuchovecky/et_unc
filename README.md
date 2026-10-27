@@ -39,6 +39,9 @@ The following product choices and corresponding time periods were made:
 ### TRENDY
 The LSMs and DVGMs participating in TRENDY do not provide upwelling surface radiation, so ERA5 net surface radiation is used for the aridity calculation. A full comparison of CERESed4.2, ERA5, and the CRU-JRA3 (downwelling-only) is done with `scripts/compare_rn.py`.
 
+### PLUMBER2
+The PLUMBER2 flux tower data are not included in the core binning pipeline. Instead, `scripts/bin_plumber.py` and `scripts/bin_plumber_clim.py` handle their processing and binning.
+
 ## Layout
 
 | Path | What it holds |

@@ -21,6 +21,7 @@ import cartopy.crs as ccrs
 
 from etunc.binning import edges_and_attrs, ensemble_spread, ensure_bin_coords
 from etunc.config import DPI, HIST_BINS, LAT_BNDS, PROJECTION
+from etunc.grid import cell_area
 
 
 # quick_map style of each variable's climatology map (obs and CMIP6 names)
@@ -180,7 +181,8 @@ def save_member_maps(
 ):
     """
     One map per member (along `dim`) of a climatology of `variable`, in rows
-    of `ncols`, titled with the member label. Every panel shares one color
+    of `ncols`, titled "<member>: <area-weighted mean>" (mean over the
+    member's valid gridcells, weighted by `grid.cell_area`). Every panel shares one color
     scale (MAP_KWARGS style) from the 2nd to 98th percentile over all
     members, with vmin = 0 unless the style sets it, so members compare
     directly. Saved (path printed) if `fout` is given.
@@ -190,13 +192,16 @@ def save_member_maps(
     if kwargs["vmin"] is None:
         kwargs["vmin"] = lo
     kwargs["vmax"] = hi
+    # Area-weighted mean of each member over its valid gridcells (NaN cells carry no weight)
+    area = xr.DataArray(cell_area(da.lat.values, da.lon.values), coords={"lat": da.lat, "lon": da.lon})
+    means = da.weighted(area).mean(("lat", "lon"))
     n = da.sizes[dim]
     fig, axs = facets(n, ncols=ncols, maps=True, panel_size=(3.2, 1.6))
     for i, ax in enumerate(axs):
         pm = da.isel({dim: i}).plot.pcolormesh(
             ax=ax, transform=ccrs.PlateCarree(), add_colorbar=False, add_labels=False, **kwargs,
         )
-        ax.set_title(str(da[dim].values[i]), fontsize=8)
+        ax.set_title(f"{da[dim].values[i]}: {float(means.isel({dim: i})):.3g}", fontsize=8)
         map_ax(ax, lat_bnds)
     # One horizontal colorbar under all panels; values outside [vmin, vmax] are saturated
     fig.colorbar(pm, ax=axs, location="bottom", shrink=0.5, aspect=40, extend="max" if kwargs["vmin"] == 0 else "both",
