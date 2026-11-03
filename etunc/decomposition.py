@@ -39,6 +39,7 @@ the two axes (soil moisture, seasonality, VPD, rooting depth, ...).
   reference, and the weight this gives each product of each product axis.
 - `counterfactual_mean`: sum_S p f for one state and one function.
 - `decompose`: the scalar quantities above (QUANTITIES).
+- `state_shift`: the land in other bins than r, and STATE split into the bins m gains and loses land in.
 - `product_axis_range`: range of a quantity across obs references, overall and by product axis.
 - `variance_partition`: variance of E_mm - E_rr across datasets, split into the terms.
 """
@@ -175,6 +176,28 @@ def decompose(p_m: xr.DataArray, f_m: xr.DataArray, p_r: xr.DataArray, f_r: xr.D
         "OFF_SUPPORT_r": p_r.where(~support).sum(BIN_DIMS),
     })
     # Every variable on the dims of m and r alike, e.g. (dataset, obs_reference)
+    return xr.broadcast(out)[0]
+
+
+def state_shift(p_m: xr.DataArray, f_m: xr.DataArray, p_r: xr.DataArray, f_r: xr.DataArray) -> xr.Dataset:
+    """
+    How far m's occupancy is from r's, and the parts of STATE from the bins where m has more
+    and less land than r (dp = p_m - p_r):
+      LAND_SHIFT   = sum_b |dp| / 2, over every bin: the fraction of the domain's land in other bins
+      STATE_GAINS  = sum_S max(dp, 0) f_r  (>= 0)
+      STATE_LOSSES = sum_S min(dp, 0) f_r  (<= 0)
+    STATE_GAINS + STATE_LOSSES = STATE of `decompose` (on the common support S, so the land of
+    bins m leaves empty is not in STATE_LOSSES). Since sum_b dp = 0, a large LAND_SHIFT gives a
+    small STATE when land moves between bins of similar observed ET, or up and down in it.
+    """
+    p_m, f_m, p_r, f_r = (da.reset_coords(drop=True) for da in (p_m, f_m, p_r, f_r))
+    support = f_m.notnull() & f_r.notnull()
+    dp = p_m - p_r
+    out = xr.Dataset({
+        "LAND_SHIFT": abs(dp).sum(BIN_DIMS) / 2,
+        "STATE_GAINS": (dp.clip(min=0) * f_r).where(support).sum(BIN_DIMS),
+        "STATE_LOSSES": (dp.clip(max=0) * f_r).where(support).sum(BIN_DIMS),
+    })
     return xr.broadcast(out)[0]
 
 

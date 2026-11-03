@@ -51,7 +51,13 @@ Comparisons
    Var(FUNCTION) + Var(INTERACTION) + 2 Cov of each pair. This is Var(E_mm)
    when E_rr is the same for every source (a complete support); Var(E_mm) and
    Var(E_rr) are saved alongside.
-5. Bin-count sensitivity: the variance partitions of every bin count already
+5. State shift: for every dataset against obs_pooled, the land in other bins
+   than obs, LAND_SHIFT = sum_b |p_m - p_r| / 2, next to STATE split into the
+   bins the dataset gains land in (STATE_GAINS = sum_S max(dp, 0) f_r) and loses
+   land from (STATE_LOSSES = sum_S min(dp, 0) f_r). Since sum_b dp = 0, a large
+   LAND_SHIFT gives a small STATE when the land moves between bins of similar
+   observed ET, or both up and down in it.
+6. Bin-count sensitivity: the variance partitions of every bin count already
    run (folders under all/decomp/<period>/), with fraction shifts > 10 points flagged.
 
 Obs product combinations are read from the data (the <axis>_product coords of
@@ -106,6 +112,11 @@ FIG_ROOT/all/decomp/<period>/<bins>/<stem: vs_obs>.<bins>.<grid>.<period>.<famil
     FUNCTION, STATE, INTERACTION, one panel each, with E_mm - E_rr marked
 FIG_ROOT/all/decomp/<period>/<bins>/<stem: obs_axis_range>.<bins>.<grid>.<period>.png
     the ranges of comparison 3, one panel per quantity
+PROC_ROOT/all/decomp/<period>/<bins>/<stem: state_shift>.<bins>.<grid>.<period>.{nc,csv}
+    LAND_SHIFT, STATE, STATE_GAINS, STATE_LOSSES, OFF_SUPPORT_m/_r along dataset (vs obs_pooled)
+FIG_ROOT/all/decomp/<period>/<bins>/<stem: state_shift>.<bins>.<grid>.<period>.<family>.png
+    each dataset of a family against obs_pooled: LAND_SHIFT [%] (top), STATE_GAINS and
+    STATE_LOSSES (bars) and STATE (marker) [W m-2], ordered by LAND_SHIFT, the pooled family last
 """
 
 from __future__ import annotations
@@ -143,7 +154,7 @@ OBS_PRODUCT_AXES = ("et", "lai", "pr", "rn")
 OBS_POOL_WEIGHTING = "source"  # one weight per obs source (dc.source_weights)
 LENS_FAMILY = "lens"            # internal-variability floor of comparison 4
 PPE_FAMILIES = ("fppe", "ippe")  # compared with it
-SHIFT_THRESHOLD = 0.10          # comparison 5: flag fraction shifts across bin counts above this
+SHIFT_THRESHOLD = 0.10          # comparison 6: flag fraction shifts across bin counts above this
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
@@ -154,7 +165,8 @@ N_XBINS = cfg.N_XBINS        # AI
 TERMS = ("FUNCTION", "STATE", "INTERACTION")
 MEANS = ("E_rr", "E_rm", "E_mr", "E_mm")
 COLORS = {"E_rr": "#808080", "E_rm": "#eb6834", "E_mr": "#2a78d6", "E_mm": "#6250d6",
-          "FUNCTION": "#eb6834", "STATE": "#2a78d6", "INTERACTION": "#1baf7a"}
+          "FUNCTION": "#eb6834", "STATE": "#2a78d6", "INTERACTION": "#1baf7a",
+          "STATE_GAINS": "#e34948", "STATE_LOSSES": "#2a78d6", "LAND_SHIFT": "#8a8984"}
 UNITS = {q: "1" if q.startswith("OFF_SUPPORT") else "W m-2" for q in dc.QUANTITIES}
 
 
@@ -292,6 +304,39 @@ def plot_axis_ranges(axis_range: xr.DataArray, title: str, fout):
     return plotting.finish(fig, fout)
 
 
+def plot_state_shift(shift: xr.Dataset, family: str, title: str, fout):
+    """
+    Each dataset of `family` against obs_pooled, ordered by LAND_SHIFT (the pooled family last).
+    Top: LAND_SHIFT [%]. Bottom: STATE_GAINS and STATE_LOSSES (bars) and STATE (marker) [W m-2].
+    Two panels on one x axis, since a fraction and an ET never share a y axis.
+    """
+    ds = select(shift, shift["family"] == family)
+    members = ds["dataset"].values[ds["source"].values != "pooled"]
+    order = list(ds["LAND_SHIFT"].sel(dataset=members).sortby(ds["LAND_SHIFT"].sel(dataset=members), ascending=False)["dataset"].values)
+    ds = ds.sel(dataset=order + [d for d in ds["dataset"].values if d not in order])
+    labels = [str(d).split(".", 1)[-1] for d in ds["dataset"].values]
+    x = np.arange(len(labels))
+    fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(max(7.0, 0.24 * len(x) + 2.0), 6.5), sharex=True,
+                                   layout="constrained", gridspec_kw={"height_ratios": [1, 1.6]})
+    ax0.bar(x, 100 * ds["LAND_SHIFT"].values, width=0.7, color=COLORS["LAND_SHIFT"], zorder=2)
+    ax0.set_ylabel("land in different bins\nthan obs [%]")
+    ax1.bar(x, ds["STATE_GAINS"].values, width=0.7, color=COLORS["STATE_GAINS"], zorder=2,
+            label="STATE_GAINS, from bins with more land (dp > 0)")
+    ax1.bar(x, ds["STATE_LOSSES"].values, width=0.7, color=COLORS["STATE_LOSSES"], zorder=2,
+            label="STATE_LOSSES, from bins with less land (dp < 0)")
+    ax1.scatter(x, ds["STATE"].values, marker="D", s=22, color="0.1", edgecolor="white", linewidth=0.6, zorder=3,
+                label="STATE = gains + losses")
+    ax1.axhline(0, color="0.4", lw=0.6, zorder=1)
+    ax1.set_ylabel("contribution to STATE [W m$^{-2}$]")
+    ax1.legend(loc="upper left", bbox_to_anchor=(1.0, 1.0), fontsize=8, frameon=False)
+    for ax in (ax0, ax1):
+        ax.grid(axis="y", color="0.92", zorder=0)
+        ax.spines[["top", "right"]].set_visible(False)
+    ax1.set_xticks(x, labels, rotation=90, fontsize=7 if len(x) <= 60 else 6)
+    fig.suptitle(title, fontsize=9)
+    return plotting.finish(fig, fout)
+
+
 # ------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------
@@ -328,7 +373,7 @@ def main():
     missing = [a for a in OBS_PRODUCT_AXES if f"{a}_product" not in obs_bs.coords]
     if missing:
         raise KeyError(f"obs inputs have no {[f'{a}_product' for a in missing]} coords; rerun scripts/prep_obs.py")
-    p_obs, f_obs = dc.members_to_sources(*dc.occupancy_and_mean(obs_bs))
+    p_obs, f_obs = dc.members_to_sources(*dc.occupancy_and_mean(obs_bs))  # effectively relabeling member->source, no pooling
     obs_sources = [str(s) for s in p_obs["source"].values]
     products = {a: [str(v) for v in p_obs[f"{a}_product"].values] for a in OBS_PRODUCT_AXES}
     varying = [a for a in OBS_PRODUCT_AXES if len(set(products[a])) > 1]
@@ -549,9 +594,47 @@ def main():
     print(fout)
 
     # ------------------------------------------------------------------
-    # 5. Bin-count sensitivity of the variance partitions
+    # 5. State shift: the land in other bins than obs, and STATE from the bins gained and lost
     # ------------------------------------------------------------------
-    print("\n=== 5. bin-count sensitivity ===")
+    print("\n=== 5. state shift (vs obs_pooled) ===")
+    shift = dc.state_shift(p_ds, f_ds, p_obs_pool, f_obs_pool)
+    for q in ("STATE", "OFF_SUPPORT_m", "OFF_SUPPORT_r"):
+        shift[q] = vs_obs[q].sel(obs_reference="obs_pooled").reset_coords(drop=True)
+    if not np.allclose(shift["STATE_GAINS"] + shift["STATE_LOSSES"], shift["STATE"], rtol=1e-10, atol=1e-12):
+        raise ValueError("STATE_GAINS + STATE_LOSSES differ from STATE")
+    shift = shift.assign_coords(ds_coords)
+    for q in shift.data_vars:
+        shift[q].attrs["units"] = "1" if q in ("LAND_SHIFT", "OFF_SUPPORT_m", "OFF_SUPPORT_r") else "W m-2"
+    shift.attrs = {**attrs, "comparison": "5. land in other bins than obs_pooled, and STATE from the bins gained and lost",
+                   "reference": "obs_pooled",
+                   "definitions": ("LAND_SHIFT = sum_b |p_m - p_r| / 2 over every bin; STATE_GAINS = sum_S max(dp, 0) f_r; "
+                                   "STATE_LOSSES = sum_S min(dp, 0) f_r; STATE_GAINS + STATE_LOSSES = STATE")}
+    for family in EVALUATED_FAMILIES:
+        if family not in binned:
+            continue
+        r = select(shift, (shift["family"] == family) & (shift["source"] != "pooled"))
+        corr = np.corrcoef(r["LAND_SHIFT"], abs(r["STATE"]))[0, 1] if r.sizes["dataset"] > 2 else np.nan
+        print(f"{family:10} LAND_SHIFT {100 * float(r['LAND_SHIFT'].min()):4.0f}-{100 * float(r['LAND_SHIFT'].max()):3.0f} %, "
+              f"STATE {float(r['STATE'].min()):6.2f} to {float(r['STATE'].max()):6.2f} W m-2, corr(LAND_SHIFT, |STATE|) {corr:.2f}")
+    fout = out_dir / f"{stem('state_shift')}.{bins}.{grid}.{period}.nc"
+    shift.to_netcdf(fout)
+    print(fout)
+    fout = fout.with_suffix(".csv")
+    shift.to_dataframe().to_csv(fout)
+    print(fout)
+    for family in EVALUATED_FAMILIES:
+        if family not in binned:
+            continue
+        fout = fig_dir / f"{stem('state_shift')}.{bins}.{grid}.{period}.{family}.png"
+        plot_state_shift(shift, family, fout=fout,
+                         title=f"{family} land state vs obs_pooled ({len(obs_sources)} obs sources): land in different "
+                               f"bins and STATE, {EDGES} {bins}, {grid}, {period}")
+        print(fout)
+
+    # ------------------------------------------------------------------
+    # 6. Bin-count sensitivity of the variance partitions
+    # ------------------------------------------------------------------
+    print("\n=== 6. bin-count sensitivity ===")
     decomp_dir = cfg.output_dir(cfg.PROC_ROOT, "all", "decomp", period)
     runs = {}
     for d in sorted(decomp_dir.iterdir()):
@@ -566,7 +649,7 @@ def main():
     summary = summary.transpose("family", "component", "bins")
     summary["fraction_shift"] = summary["fraction"].max("bins") - summary["fraction"].min("bins")
     summary["shift_gt_10pp"] = summary["fraction_shift"] > SHIFT_THRESHOLD
-    summary.attrs = {**attrs, "bins": list(runs), "comparison": "5. variance partition by bin count",
+    summary.attrs = {**attrs, "bins": list(runs), "comparison": "6. variance partition by bin count",
                      "shift_threshold": SHIFT_THRESHOLD}
     print(f"bin counts: {list(runs)}")
     for family in summary["family"].values:

@@ -109,6 +109,26 @@ def test_equal_f_or_equal_p(pair):
     assert float(d["FUNCTION"]) != 0
 
 
+def test_state_shift(pair):
+    p_m, f_m, p_r, f_r = pair
+    sh, d = dc.state_shift(*pair), dc.decompose(*pair)
+    assert rel(sh["STATE_GAINS"] + sh["STATE_LOSSES"], d["STATE"]) < RTOL
+    assert float(sh["STATE_GAINS"]) > 0 > float(sh["STATE_LOSSES"])
+    assert rel(sh["LAND_SHIFT"], abs(p_m - p_r).sum() / 2) < RTOL
+    # No shift: no land in other bins and no STATE
+    sh = dc.state_shift(p_r, f_m, p_r, f_r)
+    assert float(sh["LAND_SHIFT"]) == 0 and float(sh["STATE_GAINS"]) == 0 and float(sh["STATE_LOSSES"]) == 0
+    # Land moved between two bins with the same observed ET: a shift, no STATE
+    dims = ("y_bin", "x_bin")
+    p_r = xr.DataArray([[0.25, 0.25], [0.25, 0.25]], dims=dims)
+    f_r = xr.DataArray([[10.0, 10.0], [20.0, 30.0]], dims=dims)
+    p_m = xr.DataArray([[0.40, 0.10], [0.25, 0.25]], dims=dims)
+    sh = dc.state_shift(p_m, f_r, p_r, f_r)
+    assert float(sh["LAND_SHIFT"]) == pytest.approx(0.15)
+    assert float(sh["STATE_GAINS"]) == pytest.approx(1.5) and float(sh["STATE_LOSSES"]) == pytest.approx(-1.5)
+    assert float(dc.decompose(p_m, f_r, p_r, f_r)["STATE"]) == pytest.approx(0)
+
+
 # ------------------------------------------------------------------
 # 4. p and f reproduce the area-mean ET; count does not
 # ------------------------------------------------------------------
