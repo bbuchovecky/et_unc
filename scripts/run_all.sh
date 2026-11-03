@@ -31,7 +31,8 @@ repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 cd "$repo"
 
 # Combinations run with SWEEP=1 (N_XBINS = N_YBINS)
-SWEEP_BIN_VARIABLES=(et et_pr)
+# SWEEP_BIN_VARIABLES=(et et_pr)
+SWEEP_BIN_VARIABLES=(et)
 SWEEP_AREA_WEIGHTED=(0 1)
 SWEEP_N_BINS=(10 15 20)
 
