@@ -54,12 +54,13 @@ The PLUMBER2 flux tower data are not included in the core binning pipeline. Inst
 | `etunc/edges.py` | Aridity index, hierarchical weights and weighted quantile edges, saved edges |
 | `etunc/binning.py` | ET outlier filter, bin statistics, post-processing |
 | `etunc/regression.py` | OLS regression of ET on climatological LAI and AI, and the partition of R² between them |
+| `etunc/decomposition.py` | State, function and interaction decomposition of the area-mean ET of a dataset relative to an obs reference, from counterfactual means on the LAI-AI bins |
 | `etunc/plotting.py` | Maps, LAI/AI histograms, edge plots, bin heatmaps |
 | `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH), `cmip`, `cesm`, `era5`, `trendy` (TRENDY DGVMs and their CRU-JRA precipitation forcing). Each `load_native` returns raw monthly fields on the native grid in native units; the model loaders also have `load_land_fraction` |
 | `etunc/legacy/` | Unmaintained, untested code kept for the notebooks and `scripts/legacy_regrid/`: the former annual loaders, replaced functions, notebook-era helpers |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
 | `docs/binning-workflow.md` | The binning pipeline step by step, with every assumption and choice |
-| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_*.py`; the analysis `regress_lai_aridity.py`, outside the pipeline, after them), configured by the constants at the top of each file |
+| `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_*.py`; the analyses `regress_lai_aridity.py` and `decompose_state_function.py`, outside the pipeline, after them), configured by the constants at the top of each file |
 | `scripts/download/` | Download scripts for the obs products (and `trendy/` for TRENDY) |
 | `notebooks/` | Exploratory and analysis notebooks |
 | `tests/` | pytest suite (synthetic data, no glade data needed) |
@@ -115,6 +116,7 @@ pixi run bin-plumber-clim # step 14 for the PLUMBER2 flux towers with climatolog
 
 # Analyses of the step 14 outputs, not part of the pipeline
 pixi run regress-lai-aridity   # OLS of ET on LAI and AI: variance explained, with the bins' eta2
+pixi run decompose-state-function  # state, function and interaction terms of the area-mean ET against the obs (needs bin-all-clim, ETUNC_AREA_WEIGHTED=1)
 pixi run make-mask             # common valid-data mask of the obs products
 pixi run diagnose-obs          # coverage of every obs ET, LAI, P and Rn product (docs/obs-availability.md)
 qsub scripts/diagnose_obs.pbs  # diagnose-obs as a Casper job (too large for a login node)
@@ -152,7 +154,7 @@ qsub -v ETUNC_BIN_VARIABLE=et_pr,ETUNC_AREA_WEIGHTED=1,ETUNC_N_XBINS=20,ETUNC_N_
 qsub -v SWEEP=1 scripts/run_all.pbs
 ```
 
-It runs only the pipeline: not the analyses (`regress-lai-aridity`) or the diagnostics (`make-mask`, `obs-availability`, `diagnose-obs`).
+It runs only the pipeline: not the analyses (`regress-lai-aridity`, `decompose-state-function`) or the diagnostics (`make-mask`, `obs-availability`, `diagnose-obs`).
 
 ## Config
 `etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.
