@@ -1,6 +1,6 @@
 __pycache__/
 dask-worker*
-*.o*
+# *.o*
 *.log
 # download_*.sh
 *.egg-info/
