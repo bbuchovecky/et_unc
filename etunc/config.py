@@ -124,7 +124,7 @@ BIN_VARIABLE = _env("BIN_VARIABLE", "et", _parse_bin_variable)
 AREA_WEIGHTED = _env("AREA_WEIGHTED", False, _parse_bool)
 # Families pooled by make_edges.py and binned by bin_all.py. fppe (coupled) and ippe (offline CLM) share
 # the parameter perturbations but are separate families
-FAMILIES = ("obs", "era5", "cmip", "fppe", "ippe", "lens")
+FAMILIES = ("obs", "era5", "cmip", "fppe", "ippe", "lens", "trendy_s3")
 
 # Binning settings
 N_XBINS = _env("N_XBINS", 15, int)  # aridity index

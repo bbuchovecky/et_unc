@@ -88,6 +88,7 @@ OMIT_MODELS: dict[str, str] = {
     "LPJwsl": "implausible LAI",
     "LPX-Bern": "implausible LAI",
     "VISIT": "implausible LAI",
+    "ED": "ET=0 in high northern latitudes",
 }
 
 

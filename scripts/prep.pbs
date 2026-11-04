@@ -20,7 +20,7 @@ REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
 
 set -euo pipefail
 
-script="scripts/prep_${FAMILY:?set FAMILY with qsub -v FAMILY=<obs|era5|cmip|lens|fppe|ippe>}.py"
+script="scripts/prep_${FAMILY:?set FAMILY with qsub -v FAMILY=<obs|era5|cmip|lens|fppe|ippe|trendy>}.py"
 
 export OMP_NUM_THREADS="${PBS_NCPUS:-8}"
 
