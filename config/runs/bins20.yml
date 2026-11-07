@@ -1,0 +1,4 @@
+# Unweighted bin statistics, 20 x 20 bins
+binning:
+  n_xbins: 20
+  n_ybins: 20

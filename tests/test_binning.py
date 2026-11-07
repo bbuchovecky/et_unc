@@ -645,14 +645,17 @@ def test_valid_and_common_area(capsys):
 
 
 def test_output_layout(tmp_path, monkeypatch):
-    """Outputs go to <root>/<family>/<kind>/<period>[/<bins>]; file names keep the grid, period and bins."""
+    """
+    Outputs go to <root>/<id>/<family>/<kind>/ and file names end in the id: the PREP_ID for the inputs,
+    the RUN_ID for the area mask (by default; another ID can be given).
+    """
     monkeypatch.setattr(config, "PROC_ROOT", tmp_path)
-    period = "199501-201412"
-    assert config.bins_tag(15, 20) == "lai15_ai20"
-    assert config.output_dir(tmp_path, "obs", "clim", period) == tmp_path / "obs" / "clim" / period
-    assert config.output_dir(tmp_path, "obs", "qbin", period, "lai15_ai20") == tmp_path / "obs/qbin" / period / "lai15_ai20"
-    assert config.inputs_path("obs", "1deg", period) == tmp_path / "obs/inputs" / period / f"obs.inputs.1deg.{period}.nc"
-    assert config.area_mask_path("1deg", period) == tmp_path / "all/mask" / period / f"all.area_mask.1deg.{period}.nc"
+    prep, run = config.PREP_ID, config.RUN_ID
+    assert config.output_dir(tmp_path, "obs", "clim", "p0000000") == tmp_path / "p0000000" / "obs" / "clim"
+    assert config.inputs_path("obs") == tmp_path / prep / "obs" / "inputs" / f"obs.inputs.{prep}.nc"
+    assert config.inputs_path("obs", "p0000000") == tmp_path / "p0000000/obs/inputs/obs.inputs.p0000000.nc"
+    assert config.area_mask_path() == tmp_path / run / "all" / "mask" / f"all.area_mask.{run}.nc"
+    assert config.area_mask_path("r0000000") == tmp_path / "r0000000/all/mask/all.area_mask.r0000000.nc"
 
 
 # ------------------------------------------------------------------
@@ -924,19 +927,19 @@ def test_save_member_maps_one_panel_per_member(tmp_path, inputs, capsys):
 def test_save_clim_diagnostics_writes_maps_and_hists(tmp_path, inputs, capsys):
     """
     Five climatology maps, three per-member maps and two histograms per family, named
-    <family>.<var>.<grid>.{map,map_members,hist}.<period>.png.
+    <family>.<var>.{map,map_members,hist}.<prep_id>.png.
     """
     members = [f"m{i}" for i in range(3)]
     ds = xr.concat([xr.Dataset({**inputs, "pr": inputs["lai"], "rn": inputs["lai"]})] * 3, dim="member")
     ds = ds.assign_coords(member=members, source=("member", ["s1", "s1", "s2"]))
-    plotting.save_clim_diagnostics(ds, tmp_path, "fam", "1deg", "200001-200212", title="Fam")
+    plotting.save_clim_diagnostics(ds, tmp_path, "fam", "p0000000", title="Fam")
     names = sorted(p.name for p in tmp_path.iterdir())
     assert names == sorted(
-        [f"fam.{v}.1deg.map.200001-200212.png" for v in ("et", "lai", "pr", "rn", "ai")]
-        + [f"fam.{v}.1deg.map_members.200001-200212.png" for v in ("lai", "pr", "rn")]
-        + [f"fam.{v}_clim.1deg.hist.200001-200212.png" for v in ("lai", "ai")]
+        [f"fam.{v}.map.p0000000.png" for v in ("et", "lai", "pr", "rn", "ai")]
+        + [f"fam.{v}.map_members.p0000000.png" for v in ("lai", "pr", "rn")]
+        + [f"fam.{v}_clim.hist.p0000000.png" for v in ("lai", "ai")]
     )
-    plotting.save_clim_diagnostics(ds.isel(member=[0]), tmp_path / "one", "fam", "1deg", "200001-200212")
+    plotting.save_clim_diagnostics(ds.isel(member=[0]), tmp_path / "one", "fam", "p0000000")
     assert len(list((tmp_path / "one").iterdir())) == 7  # one member: single maps, no member maps
     plt.close("all")
 

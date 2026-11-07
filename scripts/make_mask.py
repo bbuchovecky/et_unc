@@ -44,15 +44,16 @@ its mask only if it has data in all 180 of those months; the 1982-1999 and
 
 Outputs
 -------
-<period> : YYYYMM-YYYYMM of TIME_SLICE
-<res>    : RES ("0.5deg" or "1deg")
+<period>  : YYYYMM-YYYYMM of TIME_SLICE (this script's own, not the pipeline's)
+<res>     : RES ("0.5deg" or "1deg")
+<prep_id> : PREP_ID of the pipeline's prep settings (LAT_BNDS; etunc.config, config/runs.csv)
 
-PROC_ROOT/<MASK_NAME>.common_mask.<res>.<period>.nc
+PROC_ROOT/<prep_id>/obs/mask/<MASK_NAME>.common_mask.<res>.<period>.<prep_id>.nc
     common_mask, land (lat, lon); product_mask, n_valid_months,
     frac_valid_months (product, lat, lon); n_product_months (product)
-FIG_ROOT/<MASK_NAME>.common_mask.<res>.<period>.png
+FIG_ROOT/<prep_id>/obs/mask/<MASK_NAME>.common_mask.<res>.<period>.<prep_id>.png
     number of products whose mask includes each land gridcell
-FIG_ROOT/<MASK_NAME>.product_masks_any_month.<res>.<period>.png
+FIG_ROOT/<prep_id>/obs/mask/<MASK_NAME>.product_masks_any_month.<res>.<period>.<prep_id>.png
     one map per product of the land gridcells with data in any month of its
     record (not the MIN_VALID_FRAC mask above)
 """
@@ -112,8 +113,8 @@ GRIDDED_PRODUCTS = {
 # valid, per variable. 1.0 = every month; e.g. 0.9 tolerates 10% missing months.
 MIN_VALID_FRAC = {"et": 1.0, "lai": 1.0, "pr": 1.0, "rn": 1.0}
 
-PROC_ROOT = config.PROC_ROOT / "obs"            # NetCDF output directory
-FIG_ROOT = config.FIG_ROOT / "obs" / "mask"      # figure output directory
+PROC_DIR = config.output_dir(config.PROC_ROOT, "obs", "mask", config.PREP_ID)  # NetCDF output directory
+FIG_DIR = config.output_dir(config.FIG_ROOT, "obs", "mask", config.PREP_ID)    # figure output directory
 
 NCOLS = 4  # panels per row in plot_product_masks
 
@@ -200,6 +201,7 @@ def plot_product_masks(ds: xr.Dataset, title: str, fout: Path):
 
 def main():
     config.summarize()
+    config.register_run()
     config.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)  # e.g. "198201-202512", for file names
 
@@ -249,15 +251,15 @@ def main():
         ),
     )
 
-    stem = f"{MASK_NAME}.common_mask.{RES}.{period}"
-    PROC_ROOT.mkdir(parents=True, exist_ok=True)
-    fout = PROC_ROOT / f"{stem}.nc"
+    stem = f"{MASK_NAME}.common_mask.{RES}.{period}.{config.PREP_ID}"
+    PROC_DIR.mkdir(parents=True, exist_ok=True)
+    fout = PROC_DIR / f"{stem}.nc"
     ds.to_netcdf(fout)
     print(fout)
 
     # 5. Figures
     # Agreement between the product masks (the common mask is the top class)
-    fout = FIG_ROOT / f"{stem}.png"
+    fout = FIG_DIR / f"{stem}.png"
     plotting.plot_mask_agreement(
         ds["product_mask"], ds["land"], f"Product masks, {TIME_SLICE.start} to {TIME_SLICE.stop}", fout,
         highlight_common=True,
@@ -265,7 +267,7 @@ def main():
     print(fout)
 
     # Per-product coverage: gridcells with data in any month of the record
-    fout = FIG_ROOT / f"{MASK_NAME}.product_masks_any_month.{RES}.{period}.png"
+    fout = FIG_DIR / f"{MASK_NAME}.product_masks_any_month.{RES}.{period}.{config.PREP_ID}.png"
     plot_product_masks(ds, f"Land gridcells with data in any month, {TIME_SLICE.start} to {TIME_SLICE.stop}", fout)
     print(fout)
 

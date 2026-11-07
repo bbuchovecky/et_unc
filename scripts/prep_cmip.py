@@ -16,18 +16,17 @@ skipped (MIROC-ES2H).
 
 Outputs
 -------
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
-<period> : YYYYMM-YYYYMM of TIME_SLICE
+<prep_id> : PREP_ID of the prep settings (etunc.config; config/runs.csv)
 
-PROC_ROOT/cmip/inputs/<period>/cmip.inputs.<grid>.<period>.nc
-    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); with BIN_VARIABLE = "et_pr",
-    also et_pr (member, year, lat, lon); `member` labelled
+PROC_ROOT/<prep_id>/cmip/inputs/cmip.inputs.<prep_id>.nc
+    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); and
+    et_pr (member, year, lat, lon); `member` labelled
     "<source_id>.<member_id>", with coords `source` (= source_id) and `member_id`
-FIG_ROOT/cmip/clim/<period>/cmip.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
+FIG_ROOT/<prep_id>/cmip/clim/cmip.<var>.map.<prep_id>.png        var in et, et_pr, lai, pr, rn, ai
     mean, standard deviation and range of the climatology over all members
-FIG_ROOT/cmip/clim/<period>/cmip.<var>.<grid>.map_members.<period>.png    var in lai, pr, rn
+FIG_ROOT/<prep_id>/cmip/clim/cmip.<var>.map_members.<prep_id>.png    var in lai, pr, rn
     the climatology of every member, on one color scale (more than one member only)
-FIG_ROOT/cmip/clim/<period>/cmip.{lai,ai}_clim.<grid>.hist.<period>.png
+FIG_ROOT/<prep_id>/cmip/clim/cmip.{lai,ai}_clim.hist.<prep_id>.png
     histograms of climatological LAI and AI, one line per model
 """
 
@@ -61,7 +60,6 @@ FX_CATALOG = cfg.CMIP_FX_CATALOG  # one sftlf file per model, from any experimen
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
-BIN_VARIABLE = cfg.BIN_VARIABLE  # "et_pr" also saves the annual evaporation ratio ET/P (binned by bin_all.py)
 
 EXPERIMENT_ID = "historical"
 VARIABLES = ["evspsbl", "lai", "pr", "rsds", "rsus", "rlds", "rlus"]
@@ -90,8 +88,8 @@ MEMBER_IDS: dict[str, str | list[str]] = {
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
-    period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
     loader = CMIPESGFLoader(CATALOG)
 
@@ -173,11 +171,10 @@ def main():
         # 11. Aridity index from the climatological Rn and P
         ai = edges.compute_aridity_index(clim["pr"], clim["rn"])
 
-        # 11b. Annual evaporation ratio ET/P (BIN_VARIABLE = "et_pr" only), with the annual P of the AI's
+        # 11b. Annual evaporation ratio ET/P (always saved; binned with bin_variable: et_pr), with the annual P of the AI's
         # P (same product and shared years)
         data = {"et": ann["et"], **clim, "ai": ai}
-        if BIN_VARIABLE == "et_pr":
-            data["et_pr"] = binning.evaporation_ratio(ann["et"], ann["pr"], label=f"{sid}/et_pr")
+        data["et_pr"] = binning.evaporation_ratio(ann["et"], ann["pr"], label=f"{sid}/et_pr")
 
         # The model is the source of its members
         inputs = xr.Dataset(data)
@@ -193,19 +190,19 @@ def main():
     n_models = len(dict.fromkeys(inputs["source"].values.tolist()))
     inputs.attrs = {
         "family": FAMILY, "dataset": f"CMIP6 {EXPERIMENT_ID}",
-        "time_period": temporal.period_str(inputs.year.values), "grid": grid,
+        "time_period": temporal.period_str(inputs.year.values), "grid": grid, "prep_id": cfg.PREP_ID,
         "native_res": "; ".join(f"{sid}: {res}" for sid, res in native_res.items()),
         "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
         "land_mask": "sftlf > lf_thresh, without Greenland/Iceland",
     }
-    fout = cfg.inputs_path(FAMILY, grid, period)
+    fout = cfg.inputs_path(FAMILY)
     fout.parent.mkdir(parents=True, exist_ok=True)
     inputs.to_netcdf(fout)
     print(f"\n{n_models} models, {inputs.sizes['member']} members, {inputs.attrs['time_period']}\n{fout}")
 
     # Diagnostics: climatology maps and LAI/AI histograms
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period)
-    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, grid, period, title="CMIP6")
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", cfg.PREP_ID)
+    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, cfg.PREP_ID, title="CMIP6")
 
 
 if __name__ == "__main__":

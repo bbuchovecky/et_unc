@@ -28,17 +28,16 @@ minus OMIT_MODELS.
 Outputs
 -------
 <family> : trendy_s2 or trendy_s3 (EXPERIMENT)
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
-<period> : YYYYMM-YYYYMM of TIME_SLICE
+<prep_id> : PREP_ID of the prep settings (etunc.config; config/runs.csv)
 
-PROC_ROOT/<family>/inputs/<period>/<family>.inputs.<grid>.<period>.nc
-    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); with BIN_VARIABLE = "et_pr",
-    also et_pr (member, year, lat, lon); `member` and `source` = model name
-FIG_ROOT/<family>/clim/<period>/<family>.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
+PROC_ROOT/<prep_id>/<family>/inputs/<family>.inputs.<prep_id>.nc
+    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); and
+    et_pr (member, year, lat, lon); `member` and `source` = model name
+FIG_ROOT/<prep_id>/<family>/clim/<family>.<var>.map.<prep_id>.png        var in et, et_pr, lai, pr, rn, ai
     mean, standard deviation and range of the climatology over all models
-FIG_ROOT/<family>/clim/<period>/<family>.<var>.<grid>.map_members.<period>.png     var in lai, pr, rn
+FIG_ROOT/<prep_id>/<family>/clim/<family>.<var>.map_members.<prep_id>.png     var in lai, pr, rn
     the climatology of every model, on one color scale
-FIG_ROOT/<family>/clim/<period>/<family>.{lai,ai}_clim.<grid>.hist.<period>.png
+FIG_ROOT/<prep_id>/<family>/clim/<family>.{lai,ai}_clim.hist.<prep_id>.png
     histograms of climatological LAI and AI, one line per model
 """
 
@@ -71,7 +70,6 @@ FAMILY = f"trendy_{EXPERIMENT.lower()}"
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
-BIN_VARIABLE = cfg.BIN_VARIABLE  # "et_pr" also saves the annual evaporation ratio ET/P (binned by bin_all.py)
 
 # Model variables (P is the CRU-JRA forcing, Rn is ERA5's)
 VARIABLES = ["evapotrans", "lai"]
@@ -98,8 +96,8 @@ OMIT_MODELS: dict[str, str] = {
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
-    period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
 
     # Models with every variable, minus OMIT_MODELS
@@ -210,10 +208,9 @@ def main():
         # 11. Aridity index from the climatological Rn and P
         ai = edges.compute_aridity_index(clim["pr"], clim["rn"])
 
-        # 11b. Annual evaporation ratio ET/P (BIN_VARIABLE = "et_pr" only), with the annual forcing P
+        # 11b. Annual evaporation ratio ET/P (always saved; binned with bin_variable: et_pr), with the annual forcing P
         data = {"et": ann["et"], **clim, "ai": ai}
-        if BIN_VARIABLE == "et_pr":
-            data["et_pr"] = binning.evaporation_ratio(ann["et"], ann["pr"], label=f"{model}/et_pr")
+        data["et_pr"] = binning.evaporation_ratio(ann["et"], ann["pr"], label=f"{model}/et_pr")
 
         # The model is the source of its one member
         native_res[model] = rg.native_res(src_grid)
@@ -224,7 +221,7 @@ def main():
     inputs = xr.concat(per_model, dim="member", join="outer", combine_attrs="drop_conflicts")
     inputs.attrs = {
         "family": FAMILY, "dataset": f"TRENDY (GCB2025) {EXPERIMENT}", "experiment": EXPERIMENT,
-        "time_period": temporal.period_str(inputs.year.values), "grid": grid,
+        "time_period": temporal.period_str(inputs.year.values), "grid": grid, "prep_id": cfg.PREP_ID,
         "native_res": "; ".join(f"{m}: {res}" for m, res in native_res.items()),
         "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
         "land_mask": "models: Natural Earth land; ERA5 Rn: LANDFRAC > lf_thresh; both without Greenland/Iceland",
@@ -232,14 +229,14 @@ def main():
         "rn_source": "ERA5 net surface radiation msnswrf + msnlwrf (the same for every model)",
         "omitted_models": "; ".join(f"{m}: {why}" for m, why in OMIT_MODELS.items()),
     }
-    fout = cfg.inputs_path(FAMILY, grid, period)
+    fout = cfg.inputs_path(FAMILY)
     fout.parent.mkdir(parents=True, exist_ok=True)
     inputs.to_netcdf(fout)
     print(f"\n{inputs.sizes['member']} models, {inputs.attrs['time_period']}\n{fout}")
 
     # Diagnostics: climatology maps and LAI/AI histograms
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period)
-    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, grid, period, title=f"TRENDY {EXPERIMENT}")
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", cfg.PREP_ID)
+    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, cfg.PREP_ID, title=f"TRENDY {EXPERIMENT}")
 
 
 if __name__ == "__main__":

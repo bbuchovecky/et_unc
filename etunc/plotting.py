@@ -317,7 +317,7 @@ def plot_clim_hist(
 
 
 def save_clim_diagnostics(
-    inputs: xr.Dataset, fig_dir: Path, family: str, grid: str, period: str, title: str = "",
+    inputs: xr.Dataset, fig_dir: Path, family: str, run_id: str, title: str = "",
 ):
     """
     Diagnostics of the binning inputs of one family (written by the prep
@@ -327,22 +327,22 @@ def save_clim_diagnostics(
     maps of the climatological LAI, P and Rn of every member (with more than
     one member), and histograms of climatological LAI and AI on
     `config.HIST_BINS`, one line per source. Saved as
-    fig_dir/<family>.<var>.<grid>.{map,map_members,hist}.<period>.png.
+    fig_dir/<family>.<var>.{map,map_members,hist}.<run_id>.png (run_id: the prep ID of the inputs).
     """
-    title = f"{title}, {inputs.attrs.get('time_period', period)}"
+    title = f"{title}, {inputs.attrs.get('time_period', '')}, {run_id}"
     clim = {"et": inputs["et"].mean("year", keep_attrs=True), **{v: inputs[v] for v in ("lai", "pr", "rn", "ai")}}
-    # The annual ET/P, if the prep script saved it (BIN_VARIABLE = "et_pr")
+    # The annual ET/P, if the inputs have it
     if "et_pr" in inputs:
         clim["et_pr"] = inputs["et_pr"].mean("year", keep_attrs=True)
     for var, da in clim.items():
-        save_ensemble_map(da, var, fig_dir / f"{family}.{var}.{grid}.map.{period}.png", title=title, family=family)
+        save_ensemble_map(da, var, fig_dir / f"{family}.{var}.map.{run_id}.png", title=title, family=family)
     if inputs.sizes["member"] > 1:
         for var in ("lai", "pr", "rn"):
-            save_member_maps(inputs[var], var, fig_dir / f"{family}.{var}.{grid}.map_members.{period}.png", title=title)
+            save_member_maps(inputs[var], var, fig_dir / f"{family}.{var}.map_members.{run_id}.png", title=title)
     sources = list(dict.fromkeys(inputs["source"].values.tolist()))
     for var in ("lai", "ai"):
         fields = {s: inputs[var].where(inputs["source"] == s) for s in sources}
-        fout = fig_dir / f"{family}.{var}_clim.{grid}.hist.{period}.png"
+        fout = fig_dir / f"{family}.{var}_clim.hist.{run_id}.png"
         plot_clim_hist(fields, HIST_BINS[var], xlabel=f"climatological {var}", title=f"{title}, {len(sources)} sources",
                        fout=fout)
         print(fout)

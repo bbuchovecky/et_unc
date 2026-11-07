@@ -12,3 +12,5 @@ dask-worker*
 fig
 proc
 logs
+# Machine-specific paths (copy of config/paths.example.yml)
+config/paths.yml

@@ -1,0 +1,5 @@
+# Land-area weighted bin statistics, 10 x 10 bins (the inputs of decompose_state_function.py)
+binning:
+  area_weighted: true
+  n_xbins: 10
+  n_ybins: 10

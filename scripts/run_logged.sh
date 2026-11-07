@@ -4,8 +4,9 @@
 #
 # Usage: scripts/run_logged.sh scripts/prep_obs.py
 #
-# Logs go to WORK_ROOT/logs (WORK_ROOT from etunc.config), or to $LOG_DIR if set:
-#   <LOG_DIR>/<script name>.<YYYYmmdd-HHMMSS>.log
+# The run is the one etunc.config reads: ETUNC_RUN=<run file>, or the defaults.
+# Logs go to WORK_ROOT/logs (from config/paths.yml), or to $LOG_DIR if set:
+#   <LOG_DIR>/<script name>.<RUN_ID>.<YYYYmmdd-HHMMSS>.log
 
 set -euo pipefail  # pipefail: the exit status is the script's, not tee's
 
@@ -21,14 +22,18 @@ repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 PIXI=${PIXI:-$(command -v pixi || echo "$HOME/.pixi/bin/pixi")}
 PY=("$PIXI" run --manifest-path "$repo/pyproject.toml" python)
 
-LOG_DIR=${LOG_DIR:-$("${PY[@]}" -c "import etunc.config as c; print(c.WORK_ROOT / 'logs')")}
+# The run's IDs and the logs folder, in one call (importing etunc.config takes a few seconds)
+read -r run_id prep_id log_root < <("${PY[@]}" -c "import etunc.config as c; print(c.RUN_ID, c.PREP_ID, c.LOG_ROOT)")
+[[ -n ${run_id:-} ]] || { echo "Could not read the run IDs from etunc.config" >&2; exit 1; }
+LOG_DIR=${LOG_DIR:-$log_root}
 mkdir -p "$LOG_DIR"
-log=$LOG_DIR/$(basename "$script" .py).$(date +%Y%m%d-%H%M%S).log
+log=$LOG_DIR/$(basename "$script" .py).$run_id.$(date +%Y%m%d-%H%M%S).log
 
 # Header: what was run, where, and from which code
 {
     echo "######### run_logged.sh"
     echo "script  : $script"
+    echo "run     : ${ETUNC_RUN:-defaults} (RUN_ID $run_id, PREP_ID $prep_id)"
     echo "start   : $(date '+%Y-%m-%d %H:%M:%S %Z')"
     echo "host    : $(hostname)"
     echo "python  : $("${PY[@]}" -c "import sys; print(sys.executable)")"

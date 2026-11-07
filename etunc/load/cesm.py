@@ -42,6 +42,7 @@ from typing import Literal, Mapping, Sequence
 import numpy as np
 import xarray as xr
 
+from etunc.config import CESM_GRID_PATHS, FHIST_PPE_ROOT, IHIST_PPE_ROOT, LENS2_ROOT
 from etunc.grid import bounded_src_grid
 
 
@@ -67,28 +68,22 @@ VARIABLES_TO_DROP = {
     ],
 }
 
-FHIST_PPE_ROOT = Path("/glade/campaign/univ/uwas0155/ppe/historical/coupled_simulations")
 FHIST_PPE_BASENAME = "f.e21.FHIST_BGC.f19_f19_mg17.historical.coupPPE"
 # Offline CLM runs (lnd output only), forced by a coupler history (CPLHIST) shared by all members
-IHIST_PPE_ROOT = Path("/glade/campaign/univ/uwas0155/ppe/historical/offline_simulations")
 IHIST_PPE_BASENAME = "i.e21.CPLHIST_BGC.f19_f19_mg17.historical.coupPPE"
 # {ppe: (root, case basename)}; both PPEs share the member ids of FHIST_PPE_MEMBERS
 PPE_CASES = {
     "fppe": (FHIST_PPE_ROOT, FHIST_PPE_BASENAME),
     "ippe": (IHIST_PPE_ROOT, IHIST_PPE_BASENAME),
 }
-LENS2_ROOT = Path("/glade/campaign/collections/gdex/data/d651056/CESM2-LE")
 
 LENS_BRANCH_YEARS = [
     "1001", "1021", "1041", "1061", "1081", "1101", "1121",
     "1141", "1161", "1181", "1231", "1251", "1281", "1301",
 ]
 
-GRID_PATHS = {
-    "fppe": Path("/glade/campaign/univ/uwas0155/ppe/f.e21.FHIST_BGC.f19_f19_mg17.historical.AREA_GRID.nc"),
-    "goga": Path("/glade/campaign/univ/uwas0155/ppe/f.e21.FHIST_BGC.f09_f09.GOGA2.AREA_GRID.nc"),
-    "lens": Path("/glade/campaign/univ/uwas0155/ppe/b.e21.BHISTsmbb.f09_g17.LE2.AREA_GRID.nc"),
-}
+# Roots and grid files from config/paths.yml (FHIST_PPE_ROOT, IHIST_PPE_ROOT, LENS2_ROOT, CESM_GRID_PATHS)
+GRID_PATHS = dict(CESM_GRID_PATHS)
 # The offline PPE runs on the same f19 grid, with the same LANDFRAC
 GRID_PATHS["ippe"] = GRID_PATHS["fppe"]
 

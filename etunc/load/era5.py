@@ -28,18 +28,14 @@ from typing import Sequence
 
 import xarray as xr
 
+from etunc.config import ERA5_GDEX_ROOTS, ERA5_GRID_PATH
 from etunc.grid import bounded_src_grid, format_grid
 
 
-GDEX_ROOTS = {
-    # (years < SPLIT_YEAR, years >= SPLIT_YEAR)
-    "sfc": (Path("/gdex/data/d633005/e5p.moda.an.sfc"), Path("/gdex/data/d633001/e5.moda.an.sfc")),
-    "meanflux": Path("/gdex/data/d633001/e5.moda.fc.sfc.meanflux"),
-    "accum": Path("/gdex/data/d633001/e5.moda.fc.sfc.accumu"),
-}
+# From config/paths.yml; "sfc" is (years < SPLIT_YEAR, years >= SPLIT_YEAR)
+GDEX_ROOTS = dict(ERA5_GDEX_ROOTS)
 SPLIT_YEAR = 1979
 
-ERA5_GRID_PATH = Path("/glade/work/bbuchovecky/data/era5/e5.invariant.grid.nc")
 
 def _root(kind: str, year: int) -> Path:
     paths = GDEX_ROOTS[kind]

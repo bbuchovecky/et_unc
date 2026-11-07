@@ -1,0 +1,43 @@
+# Default settings of the binning pipeline (docs/binning-workflow.md).
+#
+# A run changes some of them in its own file in config/runs/ (only the keys that differ), selected with
+# the environment variable ETUNC_RUN=config/runs/<name>.yml; without it, a run uses these defaults.
+# etunc/config.py reads both and exposes every setting as a module constant (prep.time_slice -> TIME_SLICE).
+#
+# Run IDs (etunc.config.RUN_ID, PREP_ID) are hashes of the settings:
+#   PREP_ID = "p" + hash of `prep`             names the folder and tags the files of steps 1-11
+#   RUN_ID  = "r" + hash of `prep` + `binning` names the folder and tags the files of steps 12-14 and the analyses
+# so runs that differ only in `binning` share their prep inputs. `plotting` is not hashed. Each ID is
+# registered in config/runs.csv when a script runs. Changing a default here changes the ID of every run.
+
+# Steps 1-11 (prep_<family>.py): what each family's binning inputs are
+prep:
+  time_slice: ["2001-01", "2014-12"]  # one period for every family (first and last month)
+  target_res: 1                       # deg, target grid of the conservative regridding
+  min_years: 3                        # minimum complete years shared by the four products of an obs combination
+  min_annual_et: -2.0                 # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
+  lat_bnds: [-58, 90]                 # excludes Antarctica (Tierra del Fuego ends near -56)
+  na_thresh: 0.5                      # conservative regridding: target cells with more than this fraction
+                                      # of missing source area are NaN
+  lf_thresh: 0.5                      # gridcell land fraction threshold (land where strictly greater)
+
+# Steps 12-14 (make_edges.py, bin_*.py) and the analyses
+binning:
+  # Families pooled by make_edges.py and binned by bin_all.py. fppe (coupled) and ippe (offline CLM)
+  # share the parameter perturbations but are separate families
+  families: [obs, era5, cmip, fppe, ippe, lens, trendy_s3]
+  bin_variable: et      # et: annual mean ET; et_pr: annual evaporation ratio ET/P (with the P of the AI)
+  area_weighted: false  # true: bin statistics weighted by each gridcell's land area (grid.land_area)
+  n_xbins: 15           # aridity index
+  n_ybins: 15           # LAI
+  signif_alpha: 0.05    # t-test of bin mean ET against 0 (95% confidence)
+  signif_n_min: 10      # bins with <= this many samples are never significant
+
+# Figures only; not part of the run IDs
+plotting:
+  dpi: 120
+  # Fixed histogram bins of climatological LAI and AI, as numpy.linspace(start, stop, num), so every
+  # histogram figure has the same bin widths; values outside are counted in the end bins
+  hist_bins:
+    lai: [0, 8, 81]    # 0.1 m2/m2
+    ai: [-1, 10, 111]  # 0.1

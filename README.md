@@ -11,10 +11,11 @@ the repo:
 | | Path |
 | --- | --- |
 | Inputs (shared, read-only) | `/glade/campaign/univ/uwas0155/` (ILAMB and gridded obs, and CMIP6) |
-| CMIP6 catalogs | `/glade/derecho/scratch/$USER/cmip_intake_esgf_fetch/` (purgeable scratch; see `etunc/config.py`) |
-| Outputs | `/glade/work/$USER/et_unc/proc` and `fig/`, as `<root>/<family>/<kind>/<period>/[lai<N>_ai<N>/]` (`cfg.output_dir`) |
+| CMIP6 catalogs | `/glade/derecho/scratch/$USER/cmip_intake_esgf_fetch/` (purgeable scratch) |
+| Outputs | `/glade/work/$USER/et_unc/proc` and `fig/`, as `<root>/<run or prep ID>/<family>/<kind>/` (`cfg.output_dir`) |
 
-All of these paths are set in `etunc/config.py`.
+All of these paths are set in `config/paths.yml`, which is not in git: copy
+`config/paths.example.yml` to `config/paths.yml` and edit it for your machine.
 
 ## Data products
 
@@ -47,7 +48,7 @@ The PLUMBER2 flux tower data are not included in the core binning pipeline. Inst
 | Path | What it holds |
 | --- | --- |
 | `etunc/` | The library (`import etunc.binning as binning`, ...). No module runs anything on import. |
-| `etunc/config.py` | Paths, domain and pipeline constants (`TIME_SLICE`, `LAT_BNDS`, `LF_THRESH`, `NA_THRESH`, `MIN_ANNUAL_ET`, `FAMILIES`, L = 2.45e6 J/kg, ...), and the paths of the files passed between the pipeline scripts |
+| `etunc/config.py` | Reads `config/` (settings of the run, paths) into constants (`TIME_SLICE`, `LAT_BNDS`, `LF_THRESH`, `NA_THRESH`, `MIN_ANNUAL_ET`, `FAMILIES`, ...; L = 2.45e6 J/kg), the run IDs and register (`RUN_ID`, `PREP_ID`, `register_run`), and the paths of the files passed between the pipeline scripts |
 | `etunc/units.py` | Unit conversions to W/m², net radiation for each data source |
 | `etunc/temporal.py` | Annual means and climatologies (`aggregate`: complete years, missing-month rules, missing-year report), shared years, period strings |
 | `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders (`regrid_with_na_thresh`), grid checks and snapping, native land masks (`landfrac_mask`, `landne_mask`, `mask_to_land`), the common area mask (`valid_area`, `common_area`), cell areas (`cell_area`) and Natural Earth land areas (`land_area`) |
@@ -60,6 +61,7 @@ The PLUMBER2 flux tower data are not included in the core binning pipeline. Inst
 | `etunc/load/` | Loaders: `ilamb`, `obs` (PML/GLEAM/SiTH), `cmip`, `cesm`, `era5`, `trendy` (TRENDY DGVMs and their CRU-JRA precipitation forcing). Each `load_native` returns raw monthly fields on the native grid in native units; the model loaders also have `load_land_fraction` |
 | `etunc/legacy/` | Unmaintained, untested code kept for the notebooks and `scripts/legacy_regrid/`: the former annual loaders, replaced functions, notebook-era helpers |
 | `etunc/dask_cluster.py` | Start and stop a PBS dask cluster for notebooks |
+| `config/` | Settings of the pipeline and of each run, paths, and the register of run IDs (see Config below) |
 | `docs/binning-workflow.md` | The binning pipeline step by step, with every assumption and choice |
 | `scripts/` | Runnable pipelines (`prep_*.py` → `make_edges.py` → `bin_*.py`; the analyses `regress_lai_aridity.py` and `decompose_state_function.py` (each bin count: `run_decomp.sh`), outside the pipeline, after them), configured by the constants at the top of each file |
 | `scripts/download/` | Download scripts for the obs products (and `trendy/` for TRENDY) |
@@ -117,8 +119,8 @@ pixi run bin-plumber-clim # step 14 for the PLUMBER2 flux towers with climatolog
 
 # Analyses of the step 14 outputs, not part of the pipeline
 pixi run regress-lai-aridity   # OLS of ET on LAI and AI: variance explained, with the bins' eta2
-pixi run decompose-state-function  # state, function and interaction terms of the area-mean ET against the obs (needs bin-all-clim, ETUNC_AREA_WEIGHTED=1)
-pixi run run-decomp                # scripts/run_decomp.sh: decompose-state-function for each bin count (N_BINS, default 10 15 20)
+pixi run decompose-state-function  # state, function and interaction terms of the area-mean ET against the obs (an area-weighted run, e.g. ETUNC_RUN=config/runs/aw_bins15.yml)
+pixi run run-decomp                # scripts/run_decomp.sh: decompose-state-function for each run of RUNS (default config/runs/aw_bins{10,15,20}.yml)
 pixi run make-mask             # common valid-data mask of the obs products
 pixi run diagnose-obs          # coverage of every obs ET, LAI, P and Rn product (docs/obs-availability.md)
 qsub scripts/diagnose_obs.pbs  # diagnose-obs as a Casper job (too large for a login node)
@@ -129,10 +131,10 @@ pixi run test                  # all tests (~6 min)
 ```
 
 Each task is `scripts/run_logged.sh scripts/<name>.py`, which logs the output,
-the git commit, `etunc/config.py` and the script's settings to `WORK_ROOT/logs`.
+the git commit, the run's IDs and settings and the script's settings to `WORK_ROOT/logs`.
 The scripts take no arguments: edit the settings at the top of each script
-(products, models, members, ...) or the shared ones in `etunc/config.py` (time
-period, grid, thresholds, number of bins). Each script's docstring lists every
+(products, models, members, ...), or choose a run (below) for the shared ones (time
+period, grid, thresholds, number of bins, weighting). Each script's docstring lists every
 output file it writes. Every family runs the same steps, written out in the
 script's `main()`; only the loader (step 1), the unit conversion (step 3) and
 the land mask (step 5) differ.
@@ -147,23 +149,37 @@ and stops at the first failure. It needs a large node (~128 GB), so run it as on
 qsub scripts/run_all.pbs
 ```
 
-`BIN_VARIABLE`, `AREA_WEIGHTED`, `N_XBINS` and `N_YBINS` of `etunc/config.py` can be set by
-environment variables (`ETUNC_BIN_VARIABLE`, ...), `SKIP_PREP=1` starts at make-edges, and
-`SWEEP=1` runs every combination (et/et_pr, unweighted/area-weighted, 10/15/20 bins) in one go:
+`RUNS` lists the runs to make (run files, or `default`), `SKIP_PREP=1` starts at make-edges,
+and the prep scripts run once for the runs that share their prep settings:
 
 ```bash
-qsub -v ETUNC_BIN_VARIABLE=et_pr,ETUNC_AREA_WEIGHTED=1,ETUNC_N_XBINS=20,ETUNC_N_YBINS=20 scripts/run_all.pbs
-qsub -v SWEEP=1 scripts/run_all.pbs
+qsub -v RUNS=config/runs/aw_bins20.yml scripts/run_all.pbs
+qsub -v RUNS="default config/runs/bins10.yml config/runs/aw_bins15.yml" scripts/run_all.pbs
+pixi run run-all-sweep    # the defaults and every file of config/runs/
 ```
 
 It runs only the pipeline: not the analyses (`regress-lai-aridity`, `decompose-state-function`, `run-decomp`) or the diagnostics (`make-mask`, `obs-availability`, `diagnose-obs`).
 
 ## Config
-`etunc/config.py` contains the domain constants, such as `LF_THRESH` and `NA_THRESH`.
-Binning settings (e.g., `N_XBINS`, `N_YBINS`) exist there but they also can changed at
-the top of each run script. `BIN_VARIABLE`, `AREA_WEIGHTED`, `N_XBINS` and `N_YBINS` can
-also be set by environment variables (`ETUNC_BIN_VARIABLE`, ...). For consistent analysis,
-all run script should have the same binning settings.
+All settings shared by the scripts are in `config/` (read by `etunc/config.py`):
+
+| File | What it holds |
+| --- | --- |
+| `config/pipeline.yml` | The default settings: `prep` (period, grid, thresholds of steps 1-11), `binning` (families, binned variable, weighting, bin counts of steps 12-14) and `plotting` |
+| `config/runs/<name>.yml` | One run's changes to the defaults, only the keys that differ, selected with `ETUNC_RUN=config/runs/<name>.yml` |
+| `config/paths.yml` | Every input and output path (not in git; copy `config/paths.example.yml`, or set `ETUNC_PATHS`) |
+| `config/runs.csv` | Every run ID: its prep ID, run file, time, git commit and branch, and settings |
+
+A run is identified by hashes of its settings: `RUN_ID` (`r` + 7 hex digits, of `prep` and
+`binning`) names the folder and tags the files of everything from make-edges on, and `PREP_ID`
+(`p` + 7 hex digits, of `prep` only) those of the prep inputs, which runs that differ only in
+`binning` share. The same settings always give the same IDs. Every script adds its run to
+`config/runs.csv`, so the settings behind any output folder or file can be looked up there:
+
+```bash
+ETUNC_RUN=config/runs/aw_bins20.yml pixi run bin-all-clim   # one script for one run
+pixi run python -c "import etunc.config as c; c.summarize()"  # the IDs, paths and settings of the defaults
+```
 
 ## TODO
 - Allow data families to use their own valid area for binning, instead of using the common area mask.

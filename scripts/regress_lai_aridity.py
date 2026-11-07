@@ -28,15 +28,13 @@ member of every family in FAMILIES, separately:
 Outputs
 -------
 <family> : obs, era5, cmip, fppe, ippe or lens
-<bins>   : lai<N_YBINS>_ai<N_XBINS>, the bin counts, e.g. "lai15_ai15"
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
-<period> : YYYYMM-YYYYMM of TIME_SLICE
+<run_id> : RUN_ID of the run's settings (period, grid, bins, weighting; etunc.config, config/runs.csv)
 
-PROC_ROOT/<family>/regress/<period>/<bins>/<family>.et.regress_lai_ai.<bins>.<grid>.<period>.nc
+PROC_ROOT/<run_id>/<family>/regress/<family>.et.regress_lai_ai.<run_id>.nc
     along (et_samples, member), with the member coords of the inputs (source, ...):
     r2 (predictors = lai, ai, lai+ai), r2_unique_lai, r2_unique_ai, r2_shared,
     intercept, slope_lai, slope_ai, n_samples; eta2 (edges = pooled_all, pooled_<family>)
-FIG_ROOT/all/regress/<period>/<bins>/all.et.regress_lai_ai.<bins>.<grid>.<period>.png
+FIG_ROOT/<run_id>/all/regress/all.et.regress_lai_ai.<run_id>.png
     R2 of LAI, AI, LAI + AI and eta2 of the pooled_all bins, one point per member
 """
 
@@ -114,13 +112,14 @@ def plot_r2_summary(results: dict[str, xr.Dataset], title: str = "", fout=None):
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
-    bins = cfg.bins_tag(N_YBINS, N_XBINS)  # bin counts, in the folder and file names
+    run = cfg.RUN_ID  # folder and file tag of every output (the run's settings set the period and bins)
 
     # Common area mask of all families (make_edges.py), as in bin_all.py
-    area_path = cfg.area_mask_path(grid, period)
+    area_path = cfg.area_mask_path()
     if not area_path.exists():
         raise FileNotFoundError(f"No common area mask at {area_path}; run scripts/make_edges.py first")
     area = xr.open_dataset(area_path)["area_mask"] == 1
@@ -128,7 +127,7 @@ def main():
     results = {}
     for family in FAMILIES:
         print(f"\n=== {family} ===")
-        path = cfg.inputs_path(family, grid, period)
+        path = cfg.inputs_path(family)
         if not path.exists():
             raise FileNotFoundError(f"No {family} inputs at {path}; run scripts/prep_{family}.py first")
         inputs = xr.load_dataset(path)
@@ -139,8 +138,8 @@ def main():
             "clim": temporal.aggregate(inputs["et"], "clim", label=f"{family} et"),
         }
         kinds = ("pooled_all", f"pooled_{family}")
-        bin_edges = {k: (edges.load_bin_edges(k, "lai", N_YBINS, N_XBINS, grid, period),
-                         edges.load_bin_edges(k, "ai", N_YBINS, N_XBINS, grid, period)) for k in kinds}
+        bin_edges = {k: (edges.load_bin_edges(k, "lai"),
+                         edges.load_bin_edges(k, "ai")) for k in kinds}
 
         per_samples = []
         for s, et in et_samples.items():
@@ -170,18 +169,18 @@ def main():
 
         out = xr.concat(per_samples, dim="et_samples").assign_coords(et_samples=list(et_samples))
         out.attrs = {
-            "family": family, "time_period": inputs.attrs["time_period"], "grid": grid,
+            "family": family, "time_period": inputs.attrs["time_period"], "grid": grid, "run_id": run,
             "area_mask": str(area_path), "model": "OLS, ET ~ LAI + AI with intercept, unweighted samples",
             "et_samples": "annual: every (year, gridcell) annual mean ET; clim: climatological ET per gridcell",
         }
-        fout = cfg.output_dir(cfg.PROC_ROOT, family, "regress", period, bins) / f"{family}.et.regress_lai_ai.{bins}.{grid}.{period}.nc"
+        fout = cfg.output_dir(cfg.PROC_ROOT, family, "regress", run) / f"{family}.et.regress_lai_ai.{run}.nc"
         fout.parent.mkdir(parents=True, exist_ok=True)
         out.to_netcdf(fout)
         print(fout)
         results[family] = out
 
-    fout = cfg.output_dir(cfg.FIG_ROOT, "all", "regress", period, bins) / f"all.et.regress_lai_ai.{bins}.{grid}.{period}.png"
-    plot_r2_summary(results, title=f"ET variance explained by climatological LAI and AI, {grid}, {period}",
+    fout = cfg.output_dir(cfg.FIG_ROOT, "all", "regress", run) / f"all.et.regress_lai_ai.{run}.png"
+    plot_r2_summary(results, title=f"ET variance explained by climatological LAI and AI, {grid}, {period}, {run}",
                     fout=fout)
     print(fout)
 

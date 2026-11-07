@@ -21,19 +21,18 @@ TIME_SLICE, and is skipped if there are fewer than MIN_YEARS.
 
 Outputs
 -------
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
-<period> : YYYYMM-YYYYMM of TIME_SLICE
+<prep_id> : PREP_ID of the prep settings (etunc.config; config/runs.csv)
 
-PROC_ROOT/obs/inputs/<period>/obs.inputs.<grid>.<period>.nc
+PROC_ROOT/<prep_id>/obs/inputs/obs.inputs.<prep_id>.nc
     et (member, year, lat, lon), NaN outside a combination's years; lai, pr, rn, ai (member, lat, lon);
-    with BIN_VARIABLE = "et_pr", also et_pr (member, year, lat, lon), ET/P with the combination's P product;
+    and et_pr (member, year, lat, lon), ET/P with the combination's P product;
     `member` labelled "<et>-<lai>-<pr>-<rn>" product names, with coords `source` (= member),
     `et_product`, `lai_product`, `pr_product`, `rn_product`, `n_years` and `time_period`
-FIG_ROOT/obs/clim/<period>/obs.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
+FIG_ROOT/<prep_id>/obs/clim/obs.<var>.map.<prep_id>.png        var in et, et_pr, lai, pr, rn, ai
     mean, standard deviation and range of the climatology over the combinations
-FIG_ROOT/obs/clim/<period>/obs.<var>.<grid>.map_members.<period>.png    var in lai, pr, rn
+FIG_ROOT/<prep_id>/obs/clim/obs.<var>.map_members.<prep_id>.png    var in lai, pr, rn
     the climatology of every member, on one color scale (more than one member only)
-FIG_ROOT/obs/clim/<period>/obs.{lai,ai}_clim.<grid>.hist.<period>.png
+FIG_ROOT/<prep_id>/obs/clim/obs.{lai,ai}_clim.hist.<prep_id>.png
     histograms of climatological LAI and AI, one line per combination
 """
 
@@ -66,7 +65,6 @@ FAMILY = "obs"
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
-BIN_VARIABLE = cfg.BIN_VARIABLE  # "et_pr" also saves the annual evaporation ratio ET/P (binned by bin_all.py)
 MIN_YEARS = cfg.MIN_YEARS  # minimum complete years shared by the four products of a combination
 
 FACTORS = ("et", "lai", "pr", "rn")  # order of the products in a combination
@@ -97,8 +95,8 @@ GRIDDED_ET_PRODUCTS = {
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
-    period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
 
     # (variable, product, kind) of every product
@@ -184,11 +182,10 @@ def main():
         # 11. Aridity index from the climatological Rn and P
         ai = edges.compute_aridity_index(clim["pr"], clim["rn"])
 
-        # 11b. Annual evaporation ratio ET/P (BIN_VARIABLE = "et_pr" only), with the annual P of the
+        # 11b. Annual evaporation ratio ET/P (always saved; binned with bin_variable: et_pr), with the annual P of the
         # combination's own P product, the one in its AI, over the same shared years
         data = {"et": fields["et"], **clim, "ai": ai}
-        if BIN_VARIABLE == "et_pr":
-            data["et_pr"] = binning.evaporation_ratio(fields["et"], fields["pr"], label=f"{cid}/et_pr")
+        data["et_pr"] = binning.evaporation_ratio(fields["et"], fields["pr"], label=f"{cid}/et_pr")
 
         # The combination is a source with one member
         combos.append(xr.Dataset(data).expand_dims(member=[cid]).assign_coords(
@@ -206,7 +203,7 @@ def main():
     inputs = xr.concat(combos, dim="member", join="outer", combine_attrs="drop_conflicts")
     inputs.attrs = {
         "family": FAMILY, "dataset": "observational products (ILAMB, gridded ET)",
-        "time_period": temporal.period_str(inputs.year.values), "grid": grid,
+        "time_period": temporal.period_str(inputs.year.values), "grid": grid, "prep_id": cfg.PREP_ID,
         # Products in at least one saved combination
         "native_res": "; ".join(
             f"{v}/{p}: {res}" for (v, p), res in native_res.items() if p in inputs[f"{v}_product"].values
@@ -215,14 +212,14 @@ def main():
         "min_years": MIN_YEARS,
         "land_mask": "Natural Earth land, without Greenland/Iceland",
     }
-    fout = cfg.inputs_path(FAMILY, grid, period)
+    fout = cfg.inputs_path(FAMILY)
     fout.parent.mkdir(parents=True, exist_ok=True)
     inputs.to_netcdf(fout)
     print(f"{fout}")
 
     # Diagnostics: climatology maps and LAI/AI histograms
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period)
-    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, grid, period, title="obs")
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", cfg.PREP_ID)
+    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, cfg.PREP_ID, title="obs")
 
 
 if __name__ == "__main__":

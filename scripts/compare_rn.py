@@ -28,14 +28,13 @@ land-mean series over their shared years.
 
 Outputs
 -------
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
-<period> : YYYYMM-YYYYMM of TIME_SLICE
+<prep_id> : PREP_ID of the prep settings (TIME_SLICE, TARGET_RES, ...; etunc.config, config/runs.csv)
 
-PROC_ROOT/trendy/radiation/<period>/trendy.compare_rn.<period>.csv
+PROC_ROOT/<prep_id>/trendy/radiation/trendy.compare_rn.<prep_id>.csv
     statistics of every pair of sources, per variable and band
-PROC_ROOT/trendy/radiation/<period>/trendy.compare_rn.<grid>.<period>.nc
+PROC_ROOT/<prep_id>/trendy/radiation/trendy.compare_rn.<prep_id>.nc
     climatology of each variable and source on the target grid
-FIG_ROOT/trendy/radiation/<period>/trendy.compare_rn.<grid>.<period>.png
+FIG_ROOT/<prep_id>/trendy/radiation/trendy.compare_rn.<prep_id>.png
     difference maps of every pair of sources and zonal land means, per variable
 """
 
@@ -124,6 +123,7 @@ def land_mean(ann: xr.DataArray, area: xr.DataArray) -> xr.DataArray:
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
@@ -177,18 +177,18 @@ def main():
                              **pair_stats(d[a].sel(**sel), d[b].sel(**sel), area.sel(**sel)),
                              "iav_r_land_mean": iav_r if band == "Global" else np.nan})
     stats = pd.DataFrame(rows)
-    proc_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "radiation", period)
+    proc_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "radiation", cfg.PREP_ID)
     proc_dir.mkdir(parents=True, exist_ok=True)
-    fout = proc_dir / f"{FAMILY}.compare_rn.{period}.csv"
+    fout = proc_dir / f"{FAMILY}.compare_rn.{cfg.PREP_ID}.csv"
     stats.to_csv(fout, index=False, float_format="%.3f")
     with pd.option_context("display.width", 200, "display.max_rows", None):
         print(f"\n{stats.round(2).to_string(index=False)}\n{fout}")
 
     # Climatologies, e.g. sw_down_era5, lw_down_crujra
     ds = xr.Dataset({f"{v}_{s.replace('-', '').lower()}": da for v, d in clim.items() for s, da in d.items()})
-    ds.attrs = {"time_period": period, "grid": grid, "units": "W/m2",
+    ds.attrs = {"time_period": period, "grid": grid, "prep_id": cfg.PREP_ID, "units": "W/m2",
                 "crujra_sw": f"median rsds of the TRENDY {EXPERIMENT} models {', '.join(RSDS_MODELS)}"}
-    fout = proc_dir / f"{FAMILY}.compare_rn.{grid}.{period}.nc"
+    fout = proc_dir / f"{FAMILY}.compare_rn.{cfg.PREP_ID}.nc"
     ds.to_netcdf(fout)
     print(fout)
 
@@ -209,9 +209,9 @@ def main():
         axs[i, 3].set(title=f"{titles[var]}: zonal land mean", ylabel="W/m2")
         axs[i, 3].legend()
     fig.suptitle(f"Surface radiation, land climatology {period}, {grid}")
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "radiation", period)
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "radiation", cfg.PREP_ID)
     fig_dir.mkdir(parents=True, exist_ok=True)
-    fout = fig_dir / f"{FAMILY}.compare_rn.{grid}.{period}.png"
+    fout = fig_dir / f"{FAMILY}.compare_rn.{cfg.PREP_ID}.png"
     fig.savefig(fout, dpi=110)
     print(fout)
 

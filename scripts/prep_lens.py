@@ -11,18 +11,17 @@ LF_THRESH, without Greenland and Iceland.
 
 Outputs
 -------
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
-<period> : YYYYMM-YYYYMM of TIME_SLICE
+<prep_id> : PREP_ID of the prep settings (etunc.config; config/runs.csv)
 
-PROC_ROOT/lens/inputs/<period>/lens.inputs.<grid>.<period>.nc
-    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); with BIN_VARIABLE = "et_pr",
-    also et_pr (member, year, lat, lon); `member` labelled by ens_name,
+PROC_ROOT/<prep_id>/lens/inputs/lens.inputs.<prep_id>.nc
+    et (member, year, lat, lon); lai, pr, rn, ai (member, lat, lon); and
+    et_pr (member, year, lat, lon); `member` labelled by ens_name,
     `source` = member
-FIG_ROOT/lens/clim/<period>/lens.<var>.<grid>.map.<period>.png        var in et, lai, pr, rn, ai (and et_pr)
+FIG_ROOT/<prep_id>/lens/clim/lens.<var>.map.<prep_id>.png        var in et, et_pr, lai, pr, rn, ai
     member mean, standard deviation and range of the climatology
-FIG_ROOT/lens/clim/<period>/lens.<var>.<grid>.map_members.<period>.png    var in lai, pr, rn
+FIG_ROOT/<prep_id>/lens/clim/lens.<var>.map_members.<prep_id>.png    var in lai, pr, rn
     the climatology of every member, on one color scale (more than one member only)
-FIG_ROOT/lens/clim/<period>/lens.{lai,ai}_clim.<grid>.hist.<period>.png
+FIG_ROOT/<prep_id>/lens/clim/lens.{lai,ai}_clim.hist.<prep_id>.png
     histograms of climatological LAI and AI, one line per member
 """
 
@@ -53,7 +52,6 @@ FAMILY = "lens"
 
 TIME_SLICE = cfg.TIME_SLICE
 TARGET_RES = cfg.TARGET_RES
-BIN_VARIABLE = cfg.BIN_VARIABLE  # "et_pr" also saves the annual evaporation ratio ET/P (binned by bin_all.py)
 
 FREQUENCY = "month_1"
 STREAM = "h0"
@@ -73,8 +71,8 @@ MEMBERS: list[str] | None = None
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
-    period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
 
     # 1-2. Monthly native fields over TIME_SLICE, and the native land fraction
@@ -124,11 +122,10 @@ def main():
     # 11. Aridity index from the climatological Rn and P
     ai = edges.compute_aridity_index(clim["pr"], clim["rn"])
 
-    # 11b. Annual evaporation ratio ET/P (BIN_VARIABLE = "et_pr" only), with the annual P of the AI's
+    # 11b. Annual evaporation ratio ET/P (always saved; binned with bin_variable: et_pr), with the annual P of the AI's
     # P (same product and shared years)
     data = {"et": ann["et"], **clim, "ai": ai}
-    if BIN_VARIABLE == "et_pr":
-        data["et_pr"] = binning.evaporation_ratio(ann["et"], ann["pr"], label="et_pr")
+    data["et_pr"] = binning.evaporation_ratio(ann["et"], ann["pr"], label="et_pr")
 
     # Every member is one source, labelled by its ens_name
     inputs = xr.Dataset(data)
@@ -136,18 +133,18 @@ def main():
     inputs = inputs.drop_vars("member_id").assign_coords(member=names, source=("member", names))
     inputs.attrs = {
         "family": FAMILY, "dataset": f"CESM2-LE historical ({BB} biomass burning)",
-        "time_period": temporal.period_str(years), "grid": grid, "native_res": rg.native_res(src_grid),
+        "time_period": temporal.period_str(years), "grid": grid, "prep_id": cfg.PREP_ID, "native_res": rg.native_res(src_grid),
         "na_thresh": cfg.NA_THRESH, "lf_thresh": cfg.LF_THRESH, "min_annual_et": cfg.MIN_ANNUAL_ET,
         "land_mask": "LANDFRAC > lf_thresh, without Greenland/Iceland",
     }
-    fout = cfg.inputs_path(FAMILY, grid, period)
+    fout = cfg.inputs_path(FAMILY)
     fout.parent.mkdir(parents=True, exist_ok=True)
     inputs.to_netcdf(fout)
     print(f"\n{len(names)} members, {inputs.attrs['time_period']}\n{fout}")
 
     # Diagnostics: climatology maps and LAI/AI histograms
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", period)
-    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, grid, period, title="CESM2-LE")
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", cfg.PREP_ID)
+    plotting.save_clim_diagnostics(inputs, fig_dir, FAMILY, cfg.PREP_ID, title="CESM2-LE")
 
 
 if __name__ == "__main__":

@@ -33,13 +33,13 @@ read, so a 0.1 deg record is never held in memory:
 Outputs
 -------
 <var>    : et, lai, pr, rn
-<period> : YYYYMM-YYYYMM of TIME_SLICE
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
+<grid>    : grid tag of TARGET_RES, e.g. "1deg"
+<prep_id> : PREP_ID of the prep settings (TIME_SLICE, TARGET_RES, ...; etunc.config, config/runs.csv)
 
-PROC_ROOT/obs/coverage/<period>/obs.<var>.coverage.<period>.csv
+PROC_ROOT/<prep_id>/obs/coverage/obs.<var>.coverage.<prep_id>.csv
     per product: record, valid years, land area covered on the native and target grids (global and by
     region), and the QUANTILES of the valid monthly values
-FIG_ROOT/obs/coverage/<period>/obs.<var>.<diag>.<period>.png, with <diag>:
+FIG_ROOT/<prep_id>/obs/coverage/obs.<var>.<diag>.<prep_id>.png, with <diag>:
     1. Land covered on the native grids and on the target grid
        land_area              land area with any valid month, a valid year (native) and a climatology (target)
        map_n_products         number of products with a climatology at each target gridcell
@@ -434,7 +434,7 @@ def product_colors(products: list[str], info: dict) -> tuple[dict, dict]:
 # Diagnostics of one variable
 # ------------------------------------------------------------------
 
-def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, grid: str):
+def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, grid: str, run_id: str):
     products = [*ILAMB_PRODUCTS[v], *GRIDDED_PRODUCTS.get(v, {})]
 
     # Load each product once and reduce it: native-grid coverage, histogram, and annual means on the target grid
@@ -502,7 +502,7 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
         row.update({f"q{100 * q:g}": x for q, x in zip(QUANTILES, hists[p]["quantiles"])})
         rows[p] = row
     table = pd.DataFrame(rows).T.infer_objects().rename_axis("product")
-    fout = proc_dir / f"{FAMILY}.{v}.coverage.{period}.csv"
+    fout = proc_dir / f"{FAMILY}.{v}.coverage.{run_id}.csv"
     table.to_csv(fout, float_format="%.4g")
     print(f"\nLand area in 10^6 km2, {period}\n{table.round(2).to_string()}\n{fout}")
 
@@ -572,7 +572,7 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
             f"({grid}, {span})", f)
 
     for diag, make in figs.items():
-        fout = fig_dir / f"{FAMILY}.{v}.{diag}.{period}.png"
+        fout = fig_dir / f"{FAMILY}.{v}.{diag}.{run_id}.png"
         make(fout)
         print(fout)
 
@@ -583,11 +583,12 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "coverage", period)
-    proc_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "coverage", period)
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "coverage", cfg.PREP_ID)
+    proc_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "coverage", cfg.PREP_ID)
     proc_dir.mkdir(parents=True, exist_ok=True)
 
     # Land area [km2] of each target cell within LAT_BNDS, without Greenland/Iceland
@@ -595,7 +596,7 @@ def main():
     land_area1 = land_area1.where(rg.greenland_mask(land_area1), 0)
 
     for v in VARIABLES:
-        diagnose(v, land_area1, fig_dir, proc_dir, period, grid)
+        diagnose(v, land_area1, fig_dir, proc_dir, period, grid, cfg.PREP_ID)
 
 
 if __name__ == "__main__":

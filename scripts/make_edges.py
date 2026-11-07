@@ -24,24 +24,23 @@ LAI and AI quantile edges that bin_all.py bins with.
 
 Outputs
 -------
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
-<period> : YYYYMM-YYYYMM of TIME_SLICE
-<n>      : number of bins (N_YBINS for LAI, N_XBINS for AI)
-<bins>   : bin counts, lai<N_YBINS>_ai<N_XBINS>
+<run_id> : RUN_ID of the run's settings (etunc.config; config/runs.csv), which set the period, grid
+           and bin counts (N_YBINS for LAI, N_XBINS for AI)
+Reads the inputs of the run's PREP_ID (cfg.inputs_path).
 
-PROC_ROOT/all/mask/<period>/all.area_mask.<grid>.<period>.nc
+PROC_ROOT/<run_id>/all/mask/all.area_mask.<run_id>.nc
     area_mask (lat, lon), and valid_area (family, lat, lon): each family's own valid area
-BIN_EDGES_ROOT/<period>/<bins>/{pooled_all,pooled_<family>}.{lai,ai}_clim.<n>_quantiles.<grid>.<period>.nc
-FIG_ROOT/all/mask/<period>/all.area_mask.<grid>.<period>.png
+PROC_ROOT/<run_id>/all/edges/{pooled_all,pooled_<family>}.{lai,ai}_clim.quantiles.<run_id>.nc
+FIG_ROOT/<run_id>/all/mask/all.area_mask.<run_id>.png
     number of families whose valid area includes each gridcell
-FIG_ROOT/all/qbin/<period>/<bins>/all.{lai,ai}_clim.<n>_quantiles.<grid>.<period>.png
+FIG_ROOT/<run_id>/all/edges/all.{lai,ai}_clim.quantiles.<run_id>.png
     pooled_all and pooled_<family> edges
-FIG_ROOT/all/qbin/<period>/<bins>/all.{lai,ai}_clim.<grid>.hist.<period>.png
+FIG_ROOT/<run_id>/all/edges/all.{lai,ai}_clim.hist.<run_id>.png
     weighted histograms on the common area, one line per family and the pooled total, with the
     pooled_all edges
-FIG_ROOT/all/qbin/<period>/<bins>/all.{lai,ai}_clim.<grid>.hist_by_family.<period>.png
+FIG_ROOT/<run_id>/all/edges/all.{lai,ai}_clim.hist_by_family.<run_id>.png
     one panel per family: one line per source, with the pooled_<family> edges
-FIG_ROOT/all/qbin/<period>/<bins>/all.{lai,ai}_clim.<n>_quantiles.<grid>.bin_fraction.<period>.png
+FIG_ROOT/<run_id>/all/edges/all.{lai,ai}_clim.quantiles.bin_fraction.<run_id>.png
     % of each family's weighted values in each pooled_all bin
 """
 
@@ -102,17 +101,18 @@ def plot_bin_fraction(values: dict[str, tuple[np.ndarray, np.ndarray]], bin_edge
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
-    # Output folders: the area mask depends on the period only, the edges and their figures also on the bin counts
-    mask_fig_dir = cfg.output_dir(cfg.FIG_ROOT, "all", "mask", period)
-    qbin_fig_dir = cfg.output_dir(cfg.FIG_ROOT, "all", "qbin", period, cfg.bins_tag(N_BINS["lai"], N_BINS["ai"]))
+    run = cfg.RUN_ID  # folder and file tag of every output
+    mask_fig_dir = cfg.output_dir(cfg.FIG_ROOT, "all", "mask", run)
+    edges_fig_dir = cfg.output_dir(cfg.FIG_ROOT, "all", "edges", run)
 
     print("=== Binning inputs ===")
     inputs = {}
     for family in FAMILIES:
-        path = cfg.inputs_path(family, grid, period)
+        path = cfg.inputs_path(family)
         if not path.exists():
             raise FileNotFoundError(f"No {family} inputs at {path}; run scripts/prep_{family}.py first")
         inputs[family] = xr.open_dataset(path)
@@ -124,27 +124,27 @@ def main():
     print("\n=== 12. Common area mask ===")
     valid = {family: rg.valid_area(ds) for family, ds in inputs.items()}
     area = rg.common_area(valid)
-    fout = cfg.area_mask_path(grid, period)
+    fout = cfg.area_mask_path()
     fout.parent.mkdir(parents=True, exist_ok=True)
     valid_all = xr.concat(list(valid.values()), dim="family").assign_coords(family=list(valid))
     xr.Dataset({
         "area_mask": area.astype("i1").assign_attrs(
             long_name="gridcells where ET (any year), LAI and AI are valid in every member of every family"),
         "valid_area": valid_all.astype("i1").assign_attrs(long_name="each family's own valid area"),
-    }, attrs={"families": list(inputs), "time_period": period, "grid": grid}).to_netcdf(fout)
+    }, attrs={"families": list(inputs), "time_period": period, "grid": grid, "run_id": run}).to_netcdf(fout)
     print(fout)
     plotting.plot_mask_agreement(
         valid_all.rename(family="product"), valid_all.any("family"),
-        title=f"Valid areas of {', '.join(inputs)} ({grid}, {period})", label="families with the gridcell valid",
-        highlight_common=True, fout=mask_fig_dir / f"all.area_mask.{grid}.{period}.png",
+        title=f"Valid areas of {', '.join(inputs)} ({grid}, {period}, {run})", label="families with the gridcell valid",
+        highlight_common=True, fout=mask_fig_dir / f"all.area_mask.{run}.png",
     )
-    print(mask_fig_dir / f"all.area_mask.{grid}.{period}.png")
+    print(mask_fig_dir / f"all.area_mask.{run}.png")
 
     # 13. Quantile edges on the common area: pooled across all families, and pooled within each family
     for v, n_bins in N_BINS.items():
         print(f"\n=== 13. {v} edges ===")
         fields = {family: ds[v].where(area) for family, ds in inputs.items()}
-        attrs = {**edges.EDGE_ATTRS[v], "time_period": period, "grid": grid, "area_mask": str(fout)}
+        attrs = {**edges.EDGE_ATTRS[v], "time_period": period, "grid": grid, "run_id": run, "area_mask": str(fout)}
 
         # pooled_all: each family, each group of variants within a family, each source within a group and each
         # member within a source weighs equally
@@ -160,19 +160,19 @@ def main():
                 fv, fw, n_bins, name=v, attrs={**attrs, "weighting": "groups of variants equal", "families": [family]},
             )
         for kind, e in edge_sets.items():
-            path = edges.edges_path(kind, v, N_BINS["lai"], N_BINS["ai"], grid, period)
+            path = edges.edges_path(kind, v)
             path.parent.mkdir(parents=True, exist_ok=True)
             e.to_netcdf(path)
             print(path)
 
         # Diagnostics
-        stem = f"all.{v}_clim.{n_bins}_quantiles.{grid}"
-        plotting.plot_edges_compare(edge_sets, title=f"{v} quantile edges on the common area, {period}",
-                                    fout=qbin_fig_dir / f"{stem}.{period}.png")
+        stem = f"all.{v}_clim.quantiles"
+        plotting.plot_edges_compare(edge_sets, title=f"{v} {n_bins} quantile edges on the common area, {period}, {run}",
+                                    fout=edges_fig_dir / f"{stem}.{run}.png")
         plotting.plot_clim_hist(
             family_values, cfg.HIST_BINS[v], pooled=(values, weights), edges=edge_sets["pooled_all"],
             xlabel=f"climatological {v}", title=f"{v} on the common area, with the pooled_all edges",
-            fout=qbin_fig_dir / f"all.{v}_clim.{grid}.hist.{period}.png",
+            fout=edges_fig_dir / f"all.{v}_clim.hist.{run}.png",
         )
         fig, axs = plt.subplots(len(fields), 1, figsize=(8, 3 * len(fields)), layout="constrained", squeeze=False)
         for ax, (family, da) in zip(axs[:, 0], fields.items()):
@@ -182,9 +182,9 @@ def main():
                 pooled=family_values[family], edges=edge_sets[f"pooled_{family}"], xlabel=f"climatological {v}",
                 title=f"{family}: {len(sources)} sources, with the pooled_{family} edges", ax=ax,
             )
-        plotting.finish(fig, qbin_fig_dir / f"all.{v}_clim.{grid}.hist_by_family.{period}.png")
+        plotting.finish(fig, edges_fig_dir / f"all.{v}_clim.hist_by_family.{run}.png")
         plot_bin_fraction(family_values, edge_sets["pooled_all"], title=f"{v}: % of values per pooled_all bin",
-                          fout=qbin_fig_dir / f"{stem}.bin_fraction.{period}.png")
+                          fout=edges_fig_dir / f"{stem}.bin_fraction.{run}.png")
 
 
 if __name__ == "__main__":

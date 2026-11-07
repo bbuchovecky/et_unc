@@ -9,8 +9,8 @@ docs/binning-workflow.md).
   every family, every group of variants within a family (`variants`), every
   source within a group and every member within a source counts equally.
 - `pooled_bin_edges`: weighted quantile edges of the pooled values.
-- `edges_path` / `load_bin_edges`: where `make_edges.py` saves the edges and
-  how `bin_all.py` reads them back.
+- `edges_path` / `load_bin_edges`: where `make_edges.py` saves the edges of a
+  run and how `bin_all.py` reads them back.
 
 How the pooled edges are computed
 ---------------------------------
@@ -38,7 +38,7 @@ import numpy as np
 import xarray as xr
 
 from etunc import variants
-from etunc.config import BIN_EDGES_ROOT, bins_tag
+import etunc.config as cfg
 
 
 # Attributes of the LAI and AI bin edges
@@ -175,19 +175,18 @@ def pooled_bin_edges(
 # Saved edges
 # ------------------------------------------------------------------
 
-def edges_path(kind: str, variable: str, n_ybins: int, n_xbins: int, grid: str, period: str) -> Path:
+def edges_path(kind: str, variable: str, run_id: str | None = None) -> Path:
     """
-    File of the `kind` edges ("pooled_all", "pooled_cmip", ...) of `variable` ("lai": `n_ybins` bins, "ai":
-    `n_xbins` bins), in the folder of the bin counts: BIN_EDGES_ROOT/<period>/lai<n_ybins>_ai<n_xbins>/.
+    File of the `kind` edges ("pooled_all", "pooled_cmip", ...) of `variable` ("lai" or "ai") of a run
+    (default: this RUN_ID, whose settings set the bin counts): PROC_ROOT/<run_id>/all/edges/.
     """
-    n_bins = n_ybins if variable == "lai" else n_xbins
-    folder = BIN_EDGES_ROOT / period / bins_tag(n_ybins, n_xbins)
-    return folder / f"{kind}.{variable}_clim.{n_bins}_quantiles.{grid}.{period}.nc"
+    run_id = run_id or cfg.RUN_ID
+    return cfg.output_dir(cfg.PROC_ROOT, "all", "edges", run_id) / f"{kind}.{variable}_clim.quantiles.{run_id}.nc"
 
 
-def load_bin_edges(kind: str, variable: str, n_ybins: int, n_xbins: int, grid: str, period: str) -> xr.DataArray:
+def load_bin_edges(kind: str, variable: str, run_id: str | None = None) -> xr.DataArray:
     """Edges saved by make_edges.py; raises FileNotFoundError if make_edges.py has not written them."""
-    path = edges_path(kind, variable, n_ybins, n_xbins, grid, period)
+    path = edges_path(kind, variable, run_id)
     if not path.exists():
         raise FileNotFoundError(f"No {kind} {variable} edges at {path}; run scripts/make_edges.py first")
     with xr.open_dataarray(path) as da:

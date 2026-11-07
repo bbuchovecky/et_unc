@@ -1,0 +1,39 @@
+# Paths of the inputs and outputs. Copy this file to config/paths.yml (ignored by git) and edit it for your
+# machine; etunc/config.py reads config/paths.yml, or the file named by the environment variable ETUNC_PATHS.
+# Paths are not part of the run IDs. The values below are those on NCAR's glade.
+
+# Shared campaign storage: read-only unless writing regridded files on purpose
+campaign_root: /glade/campaign/univ/uwas0155
+obs_root: /glade/campaign/univ/uwas0155/obs                 # gridded obs products (etunc.load.obs)
+ilamb_root: /glade/campaign/univ/uwas0155/obs/ilamb         # ILAMB products (etunc.load.ilamb)
+obs_regrid_root: /glade/campaign/univ/uwas0155/obs/regridded  # DEPRECATED: regridded files of the legacy scripts
+
+# PLUMBER2 flux tower files (Abramowitz et al.): met/ and flux/, one file per site
+plumber_root: /glade/work/bbuchovecky/data/fluxnet_abramowitz
+
+# CMIP6 catalogs of the external cmip-intake-esgf-fetch tool, in <cmip_fetch_root>/catalogs/. The catalogs,
+# and most file paths in them, are on purgeable Derecho scratch
+cmip_fetch_root: /glade/derecho/scratch/bbuchovecky/cmip_intake_esgf_fetch
+
+# TRENDY (GCB2025) DGVM output, <MODEL>/<experiment dir>/<prefix>_<S2|S3>_<var>.nc, and the forcing in
+# crujra3/ (CRU-JRA v3) and Radiation/
+trendy_root: /glade/campaign/univ/uwas0155/trendyv14-gcb2025
+
+# CESM2 ensembles (etunc.load.cesm)
+fhist_ppe_root: /glade/campaign/univ/uwas0155/ppe/historical/coupled_simulations  # coupled PPE (fppe)
+ihist_ppe_root: /glade/campaign/univ/uwas0155/ppe/historical/offline_simulations  # offline CLM PPE (ippe)
+lens2_root: /glade/campaign/collections/gdex/data/d651056/CESM2-LE
+cesm_grid_paths:  # area and land fraction of each ensemble's grid (ippe uses the fppe grid)
+  fppe: /glade/campaign/univ/uwas0155/ppe/f.e21.FHIST_BGC.f19_f19_mg17.historical.AREA_GRID.nc
+  goga: /glade/campaign/univ/uwas0155/ppe/f.e21.FHIST_BGC.f09_f09.GOGA2.AREA_GRID.nc
+  lens: /glade/campaign/univ/uwas0155/ppe/b.e21.BHISTsmbb.f09_g17.LE2.AREA_GRID.nc
+
+# ERA5 monthly means on GDEX (etunc.load.era5): sfc is two streams, before and from 1979
+era5_gdex_roots:
+  sfc: [/gdex/data/d633005/e5p.moda.an.sfc, /gdex/data/d633001/e5.moda.an.sfc]
+  meanflux: /gdex/data/d633001/e5.moda.fc.sfc.meanflux
+  accum: /gdex/data/d633001/e5.moda.fc.sfc.accumu
+era5_grid_path: /glade/work/bbuchovecky/data/era5/e5.invariant.grid.nc
+
+# Outputs: netCDF in <work_root>/proc, figures in <work_root>/fig, logs in <work_root>/logs
+work_root: /glade/work/bbuchovecky/et_unc

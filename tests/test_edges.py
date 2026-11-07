@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
+import etunc.config as cfg
 import etunc.edges as bin_edges
 
 
@@ -85,18 +86,18 @@ def test_pooled_bin_edges_keeps_duplicate_edges_and_warns_on_zeros():
 
 def test_saved_edges_roundtrip(tmp_path, monkeypatch):
     """
-    Edges written to edges_path (in the folder of the period and both bin counts, named by the variable's own
-    count) load back unchanged; missing edges raise FileNotFoundError.
+    Edges written to edges_path (PROC_ROOT/<run_id>/all/edges/, named by the run ID; this run's by default)
+    load back unchanged; missing edges raise FileNotFoundError.
     """
-    monkeypatch.setattr(bin_edges, "BIN_EDGES_ROOT", tmp_path)
+    monkeypatch.setattr(cfg, "PROC_ROOT", tmp_path)
+    run = cfg.RUN_ID
     edges = bin_edges.pooled_bin_edges(np.arange(10.0), np.ones(10), 3, name="lai")
-    path = bin_edges.edges_path("pooled_all", "lai", 3, 4, "1deg", "199501-201412")
-    folder = tmp_path / "199501-201412" / "lai3_ai4"
-    assert path == folder / "pooled_all.lai_clim.3_quantiles.1deg.199501-201412.nc"
-    assert bin_edges.edges_path("pooled_all", "ai", 3, 4, "1deg", "199501-201412") == \
-        folder / "pooled_all.ai_clim.4_quantiles.1deg.199501-201412.nc"
+    path = bin_edges.edges_path("pooled_all", "lai")
+    assert path == tmp_path / run / "all" / "edges" / f"pooled_all.lai_clim.quantiles.{run}.nc"
+    assert bin_edges.edges_path("pooled_all", "ai", "r0000000") == \
+        tmp_path / "r0000000/all/edges/pooled_all.ai_clim.quantiles.r0000000.nc"
     path.parent.mkdir(parents=True)
     edges.to_netcdf(path)
-    xr.testing.assert_identical(bin_edges.load_bin_edges("pooled_all", "lai", 3, 4, "1deg", "199501-201412"), edges)
+    xr.testing.assert_identical(bin_edges.load_bin_edges("pooled_all", "lai"), edges)
     with pytest.raises(FileNotFoundError, match="make_edges.py"):
-        bin_edges.load_bin_edges("pooled_cmip", "lai", 3, 4, "1deg", "199501-201412")
+        bin_edges.load_bin_edges("pooled_cmip", "lai")

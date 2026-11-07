@@ -8,7 +8,8 @@ at a given LAI and AI ("function"), and how much from the two together
 (`scripts/run_all.sh` does not run it).
 
 Inputs: the land-area weighted climatological ET binned with the pooled_all
-edges (bin_all_clim.py with ETUNC_AREA_WEIGHTED=1, ETUNC_BIN_VARIABLE=et), per
+edges by bin_all_clim.py in the same run, which must have binning.area_weighted
+true and binning.bin_variable et (e.g. ETUNC_RUN=config/runs/aw_bins15.yml), per
 member, for the reference family obs and the evaluated families (cfg.FAMILIES
 without obs, and TRENDY_FAMILIES). From each member's bins (`decomposition`):
 
@@ -62,8 +63,9 @@ Comparisons
    land from (STATE_LOSSES = sum_S min(dp, 0) f_r). Since sum_b dp = 0, a large
    LAND_SHIFT gives a small STATE when the land moves between bins of similar
    observed ET, or both up and down in it.
-6. Bin-count sensitivity: the variance partitions of every bin count already
-   run (folders under all/decomp/<period>/), with fraction shifts > 10 points flagged.
+6. Bin-count sensitivity: the variance partitions of every run already
+   decomposed whose settings differ from this run's only in the bin counts
+   (found in config/runs.csv), with fraction shifts > 10 points flagged.
 
 Obs product combinations are read from the data (the <axis>_product coords of
 prep_obs.py, for each axis of OBS_PRODUCT_AXES): adding obs LAI, P or Rn
@@ -93,40 +95,39 @@ Interpretation
 
 Outputs
 -------
-<bins>   : lai<N_YBINS>_ai<N_XBINS>, the bin counts, e.g. "lai15_ai15"
-<grid>   : grid tag of TARGET_RES, e.g. "1deg"
-<period> : YYYYMM-YYYYMM of TIME_SLICE
-<stem>   : all.et_clim.area_weighted.decomp_<kind>.qbin_pooled_all
+<run_id> : RUN_ID of the run's settings (period, grid, bins; etunc.config, config/runs.csv)
+<stem>   : all.et_clim.decomp_<kind>.qbin_pooled_all
 
-PROC_ROOT/all/decomp/<period>/<bins>/<stem: vs_obs>.<bins>.<grid>.<period>.nc
+PROC_ROOT/<run_id>/all/decomp/<stem: vs_obs>.<run_id>.nc
     dc.QUANTITIES (E_rr, E_rm, E_mr, E_mm, FUNCTION, STATE, INTERACTION, E_m, E_r,
     OFF_SUPPORT_m, OFF_SUPPORT_r) along (dataset, obs_reference); `dataset` with coords
     family, source and <axis>_product ("none" outside obs), `obs_reference` (each obs source
     and "obs_pooled") with ref_<axis>_product ("pooled" for obs_pooled); obs_spread_min/max
     (quantity) and within_obs_spread (dataset, term) of comparison 2
-PROC_ROOT/all/decomp/<period>/<bins>/<stem: vs_obs>.<bins>.<grid>.<period>.csv
+PROC_ROOT/<run_id>/all/decomp/<stem: vs_obs>.<run_id>.csv
     the quantities, one row per dataset x obs_reference, with the coords
-PROC_ROOT/all/decomp/<period>/<bins>/<stem: obs_axis_range>.<bins>.<grid>.<period>.nc
+PROC_ROOT/<run_id>/all/decomp/<stem: obs_axis_range>.<run_id>.nc
     range (dataset, quantity, axis), axis = "all" and each product axis with > 1 product
-PROC_ROOT/all/decomp/<period>/<bins>/<stem: variance>.<bins>.<grid>.<period>.nc
+PROC_ROOT/<run_id>/all/decomp/<stem: variance>.<run_id>.nc
     variance and fraction (family, component), within_lens (ppe_family, component)
-PROC_ROOT/all/decomp/<period>/<stem: variance>.all_bins.<grid>.<period>.nc
-    variance and fraction (family, component, bins), fraction_shift and shift_gt_10pp
-FIG_ROOT/all/decomp/<period>/<bins>/<stem: vs_obs>.<bins>.<grid>.<period>.<family>.png
+PROC_ROOT/<run_id>/all/decomp/<stem: variance>.all_bins.<run_id>.nc
+    variance and fraction (family, component, bins) of this run and the runs differing only in the
+    bin counts (their run IDs in attrs `runs`), fraction_shift and shift_gt_10pp
+FIG_ROOT/<run_id>/all/decomp/<stem: vs_obs>.<family>.<run_id>.png
     each dataset of a family against obs_pooled: E_rr, E_rm, E_mr, E_mm (top), then
     FUNCTION, STATE, INTERACTION, one panel each, with E_mm - E_rr marked
-FIG_ROOT/all/decomp/<period>/<bins>/<stem: obs_axis_range>.<bins>.<grid>.<period>.png
+FIG_ROOT/<run_id>/all/decomp/<stem: obs_axis_range>.<run_id>.png
     the ranges of comparison 3, one panel per quantity
-PROC_ROOT/all/decomp/<period>/<bins>/<stem: state_shift>.<bins>.<grid>.<period>.{nc,csv}
+PROC_ROOT/<run_id>/all/decomp/<stem: state_shift>.<run_id>.{nc,csv}
     LAND_SHIFT, STATE, STATE_GAINS, STATE_LOSSES, OFF_SUPPORT_m/_r along dataset (vs obs_pooled)
-FIG_ROOT/all/decomp/<period>/<bins>/<stem: state_shift>.<bins>.<grid>.<period>.<family>.png
+FIG_ROOT/<run_id>/all/decomp/<stem: state_shift>.<family>.<run_id>.png
     each dataset of a family against obs_pooled: LAND_SHIFT [%] (top), STATE_GAINS and
     STATE_LOSSES (bars) and STATE (marker) [W m-2], ordered by LAND_SHIFT, the pooled family last
 """
 
 from __future__ import annotations
 
-import re
+import json
 
 import matplotlib
 matplotlib.use("Agg")
@@ -145,10 +146,10 @@ import etunc.variants as variants
 # Settings
 # ------------------------------------------------------------------
 
-# Pinned, independent of cfg: sum_b p f is the area-mean ET only for area-weighted bins of ET,
-# and only a shared partition (the pooled_all edges) makes the datasets comparable bin by bin
-AREA_WEIGHTED = True
-BIN_VARIABLE = "et"
+# Required of the run (checked in main): sum_b p f is the area-mean ET only for land-area weighted
+# bins of ET, and only a shared partition (the pooled_all edges) makes the datasets comparable bin by bin
+AREA_WEIGHTED = cfg.AREA_WEIGHTED  # must be True
+BIN_VARIABLE = cfg.BIN_VARIABLE    # must be "et"
 EDGES = "pooled_all"
 
 REFERENCE_FAMILY = "obs"
@@ -182,20 +183,20 @@ UNITS = {q: "1" if q.startswith("OFF_SUPPORT") else "W m-2" for q in dc.QUANTITI
 # ------------------------------------------------------------------
 
 def stem(kind: str) -> str:
-    return f"all.{BIN_VARIABLE}_clim.area_weighted.decomp_{kind}.qbin_{EDGES}"
+    return f"all.{BIN_VARIABLE}_clim.decomp_{kind}.qbin_{EDGES}"
 
 
-def load_binned(family: str, bins: str, grid: str, period: str, area_path) -> xr.DataArray | None:
-    """The area-weighted pooled_all clim ET bins of bin_all_clim.py; None if optional and missing."""
-    path = (cfg.output_dir(cfg.PROC_ROOT, family, "qbin", period, bins)
-            / f"{family}.{BIN_VARIABLE}_clim.area_weighted.qbin_{EDGES}.{bins}.{grid}.{period}.nc")
+def load_binned(family: str, area_path) -> xr.DataArray | None:
+    """The area-weighted pooled_all clim ET bins of bin_all_clim.py in this run; None if optional and missing."""
+    run = cfg.RUN_ID
+    path = cfg.output_dir(cfg.PROC_ROOT, family, "qbin", run) / f"{family}.{BIN_VARIABLE}_clim.qbin_{EDGES}.{run}.nc"
     if not path.exists():
         if family in OPTIONAL_FAMILIES:
             print(f"{family}: no {path.name}, skipped")
             return None
         raise FileNotFoundError(
-            f"No {path}; run bin_all_clim.py for {family} with ETUNC_AREA_WEIGHTED=1 ETUNC_BIN_VARIABLE={BIN_VARIABLE} "
-            f"ETUNC_N_YBINS={N_YBINS} ETUNC_N_XBINS={N_XBINS} (pixi run bin-all-clim)")
+            f"No {path}; run bin_all_clim.py for {family} in this run (ETUNC_RUN={cfg.RUN_FILE or ''}, "
+            "pixi run bin-all-clim)")
     bs = xr.load_dataarray(path)
     # The decomposition needs land-area weights, the pooled_all edges and the current common area mask
     if bs.attrs.get("weights") != "land_area" or bs.attrs.get("edges") != EDGES or bs.attrs.get("area_mask") != str(area_path):
@@ -350,21 +351,28 @@ def plot_state_shift(shift: xr.Dataset, family: str, title: str, fout):
 
 def main():
     cfg.summarize()
+    cfg.register_run()
     cfg.summarize_settings(globals())
+    if not AREA_WEIGHTED or BIN_VARIABLE != "et":
+        raise ValueError(
+            f"run {cfg.RUN_ID} has area_weighted {AREA_WEIGHTED} and bin_variable {BIN_VARIABLE!r}; the decomposition "
+            "needs a run with binning.area_weighted: true and binning.bin_variable: et, e.g. "
+            "ETUNC_RUN=config/runs/aw_bins15.yml")
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
-    bins = cfg.bins_tag(N_YBINS, N_XBINS)  # bin counts, in the folder and file names
-    out_dir = cfg.output_dir(cfg.PROC_ROOT, "all", "decomp", period, bins)
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, "all", "decomp", period, bins)
+    run = cfg.RUN_ID  # folder and file tag of every output (the run's settings set the period and bins)
+    bins = f"lai{N_YBINS}_ai{N_XBINS}"  # bin counts, in titles and attrs
+    out_dir = cfg.output_dir(cfg.PROC_ROOT, "all", "decomp", run)
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, "all", "decomp", run)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Common area mask of all families (make_edges.py), which every binned file must have used
-    area_path = cfg.area_mask_path(grid, period)
+    area_path = cfg.area_mask_path()
     if not area_path.exists():
         raise FileNotFoundError(f"No common area mask at {area_path}; run scripts/make_edges.py first")
 
     print("\n=== inputs ===")
-    binned = {f: load_binned(f, bins, grid, period, area_path) for f in (REFERENCE_FAMILY,) + EVALUATED_FAMILIES}
+    binned = {f: load_binned(f, area_path) for f in (REFERENCE_FAMILY,) + EVALUATED_FAMILIES}
     binned = {f: bs for f, bs in binned.items() if bs is not None}
     # Every dataset must share the LAI-AI partition
     ref_edges = (binned[REFERENCE_FAMILY].attrs["y_bin_edges"], binned[REFERENCE_FAMILY].attrs["x_bin_edges"])
@@ -410,7 +418,7 @@ def main():
 
     # Attrs of every output: the obs configuration, so runs with other obs products are told apart
     attrs = {
-        "time_period": period, "grid": grid, "bins": bins, "edges": EDGES, "area_mask": str(area_path),
+        "time_period": period, "grid": grid, "bins": bins, "run_id": run, "edges": EDGES, "area_mask": str(area_path),
         "et_samples": "climatological ET per gridcell, bins weighted by land area (bin_all_clim.py)",
         "difference": "dataset minus obs reference",
         "counterfactual_means": "E_xy = sum over the common support of p_x f_y (x: state, y: function; m dataset, r reference)",
@@ -511,7 +519,7 @@ def main():
         print(f"{family:10} datasets within the obs spread: " + ", ".join(
             f"{t} {int(w.sel(term=t).sum())}/{w.sizes['dataset']}" for t in TERMS))
     vs_obs.attrs = {**attrs, "comparison": "1. every dataset vs every obs reference; 2. obs spread (vs obs_pooled)"}
-    fout = out_dir / f"{stem('vs_obs')}.{bins}.{grid}.{period}.nc"
+    fout = out_dir / f"{stem('vs_obs')}.{run}.nc"
     vs_obs.to_netcdf(fout)
     print(fout)
     fout = fout.with_suffix(".csv")
@@ -533,7 +541,7 @@ def main():
     for a in out["axis"].values:
         print(f"axis {a:4}: median range across datasets, " + ", ".join(
             f"{q} {float(out['range'].sel(axis=a, quantity=q).median()):.3f}" for q in MEANS + TERMS))
-    fout = out_dir / f"{stem('obs_axis_range')}.{bins}.{grid}.{period}.nc"
+    fout = out_dir / f"{stem('obs_axis_range')}.{run}.nc"
     out.to_netcdf(fout)
     print(fout)
 
@@ -585,7 +593,7 @@ def main():
     for f in (variance["ppe_family"].values if "within_lens" in variance else []):
         flagged = [str(c) for c in dc.COMPONENTS if bool(variance["within_lens"].sel(ppe_family=f, component=c))]
         print(f"{f}: components within the {LENS_FAMILY} values: {flagged or 'none'}")
-    fout = out_dir / f"{stem('variance')}.{bins}.{grid}.{period}.nc"
+    fout = out_dir / f"{stem('variance')}.{run}.nc"
     variance.to_netcdf(fout)
     print(fout)
 
@@ -601,14 +609,14 @@ def main():
     for family in EVALUATED_FAMILIES:
         if family not in binned:
             continue
-        fout = fig_dir / f"{stem('vs_obs')}.{bins}.{grid}.{period}.{family}.png"
+        fout = fig_dir / f"{stem('vs_obs')}.{family}.{run}.png"
         plot_family(vs_obs, lo, hi, family, lens_range if family in PPE_FAMILIES else None, fout=fout,
                     title=f"{family} area-mean ET vs obs_pooled ({len(obs_sources)} obs sources), "
-                          f"{EDGES} {bins}, {grid}, {period}")
+                          f"{EDGES} {bins}, {grid}, {period}, {run}")
         print(fout)
-    fout = fig_dir / f"{stem('obs_axis_range')}.{bins}.{grid}.{period}.png"
+    fout = fig_dir / f"{stem('obs_axis_range')}.{run}.png"
     plot_axis_ranges(out["range"], fout=fout,
-                     title=f"Range of each quantity across the obs references, by product axis, {bins}, {grid}, {period}")
+                     title=f"Range of each quantity across the obs references, by product axis, {bins}, {grid}, {period}, {run}")
     print(fout)
 
     # ------------------------------------------------------------------
@@ -634,7 +642,7 @@ def main():
         corr = np.corrcoef(r["LAND_SHIFT"], abs(r["STATE"]))[0, 1] if r.sizes["dataset"] > 2 else np.nan
         print(f"{family:10} LAND_SHIFT {100 * float(r['LAND_SHIFT'].min()):4.0f}-{100 * float(r['LAND_SHIFT'].max()):3.0f} %, "
               f"STATE {float(r['STATE'].min()):6.2f} to {float(r['STATE'].max()):6.2f} W m-2, corr(LAND_SHIFT, |STATE|) {corr:.2f}")
-    fout = out_dir / f"{stem('state_shift')}.{bins}.{grid}.{period}.nc"
+    fout = out_dir / f"{stem('state_shift')}.{run}.nc"
     shift.to_netcdf(fout)
     print(fout)
     fout = fout.with_suffix(".csv")
@@ -643,23 +651,29 @@ def main():
     for family in EVALUATED_FAMILIES:
         if family not in binned:
             continue
-        fout = fig_dir / f"{stem('state_shift')}.{bins}.{grid}.{period}.{family}.png"
+        fout = fig_dir / f"{stem('state_shift')}.{family}.{run}.png"
         plot_state_shift(shift, family, fout=fout,
                          title=f"{family} land state vs obs_pooled ({len(obs_sources)} obs sources): land in different "
-                               f"bins and STATE, {EDGES} {bins}, {grid}, {period}")
+                               f"bins and STATE, {EDGES} {bins}, {grid}, {period}, {run}")
         print(fout)
 
     # ------------------------------------------------------------------
     # 6. Bin-count sensitivity of the variance partitions
     # ------------------------------------------------------------------
     print("\n=== 6. bin-count sensitivity ===")
-    decomp_dir = cfg.output_dir(cfg.PROC_ROOT, "all", "decomp", period)
-    runs = {}
-    for d in sorted(decomp_dir.iterdir()):
-        m = re.fullmatch(r"lai(\d+)_ai(\d+)", d.name)
-        path = d / f"{stem('variance')}.{d.name}.{grid}.{period}.nc"
-        if m and path.exists():
-            runs[d.name] = xr.load_dataset(path)[["variance", "fraction"]]
+    # The registered runs with this run's settings except the bin counts, whose decomposition exists
+    def without_bins(settings_json: str) -> dict:
+        settings = json.loads(settings_json)
+        settings["binning"] = {k: v for k, v in settings["binning"].items() if k not in ("n_xbins", "n_ybins")}
+        return settings
+
+    this = without_bins(next(r["settings_json"] for r in cfg.read_runs() if r["run_id"] == run))
+    runs, run_ids = {}, []
+    for row in sorted(cfg.read_runs(), key=lambda r: (int(r["n_ybins"]), int(r["n_xbins"]))):
+        path = cfg.output_dir(cfg.PROC_ROOT, "all", "decomp", row["run_id"]) / f"{stem('variance')}.{row['run_id']}.nc"
+        if without_bins(row["settings_json"]) == this and path.exists():
+            runs[f"lai{row['n_ybins']}_ai{row['n_xbins']}"] = xr.load_dataset(path)[["variance", "fraction"]]
+            run_ids.append(row["run_id"])
     if len(runs) < 2:
         print(f"one bin count ({list(runs)}), no cross-bin summary")
         return
@@ -667,14 +681,14 @@ def main():
     summary = summary.transpose("family", "component", "bins")
     summary["fraction_shift"] = summary["fraction"].max("bins") - summary["fraction"].min("bins")
     summary["shift_gt_10pp"] = summary["fraction_shift"] > SHIFT_THRESHOLD
-    summary.attrs = {**attrs, "bins": list(runs), "comparison": "6. variance partition by bin count",
+    summary.attrs = {**attrs, "bins": list(runs), "runs": run_ids, "comparison": "6. variance partition by bin count",
                      "shift_threshold": SHIFT_THRESHOLD}
-    print(f"bin counts: {list(runs)}")
+    print(f"bin counts: {list(runs)}, runs {run_ids}")
     for family in summary["family"].values:
         flagged = [f"{c} ({float(summary['fraction_shift'].sel(family=family, component=c)):.2f})"
                    for c in dc.COMPONENTS if bool(summary["shift_gt_10pp"].sel(family=family, component=c))]
         print(f"{family:10} fractions shifting by > {100 * SHIFT_THRESHOLD:.0f} percentage points: {flagged or 'none'}")
-    fout = decomp_dir / f"{stem('variance')}.all_bins.{grid}.{period}.nc"
+    fout = out_dir / f"{stem('variance')}.all_bins.{run}.nc"
     summary.to_netcdf(fout)
     print(fout)
 

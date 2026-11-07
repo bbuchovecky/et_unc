@@ -10,16 +10,17 @@
 # The whole pipeline (scripts/run_all.sh) as one Casper job. Each step's full log
 # (with git header) is also saved to WORK_ROOT/logs by scripts/run_logged.sh.
 #
-# Usage (settings as in scripts/run_all.sh, passed with -v):
-#   qsub scripts/run_all.pbs                          # defaults of etunc/config.py
-#   qsub -v ETUNC_BIN_VARIABLE=et_pr,ETUNC_AREA_WEIGHTED=1,ETUNC_N_XBINS=20,ETUNC_N_YBINS=20 scripts/run_all.pbs
-#   qsub -v SKIP_PREP=1,ETUNC_N_XBINS=10,ETUNC_N_YBINS=10 scripts/run_all.pbs
-#   qsub -v SWEEP=1 scripts/run_all.pbs               # every combination (~2 h)
+# Usage (settings as in scripts/run_all.sh, passed with -v; several run files in one
+# quoted RUNS, separated by spaces):
+#   qsub scripts/run_all.pbs                                   # defaults of config/pipeline.yml
+#   qsub -v RUNS=config/runs/aw_bins20.yml scripts/run_all.pbs
+#   qsub -v SKIP_PREP=1,RUNS=config/runs/bins10.yml scripts/run_all.pbs
+#   qsub -v RUNS="config/runs/bins10.yml config/runs/aw_bins10.yml" scripts/run_all.pbs
 # Resources are overridden on the command line, e.g. -l walltime=12:00:00
 #
-# Jobs running at the same time must not both run the prep scripts (they write the
-# same inputs files) or bin_plumber.py with different variables (same tower inputs
-# file): run one SWEEP=1 job, or the others with SKIP_PREP=1 after the prep is done.
+# Jobs running at the same time must not both run the prep scripts of one PREP_ID (they
+# write the same inputs files): list the runs in one job's RUNS (the prep runs once per
+# PREP_ID), or start the others with SKIP_PREP=1 after the prep is done.
 
 REPO_DIR="/glade/u/home/bbuchovecky/projects/et_unc"
 

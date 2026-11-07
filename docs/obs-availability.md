@@ -33,11 +33,11 @@ Each product is read once and reduced as it is read (dask), so a full 0.1° reco
 
 ## Outputs
 
-`<period>` is the `YYYYMM-YYYYMM` of `TIME_SLICE`, `<grid>` the target grid (e.g. `1deg`), `<var>` one of `et`, `lai`, `pr`, `rn`.
+`<prep_id>` is the `PREP_ID` of the prep settings (`TIME_SLICE`, `TARGET_RES`, ...; `etunc.config`, `config/runs.csv`), `<grid>` the target grid (e.g. `1deg`), `<var>` one of `et`, `lai`, `pr`, `rn`.
 
-`PROC_ROOT/obs/coverage/<period>/obs.<var>.coverage.<period>.csv`: one row per product, with its record, native resolution, valid years, land area [10⁶ km²] covered on the native grid (land, any valid month, at least one valid year, every year valid) and on the target grid (globally and in each of `REGIONS`, in 10⁶ km² and as a percentage of the region's land), and the quantiles of the valid monthly values.
+`PROC_ROOT/<prep_id>/obs/coverage/obs.<var>.coverage.<prep_id>.csv`: one row per product, with its record, native resolution, valid years, land area [10⁶ km²] covered on the native grid (land, any valid month, at least one valid year, every year valid) and on the target grid (globally and in each of `REGIONS`, in 10⁶ km² and as a percentage of the region's land), and the quantiles of the valid monthly values.
 
-`FIG_ROOT/obs/coverage/<period>/obs.<var>.<diag>.<period>.png`:
+`FIG_ROOT/<prep_id>/obs/coverage/obs.<var>.<diag>.<prep_id>.png`:
 
 | Plot | `<diag>` | Content |
 |---|---|---|
