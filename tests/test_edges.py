@@ -41,6 +41,14 @@ def test_hierarchical_weights_sum_per_level():
     np.testing.assert_allclose(weights[8], 0.5 / 2)             # B, source m2: one member, one value
 
 
+def test_hierarchical_weights_groups_of_variants():
+    """CMIP6 models of one base model share their group's weight: CESM2 and CESM2-WACCM get 1/4 each, MIROC6 1/2."""
+    fields = {"cmip": family([[1.0], [2.0], [3.0]], ["CESM2", "CESM2-WACCM", "MIROC6"])}
+    values, weights = bin_edges.hierarchical_weights(fields)
+    np.testing.assert_array_equal(values, [1, 2, 3])
+    np.testing.assert_allclose(weights, [0.25, 0.25, 0.5])
+
+
 def test_pooled_bin_edges_equal_weights_is_inverted_cdf():
     """With equal weights the edges are numpy's inverted_cdf quantiles: data values, from the min to the max."""
     values = np.random.default_rng(0).gamma(2.0, 1.0, 101)

@@ -35,12 +35,14 @@ PROC_ROOT/<family>/qbin/<period>/<bins>/<family>.<var><weighting>.qbin_<edges>.<
     the members of each source pooled (`binning.pool_members`): (source, stats, y_bin, x_bin).
     Equal to the per-member statistics when every source has one member
 FIG_ROOT/<family>/qbin/<period>/<bins>/<family>.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.{summary,bin_mean,bin_mean_signif}.png
-    of the sources_pooled statistics; bin_mean_signif hatches bins whose mean is not significantly
-    different from 0
+    of the sources_pooled statistics; the summary's mean and std are across the groups of variants
+    (`variants.group_means`: CMIP6 models of one base model, versions of one obs ET product), each
+    counting once; bin_mean_signif hatches bins whose mean is not significantly different from 0
 
 Family-specific outputs
 PROC_ROOT/obs/qbin/<period>/<bins>/obs.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.et_product_std.nc (and FIG_ROOT .png)
-    std of the bin mean ET (or ET/P) across ET products, for each (lai, pr, rn) product set
+    std of the bin mean ET (or ET/P) across ET products, for each (lai, pr, rn) product set, the
+    versions of one ET product (e.g. GLEAMv4.3a and b) averaged first
 PROC_ROOT/lens/qbin/<period>/<bins>/lens.<var><weighting>.qbin_<edges>.<bins>.<grid>.<period>.members_pooled.nc
     statistics of all LENS2 members' samples pooled
 """
@@ -142,7 +144,7 @@ def main():
             title = (f"{family} {binning.TARGET_LABELS[BIN_VARIABLE]}{weight_title}, {n_sources} sources, {kind} edges, "
                      f"{inputs.attrs['time_period']}")
             by_source = binning.drop_zero_width_bins(by_source)
-            plotting.plot_bin_summary(by_source, dim="source", title=title, fout=fig_dir / f"{stem}.summary.png")
+            plotting.plot_bin_summary(by_source, dim="source", family=family, title=title, fout=fig_dir / f"{stem}.summary.png")
             plotting.plot_bin_means(by_source, "source", title=f"{title}, bin mean", fout=fig_dir / f"{stem}.bin_mean.png")
             # Hatch non-empty bins whose mean is not significantly different from 0
             signif = binning.test_significance(by_source, alpha=SIGNIF_ALPHA, n_min=SIGNIF_N_MIN)

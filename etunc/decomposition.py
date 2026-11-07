@@ -35,8 +35,9 @@ the two axes (soil moisture, seasonality, VPD, rooting depth, ...).
 - `occupancy_and_mean`: p and f of a weighted `bin_stats` output.
 - `pool`: p and f of several datasets pooled with given weights.
 - `members_to_sources`: the members of each source pooled with equal weights.
-- `source_weights`, `product_weights`: weights of the obs sources in the obs pooled
-  reference, and the weight this gives each product of each product axis.
+- `source_weights`, `product_weights`: weights of the sources in a pooled dataset
+  (every source, or every group of variants, equally), and the weight this gives
+  each obs product of each product axis.
 - `counterfactual_mean`: sum_S p f for one state and one function.
 - `decompose`: the scalar quantities above (QUANTITIES).
 - `state_shift`: the land in other bins than r, and STATE split into the bins m gains and loses land in.
@@ -62,8 +63,8 @@ QUANTITIES = ("E_rr", "E_rm", "E_mr", "E_mm", "FUNCTION", "STATE", "INTERACTION"
 COMPONENTS = ("var_STATE", "var_FUNCTION", "var_INTERACTION", "2cov_STATE_FUNCTION",
               "2cov_STATE_INTERACTION", "2cov_FUNCTION_INTERACTION")
 
-# Weightings of the obs sources in the obs pooled reference (`source_weights`)
-OBS_POOL_WEIGHTINGS = ("source",)
+# Weightings of the sources in a pooled dataset (`source_weights`)
+POOL_WEIGHTINGS = ("source", "variant")
 
 
 def occupancy_and_mean(bs: xr.DataArray) -> tuple[xr.DataArray, xr.DataArray]:
@@ -119,16 +120,31 @@ def members_to_sources(p: xr.DataArray, f: xr.DataArray) -> tuple[xr.DataArray, 
     return p_src, f_src
 
 
-def source_weights(sources: Sequence[str], weighting: str = "source") -> xr.DataArray:
+def source_weights(sources: Sequence[str], weighting: str = "source",
+                   groups: Sequence[str] | None = None) -> xr.DataArray:
     """
-    Weight of each obs source in the obs pooled reference, along `source` (sum 1).
-    "source": every source weighs equally. If the product combinations are not a full
-    factorial, this gives products unequal weight (see `product_weights`).
+    Weight of each source in a pooled dataset (e.g. the obs pooled reference), along
+    `source` (sum 1).
+    "source": every source weighs equally.
+    "variant": every group of variants (`groups`, the group of each source, e.g. from
+    `variants.source_groups`) weighs equally, and every source within its group:
+    w = 1/N_groups x 1/N_sources(group). Pooling with these weights (`pool`) equals
+    pooling the sources of each group, then the groups.
+    If the obs product combinations are not a full factorial, either gives products
+    unequal weight (see `product_weights`).
     """
-    if weighting not in OBS_POOL_WEIGHTINGS:
-        raise ValueError(f"Unknown obs pool weighting {weighting!r}; one of {OBS_POOL_WEIGHTINGS}")
+    if weighting not in POOL_WEIGHTINGS:
+        raise ValueError(f"Unknown pool weighting {weighting!r}; one of {POOL_WEIGHTINGS}")
     n = len(sources)
-    return xr.DataArray(np.full(n, 1 / n), dims="source", coords={"source": list(sources)}, name="weight")
+    if weighting == "source":
+        w = np.full(n, 1 / n)
+    else:
+        if groups is None or len(groups) != n:
+            raise ValueError("weighting 'variant' needs the group of every source")
+        groups = np.asarray(groups)
+        n_groups = len(set(groups.tolist()))
+        w = np.array([1 / (n_groups * np.sum(groups == g)) for g in groups])
+    return xr.DataArray(w, dims="source", coords={"source": list(sources)}, name="weight")
 
 
 def product_weights(weights: xr.DataArray, products: dict[str, Sequence[str]]) -> dict[str, dict[str, float]]:

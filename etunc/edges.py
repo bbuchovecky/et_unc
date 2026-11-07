@@ -6,8 +6,8 @@ docs/binning-workflow.md).
 
 - `compute_aridity_index`: AI = Rn / (L*P) from climatological means.
 - `hierarchical_weights`: one weight per (member, gridcell) value, so that
-  every family, every source within a family and every member within a
-  source counts equally.
+  every family, every group of variants within a family (`variants`), every
+  source within a group and every member within a source counts equally.
 - `pooled_bin_edges`: weighted quantile edges of the pooled values.
 - `edges_path` / `load_bin_edges`: where `make_edges.py` saves the edges and
   how `bin_all.py` reads them back.
@@ -16,9 +16,12 @@ How the pooled edges are computed
 ---------------------------------
 1. Values: one climatological LAI (or AI) value per (member, gridcell) on the
    common area. Years don't add values, and values are not area-weighted.
-2. Weights: w = 1/N_families x 1/N_sources(family) x 1/N_members(source) x
-   1/N_values(member). A source is an obs combination, a CMIP6 model, or a
-   PPE/LENS member; only CMIP6 models can have several members.
+2. Weights: w = 1/N_families x 1/N_groups(family) x 1/N_sources(group) x
+   1/N_members(source) x 1/N_values(member). A source is an obs combination,
+   a CMIP6 model, or a PPE/LENS member; only CMIP6 models can have several
+   members. A group is a set of variants (`variants.source_groups`): the CMIP6
+   models of one base model, or the obs combinations whose ET products are
+   versions of one product; in other families each source is its own group.
 3. Edges: np.quantile(values, q, weights=w, method="inverted_cdf") at
    q = 0, 1/n, ..., 1. Edge q is the smallest value at which the cumulative
    weight of the sorted values reaches q, so edges fall on data values, and
@@ -34,6 +37,7 @@ import warnings
 import numpy as np
 import xarray as xr
 
+from etunc import variants
 from etunc.config import BIN_EDGES_ROOT, bins_tag
 
 
@@ -90,30 +94,35 @@ def compute_aridity_index(
 def hierarchical_weights(fields: Mapping[str, xr.DataArray]) -> tuple[np.ndarray, np.ndarray]:
     """
     Finite values of all `fields` ({family: (member, lat, lon)}, each with a
-    `source` coord on `member`) flattened into one array, and the weight of
-    each value:
+    `source` coord on `member`, and for obs the `<v>_product` coords) flattened
+    into one array, and the weight of each value:
 
-        w = 1/N_families x 1/N_sources(family) x 1/N_members(source) x 1/N_values(member)
+        w = 1/N_families x 1/N_groups(family) x 1/N_sources(group) x 1/N_members(source) x 1/N_values(member)
 
-    so every family's weights sum to 1/N_families, every source's to an equal
-    share of its family's, and so on. With one family this weighs its
-    sources equally.
+    so every family's weights sum to 1/N_families, every group of variants'
+    (`variants.source_groups`) to an equal share of its family's, every
+    source's to an equal share of its group's, and so on. With one family this
+    weighs its groups equally.
     """
     values, weights = [], []
     for family, da in fields.items():
         sources = da["source"].values
-        unique_sources = list(dict.fromkeys(sources))
-        for src in unique_sources:
-            members = np.flatnonzero(sources == src)
-            for m in members:
-                x = np.asarray(da.isel(member=m).values, dtype=float).ravel()
-                x = x[np.isfinite(x)]
-                if x.size == 0:
-                    # Its share is lost; np.quantile renormalizes the remaining weights
-                    warnings.warn(f"{family}/{src}: a member has no finite values")
-                    continue
-                values.append(x)
-                weights.append(np.full(x.size, 1 / (len(fields) * len(unique_sources) * len(members) * x.size)))
+        groups = variants.source_groups(family, da, "member")
+        unique_groups = list(dict.fromkeys(groups))
+        for g in unique_groups:
+            group_sources = list(dict.fromkeys(sources[groups == g]))
+            for src in group_sources:
+                members = np.flatnonzero(sources == src)
+                for m in members:
+                    x = np.asarray(da.isel(member=m).values, dtype=float).ravel()
+                    x = x[np.isfinite(x)]
+                    if x.size == 0:
+                        # Its share is lost; np.quantile renormalizes the remaining weights
+                        warnings.warn(f"{family}/{src}: a member has no finite values")
+                        continue
+                    values.append(x)
+                    share = len(fields) * len(unique_groups) * len(group_sources) * len(members) * x.size
+                    weights.append(np.full(x.size, 1 / share))
     return np.concatenate(values), np.concatenate(weights)
 
 

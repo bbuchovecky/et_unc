@@ -295,3 +295,12 @@ def test_non_factorial_weights():
     assert eff["pr"] == pytest.approx({"P1": 1.0})
     with pytest.raises(ValueError):
         dc.source_weights(["a"], "hierarchical")
+
+
+def test_variant_source_weights():
+    """'variant': each group weighs once, its sources share it; pooling with them is the mean of the group means."""
+    w = dc.source_weights(["a1", "a2", "b"], "variant", groups=["A", "A", "B"])
+    np.testing.assert_allclose(w, [0.25, 0.25, 0.5])
+    assert list(w["source"].values) == ["a1", "a2", "b"]
+    with pytest.raises(ValueError, match="group of every source"):
+        dc.source_weights(["a1", "a2"], "variant")

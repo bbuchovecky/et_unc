@@ -23,6 +23,7 @@ from typing import Literal, Mapping
 import numpy as np
 import xarray as xr
 
+from etunc import variants
 from etunc.config import LAT_BNDS
 
 
@@ -455,18 +456,29 @@ def between_bin_fraction(bs: xr.DataArray) -> xr.DataArray:
 def et_product_spread(bs: xr.DataArray) -> xr.Dataset:
     """
     obs only: sample std (ddof=1) of the bin mean ET across ET products, separately for each
-    (lai, pr, rn) product set along `lai_pr_rn`, so only the ET product varies. `bs` is along
-    `source` with `<v>_product` coords (`pool_by_source` of the obs). Bins with fewer than two
-    ET products are NaN; `n_products` counts the ET products with a bin mean.
+    (lai, pr, rn) product set along `lai_pr_rn`, so only the ET product varies. Versions of one
+    ET product (`variants.OBS_ET_PRODUCT_GROUPS`, e.g. GLEAMv4.3a and b) are averaged first
+    (`variants.group_means`), so each product counts once. `bs` is along `source` with
+    `<v>_product` coords (`pool_by_source` of the obs). Bins with fewer than two ET products are
+    NaN; `n_products` counts the ET products (groups) with a bin mean.
     """
-    labels = ["-".join(c) for c in zip(*(bs[f"{v}_product"].values for v in ("lai", "pr", "rn")))]
-    grouped = bs.sel(stats="mean", drop=True).assign_coords(lai_pr_rn=("source", labels)).groupby("lai_pr_rn")
-    with xr.set_options(keep_attrs=True):
-        n = grouped.count("source")
-        std = grouped.std("source", ddof=1).where(n >= 2)
-    out = xr.Dataset({"et_std": std, "n_products": n.astype("i4")}, attrs=bs.attrs)
-    out["et_std"].attrs["long_name"] = f"std of bin mean {TARGET_LABELS.get(bs.name, 'ET')} across ET products (ddof=1)"
-    return out.assign_coords(n_et_products=("lai_pr_rn", [labels.count(g) for g in out.lai_pr_rn.values]))
+    labels = np.array(["-".join(c) for c in zip(*(bs[f"{v}_product"].values for v in ("lai", "pr", "rn")))])
+    mean = bs.sel(stats="mean", drop=True)
+    sets = list(dict.fromkeys(labels.tolist()))
+    std, n, n_et = [], [], []
+    for s in sets:
+        # One value per ET product group of this (lai, pr, rn) set
+        products = variants.group_means(mean.isel(source=np.flatnonzero(labels == s)), "obs", "source")
+        n.append(products.count("group"))
+        std.append(products.std("group", ddof=1, keep_attrs=True).where(n[-1] >= 2))
+        n_et.append(products.sizes["group"])
+    out = xr.Dataset({
+        "et_std": xr.concat(std, dim="lai_pr_rn"),
+        "n_products": xr.concat(n, dim="lai_pr_rn").astype("i4"),
+    }, attrs=bs.attrs).assign_coords(lai_pr_rn=sets, n_et_products=("lai_pr_rn", n_et))
+    out["et_std"].attrs["long_name"] = (f"std of bin mean {TARGET_LABELS.get(bs.name, 'ET')} across ET products "
+                                        "(versions of a product averaged first, ddof=1)")
+    return out
 
 
 def ensemble_spread(
@@ -474,12 +486,16 @@ def ensemble_spread(
     dim: str,
     *,
     how: Literal["std", "var"] = "std",
+    family: str | None = None,
     signif: xr.DataArray | None = None,
     min_frac: float | None = None,
 ) -> xr.DataArray:
     """
     Spread of the binned means across members/sources along `dim`.
 
+    family : with a family name, the spread is across its groups of variants
+        (`variants.group_means`: e.g. CMIP6 models of one base model, versions of
+        one obs ET product), each counting once; without, across the entries of `dim`
     signif : keep only bins where this is True (e.g. from `test_significance`)
     min_frac : keep only bins where more than this fraction of members/sources
         have values (`frac_valid`)
@@ -487,9 +503,13 @@ def ensemble_spread(
     mean = bs.sel(stats="mean")
     if signif is not None:
         mean = mean.where(signif)
+    if family is not None:
+        mean, dim_spread = variants.group_means(mean, family, dim), "group"
+    else:
+        dim_spread = dim
     # xarray's std/var: ddof=0 (population spread) and NaN skipped, so a bin's spread uses
     # only the members/sources that have a value in it (see `min_frac`)
-    spread = getattr(mean, how)(dim=dim)
+    spread = getattr(mean, how)(dim=dim_spread)
     if min_frac is not None:
         spread = spread.where(frac_valid(bs, dim) > min_frac)
     return spread

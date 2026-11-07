@@ -588,6 +588,25 @@ def test_et_product_spread(tmp_path):
     assert fout.exists()
 
 
+def test_et_product_spread_averages_versions_of_a_product():
+    """Versions of one ET product (GLEAMv4.3a and b) are averaged first, so the std is across two products."""
+    means = np.array([1.0, 3.0, 8.0])
+    stats = np.full((3, len(binning.STATS), 1, 1), np.nan)
+    stats[:, 0, 0, 0] = means
+    bs = xr.DataArray(
+        stats, dims=("source", "stats", "y_bin", "x_bin"),
+        coords={
+            "source": ["s1", "s2", "s3"], "stats": list(binning.STATS),
+            "et_product": ("source", ["GLEAMv4.3a", "GLEAMv4.3b", "SiTHv2"]),
+            "lai_product": ("source", ["L"] * 3), "pr_product": ("source", ["P"] * 3), "rn_product": ("source", ["R"] * 3),
+        },
+        attrs={"units": "W/m2"},
+    )
+    spread = binning.et_product_spread(bs)
+    np.testing.assert_array_equal(spread.n_et_products, [2])
+    assert float(spread["et_std"][0, 0, 0]) == pytest.approx(np.std([2.0, 8.0], ddof=1))
+
+
 def test_bin_stats_rejects_mismatched_grids(inputs, edges):
     """Inputs whose lat/lon values differ raise instead of being aligned."""
     y_edges, x_edges = edges
@@ -695,6 +714,14 @@ def test_ensemble_spread():
     np.testing.assert_allclose(binning.ensemble_spread(bs, "sid", signif=signif).values[0, 0], np.std([1, 3]))
 
 
+def test_ensemble_spread_across_groups_of_variants():
+    """With a family, the spread is across its groups of variants: CESM2 and CESM2-WACCM count as one model."""
+    means = np.array([[[1.0]], [[3.0]], [[10.0]]])
+    bs = make_bs(means, 10, dim="source").assign_coords(source=["CESM2", "CESM2-WACCM", "MIROC6"])
+    np.testing.assert_allclose(binning.ensemble_spread(bs, "source").values[0, 0], np.std([1, 3, 10]))
+    np.testing.assert_allclose(binning.ensemble_spread(bs, "source", family="cmip").values[0, 0], np.std([2, 10]))
+
+
 # ------------------------------------------------------------------
 # Plotting (smoke tests)
 # ------------------------------------------------------------------
@@ -800,6 +827,21 @@ def test_save_ensemble_map_three_panels(tmp_path, inputs, capsys):
     assert np.allclose(rng_vals[~np.ma.getmaskarray(rng_vals)], 3)
     assert all(ax.get_ylabel() == "lai [m2/m2]" for ax in fig.axes if ax not in maps)
     assert fig._suptitle.get_text() == "LAI, 3 members"
+    plt.close("all")
+
+
+def test_save_ensemble_map_groups_of_variants(tmp_path, inputs):
+    """With a family, the mean and std maps are across its groups of variants and the range across members."""
+    lai = inputs["lai"].assign_attrs(units="m2/m2")
+    da = xr.concat([lai, lai + 2, lai + 10], dim="member").assign_coords(
+        source=("member", ["CESM2", "CESM2-WACCM", "MIROC6"]))
+    fig = plotting.save_ensemble_map(da, "lai", tmp_path / "lai.png", family="cmip")
+    maps = [ax for ax in fig.axes if hasattr(ax, "projection")]
+    vals = [ax.collections[0].get_array() for ax in maps]
+    # Groups CESM (lai + 1) and MIROC (lai + 10): std 4.5; range of the members 10
+    assert np.allclose(vals[1][~np.ma.getmaskarray(vals[1])], 4.5)
+    assert np.allclose(vals[2][~np.ma.getmaskarray(vals[2])], 10)
+    assert fig._suptitle.get_text() == "3 members, mean and std across 2 groups of variants"
     plt.close("all")
 
 

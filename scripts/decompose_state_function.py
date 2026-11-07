@@ -35,9 +35,13 @@ only condition the sums; no per-bin contribution is saved.
 
 Comparisons
 1. Every member of every evaluated family, and each family pooled
-   ("<family>_pooled", each source weighted once, the members of a source
-   averaged first, so E_pool = mean_s E_s), against each obs source and the
-   obs pooled reference ("obs_pooled", weighted by OBS_POOL_WEIGHTING).
+   ("<family>_pooled", weighted by FAMILY_POOL_WEIGHTING: each group of
+   variants once, each source once within its group, the members of a source
+   averaged first, so E_pool is the mean of the groups' E), against each obs
+   source and the obs pooled reference ("obs_pooled", weighted by
+   OBS_POOL_WEIGHTING). Groups of variants (`variants.source_groups`): the
+   CMIP6 models of one base model, the obs combinations whose ET products are
+   versions of one product (e.g. GLEAMv4.3a and b); else each source.
 2. Observational spread: each obs source against obs_pooled. STATE and
    INTERACTION measure the observed-state uncertainty, FUNCTION the ET-response
    uncertainty. For each evaluated dataset (against obs_pooled), whether each
@@ -46,10 +50,11 @@ Comparisons
    the range across the obs sources, overall and by product axis (the range
    across one axis's products with the others fixed, averaged over the fixed
    combinations; axes with one product skipped).
-4. Variance partition across the sources of each family with more than one
-   source, against obs_pooled (ddof=0): Var(E_mm - E_rr) = Var(STATE) +
+4. Variance partition across the groups of variants of each family with more
+   than one group (the sources of each group averaged first,
+   `variants.group_means`), against obs_pooled (ddof=0): Var(E_mm - E_rr) = Var(STATE) +
    Var(FUNCTION) + Var(INTERACTION) + 2 Cov of each pair. This is Var(E_mm)
-   when E_rr is the same for every source (a complete support); Var(E_mm) and
+   when E_rr is the same for every group (a complete support); Var(E_mm) and
    Var(E_rr) are saved alongside.
 5. State shift: for every dataset against obs_pooled, the land in other bins
    than obs, LAND_SHIFT = sum_b |p_m - p_r| / 2, next to STATE split into the
@@ -134,6 +139,7 @@ import etunc.decomposition as dc
 import etunc.grid as rg
 import etunc.plotting as plotting
 import etunc.temporal as temporal
+import etunc.variants as variants
 
 # ------------------------------------------------------------------
 # Settings
@@ -151,7 +157,8 @@ OPTIONAL_FAMILIES = ("trendy_s2",)  # skipped with a note if not binned
 EVALUATED_FAMILIES = tuple(dict.fromkeys(
     [f for f in cfg.FAMILIES if f != REFERENCE_FAMILY] + list(TRENDY_FAMILIES)))
 OBS_PRODUCT_AXES = ("et", "lai", "pr", "rn")
-OBS_POOL_WEIGHTING = "source"  # one weight per obs source (dc.source_weights)
+OBS_POOL_WEIGHTING = "variant"     # obs_pooled: each group of variants weighs once (dc.source_weights)
+FAMILY_POOL_WEIGHTING = "variant"  # <family>_pooled: the same for the sources of each evaluated family
 LENS_FAMILY = "lens"            # internal-variability floor of comparison 4
 PPE_FAMILIES = ("fppe", "ippe")  # compared with it
 SHIFT_THRESHOLD = 0.10          # comparison 6: flag fraction shifts across bin counts above this
@@ -382,8 +389,10 @@ def main():
     full_factorial = dc.is_full_factorial(products)
     print(f"obs product combinations: {len(obs_sources)}, full factorial: {full_factorial}")
 
-    # ... pooled with one weight per source; the weight this gives each product
-    weights = dc.source_weights(obs_sources, OBS_POOL_WEIGHTING)
+    # ... pooled with one weight per group of variants (OBS_POOL_WEIGHTING); the weight this gives each product
+    obs_groups = variants.source_groups(REFERENCE_FAMILY, p_obs, "source")
+    print(f"obs groups of variants: {len(set(obs_groups.tolist()))}")
+    weights = dc.source_weights(obs_sources, OBS_POOL_WEIGHTING, groups=obs_groups)
     eff = dc.product_weights(weights, products)
     for a, w in eff.items():
         print(f"effective weight of each {a} product in obs_pooled: " + ", ".join(f"{q} {v:.3f}" for q, v in w.items()))
@@ -411,6 +420,8 @@ def main():
         "obs_varying_axes": varying,
         "obs_full_factorial": int(full_factorial),
         "obs_pool_weighting": OBS_POOL_WEIGHTING,
+        "family_pool_weighting": FAMILY_POOL_WEIGHTING,
+        "obs_et_product_groups": [f"{p}: {g}" for p, g in variants.OBS_ET_PRODUCT_GROUPS.items()],
         "obs_effective_product_weights": [f"{a}: " + ", ".join(f"{q}={v:.4f}" for q, v in w.items()) for a, w in eff.items()],
         "domain": "common area mask of all families, not all land",
         "note_reference": "FUNCTION uses the observed state and STATE the observed response: both inherit the reference's uncertainty",
@@ -437,16 +448,18 @@ def main():
                                   [str(s) for s in bs["source"].values], None)
         p_list.append(p)
         f_list.append(f)
-        # Members averaged within each source, then sources pooled with equal weights
+        # Members averaged within each source, then sources pooled with one weight per group of variants
         p_src, f_src = dc.members_to_sources(p_mem, f_mem)
         p_sources[family], f_sources[family] = p_src, f_src
         if family != REFERENCE_FAMILY:
-            w = dc.source_weights(p_src["source"].values, "source").assign_coords(source=p_src["source"])
+            groups = variants.source_groups(family, p_src, "source")
+            w = dc.source_weights(p_src["source"].values, FAMILY_POOL_WEIGHTING, groups=groups)
+            w = w.assign_coords(source=p_src["source"])
             p_pool, f_pool = dc.pool(p_src, f_src, w, "source")
             E_pool = float((p_pool * f_pool).sum())
             E_src = (p_src * f_src).sum(dc.BIN_DIMS)
-            print(f"{family}_pooled: E {E_pool:.4f} W m-2, mean of the {E_src.sizes['source']} sources' E "
-                  f"{float(E_src.mean()):.4f}")
+            print(f"{family}_pooled: E {E_pool:.4f} W m-2, weighted mean of the {E_src.sizes['source']} sources' E "
+                  f"({len(set(groups.tolist()))} groups of variants) {float((w * E_src).sum()):.4f}")
             p, f = label_datasets(p_pool.expand_dims(pooled=1), f_pool.expand_dims(pooled=1), "pooled",
                                   [f"{family}_pooled"], family, ["pooled"], None)
             p_list.append(p)
@@ -525,16 +538,20 @@ def main():
     print(fout)
 
     # ------------------------------------------------------------------
-    # 4. Variance partition across the sources of each family, against obs_pooled
+    # 4. Variance partition across the groups of variants of each family, against obs_pooled
     # ------------------------------------------------------------------
-    print("\n=== 4. variance partition across sources (vs obs_pooled, ddof=0) ===")
+    print("\n=== 4. variance partition across groups of variants (vs obs_pooled, ddof=0) ===")
     partitions = {}
     for family, p_src in p_sources.items():
-        if p_src.sizes["source"] < 2:
-            print(f"{family}: one source, skipped")
-            continue
         terms = dc.decompose(p_src, f_sources[family], p_obs_pool, f_obs_pool)
-        partitions[family] = dc.variance_partition(terms, "source")
+        # One value per group of variants: the sources of each group averaged (the terms are linear in
+        # E, so the partition still sums to Var(E_mm - E_rr) across the groups)
+        terms = terms.assign_coords({c: p_src[c] for c in p_src.coords if p_src[c].dims == ("source",)})
+        terms = variants.group_means(terms, family, "source")
+        if terms.sizes["group"] < 2:
+            print(f"{family}: one group of variants, skipped")
+            continue
+        partitions[family] = dc.variance_partition(terms, "group")
     variance = xr.concat(list(partitions.values()), dim="family").assign_coords(family=list(partitions))
     variance = variance.transpose("family", "component")
     # The PPE components within the lens values: not distinguishable from internal variability
@@ -545,10 +562,11 @@ def main():
                                             dim="ppe_family").assign_coords(ppe_family=ppe)
         variance["within_lens"].attrs["description"] = f"|component| <= |component of {LENS_FAMILY}|"
     variance.attrs = {
-        **attrs, "comparison": "4. variance across the sources of each family, all vs obs_pooled", "ddof": 0,
+        **attrs, "comparison": "4. variance across the groups of variants of each family (sources of a group averaged), "
+                               "all vs obs_pooled", "ddof": 0,
         "partition": ("var_E_mm_minus_E_rr = var_STATE + var_FUNCTION + var_INTERACTION + 2cov_STATE_FUNCTION + "
                       "2cov_STATE_INTERACTION + 2cov_FUNCTION_INTERACTION; fraction = component / var_E_mm_minus_E_rr. "
-                      "Equal to var_E_mm when E_rr is the same for every source (complete support): var_E_mm and "
+                      "Equal to var_E_mm when E_rr is the same for every group (complete support): var_E_mm and "
                       "var_E_rr alongside"),
         "note_obs": "the obs partition separates observed-state (STATE) from ET-product (FUNCTION) uncertainty",
         "note_trendy": "Var(STATE) within TRENDY reflects LAI only (the AI is shared)",

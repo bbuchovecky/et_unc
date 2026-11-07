@@ -12,12 +12,15 @@ LAI and AI quantile edges that bin_all.py bins with.
 13. Quantile edges (N_YBINS for LAI, N_XBINS for AI) of the climatological
     LAI and AI on the common area (`edges.pooled_bin_edges`):
     - "pooled_all": all families, with hierarchical weights
-      (`edges.hierarchical_weights`): each family weighs equally, each source
-      within a family equally (obs combination, CMIP6 model, PPE/LENS member),
-      and each member within a source equally. The coupled (fppe) and offline
-      (ippe) PPEs share their parameter perturbations but are separate families,
-      so each weighs as much as any other family.
-    - "pooled_<family>": one family, its sources weighted equally.
+      (`edges.hierarchical_weights`): each family weighs equally, each group of
+      variants within a family equally (`variants.source_groups`: the CMIP6
+      models of one base model, the obs combinations whose ET products are
+      versions of one product, e.g. GLEAMv4.3a and b; else each source), each
+      source within a group equally (obs combination, CMIP6 model, PPE/LENS
+      member), and each member within a source equally. The coupled (fppe) and
+      offline (ippe) PPEs share their parameter perturbations but are separate
+      families, so each weighs as much as any other family.
+    - "pooled_<family>": one family, its groups of variants weighted equally.
 
 Outputs
 -------
@@ -143,16 +146,18 @@ def main():
         fields = {family: ds[v].where(area) for family, ds in inputs.items()}
         attrs = {**edges.EDGE_ATTRS[v], "time_period": period, "grid": grid, "area_mask": str(fout)}
 
-        # pooled_all: each family, each source within a family and each member within a source weighs equally
+        # pooled_all: each family, each group of variants within a family, each source within a group and each
+        # member within a source weighs equally
         values, weights = edges.hierarchical_weights(fields)
         edge_sets = {"pooled_all": edges.pooled_bin_edges(
-            values, weights, n_bins, name=v, attrs={**attrs, "weighting": "hierarchical", "families": list(fields)},
+            values, weights, n_bins, name=v,
+            attrs={**attrs, "weighting": "hierarchical: family, group of variants, source, member", "families": list(fields)},
         )}
-        # pooled_<family>: the sources of one family weigh equally
+        # pooled_<family>: the groups of variants of one family weigh equally
         family_values = {family: edges.hierarchical_weights({family: da}) for family, da in fields.items()}
         for family, (fv, fw) in family_values.items():
             edge_sets[f"pooled_{family}"] = edges.pooled_bin_edges(
-                fv, fw, n_bins, name=v, attrs={**attrs, "weighting": "sources equal", "families": [family]},
+                fv, fw, n_bins, name=v, attrs={**attrs, "weighting": "groups of variants equal", "families": [family]},
             )
         for kind, e in edge_sets.items():
             path = edges.edges_path(kind, v, N_BINS["lai"], N_BINS["ai"], grid, period)

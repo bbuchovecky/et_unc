@@ -51,6 +51,7 @@ The PLUMBER2 flux tower data are not included in the core binning pipeline. Inst
 | `etunc/units.py` | Unit conversions to W/m², net radiation for each data source |
 | `etunc/temporal.py` | Annual means and climatologies (`aggregate`: complete years, missing-month rules, missing-year report), shared years, period strings |
 | `etunc/grid.py` | Target grids (`target_grid`), xESMF regridders (`regrid_with_na_thresh`), grid checks and snapping, native land masks (`landfrac_mask`, `landne_mask`, `mask_to_land`), the common area mask (`valid_area`, `common_area`), cell areas (`cell_area`) and Natural Earth land areas (`land_area`) |
+| `etunc/variants.py` | Groups of variants (CMIP6 models of one base model, versions of one obs ET product), so each counts once in the means, spreads and weights across a family (`source_groups`, `group_means`) |
 | `etunc/edges.py` | Aridity index, hierarchical weights and weighted quantile edges, saved edges |
 | `etunc/binning.py` | ET outlier filter, bin statistics, post-processing |
 | `etunc/regression.py` | OLS regression of ET on climatological LAI and AI, and the partition of R² between them |

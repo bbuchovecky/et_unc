@@ -19,6 +19,7 @@ import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
 import cartopy.crs as ccrs
 
+from etunc import variants
 from etunc.binning import edges_and_attrs, ensemble_spread, ensure_bin_coords
 from etunc.config import DPI, HIST_BINS, LAT_BNDS, PROJECTION
 from etunc.grid import cell_area
@@ -139,20 +140,26 @@ def save_ensemble_map(
     dim: str = "member",
     title: str = "",
     lat_bnds: slice = LAT_BNDS,
+    family: str | None = None,
 ):
     """
     Three stacked maps of a climatology of `variable` with an ensemble dim
     `dim`: the mean along `dim` (MAP_KWARGS style), the standard deviation
     (ddof=0, as `binning.ensemble_spread`) and the range (max - min), each
     gridcell over the members with a value there; a single map (`save_map`)
-    if there is only one member. Saved (path printed) if `fout` is given.
+    if there is only one member. With `family`, the mean and standard
+    deviation are across its groups of variants (`variants.group_means`), each
+    counting once; the range is across all members. Saved (path printed) if
+    `fout` is given.
     """
     if da.sizes[dim] == 1:
         return save_map(da.squeeze(dim, drop=True), variable, fout, title=title)
     units = da.attrs.get("units", "?")
+    # One value per group of variants for the mean and std, or per member without `family`
+    groups = da.rename({dim: "group"}) if family is None else variants.group_means(da, family, dim)
     panels = {
-        "ensemble mean": (da.mean(dim), {"vmin": 0, **MAP_KWARGS[variable]}),
-        "ensemble standard deviation": (da.std(dim), {"vmin": 0, "cmap": "magma_r"}),
+        "ensemble mean": (groups.mean("group"), {"vmin": 0, **MAP_KWARGS[variable]}),
+        "ensemble standard deviation": (groups.std("group"), {"vmin": 0, "cmap": "magma_r"}),
         "ensemble range (max - min)": (da.max(dim) - da.min(dim), {"vmin": 0, "cmap": "magma_r"}),
     }
     fig, axs = plt.subplots(3, 1, figsize=(8, 9), layout="constrained", subplot_kw={"projection": PROJECTION})
@@ -163,7 +170,10 @@ def save_ensemble_map(
         )
         ax.set_title(label)
         map_ax(ax, lat_bnds)
-    fig.suptitle(f"{title}, {da.sizes[dim]} members" if title else f"{da.sizes[dim]} members")
+    n = f"{da.sizes[dim]} members"
+    if family is not None:
+        n += f", mean and std across {groups.sizes['group']} groups of variants"
+    fig.suptitle(f"{title}, {n}" if title else n)
     finish(fig, fout)
     if fout is not None:
         print(fout)
@@ -311,8 +321,9 @@ def save_clim_diagnostics(
 ):
     """
     Diagnostics of the binning inputs of one family (written by the prep
-    scripts): maps of the climatological ET, LAI, P, Rn and AI (mean,
-    standard deviation and range over members; one map for one member),
+    scripts): maps of the climatological ET, LAI, P, Rn and AI (mean and
+    standard deviation across the family's groups of variants, range over
+    members; one map for one member),
     maps of the climatological LAI, P and Rn of every member (with more than
     one member), and histograms of climatological LAI and AI on
     `config.HIST_BINS`, one line per source. Saved as
@@ -324,7 +335,7 @@ def save_clim_diagnostics(
     if "et_pr" in inputs:
         clim["et_pr"] = inputs["et_pr"].mean("year", keep_attrs=True)
     for var, da in clim.items():
-        save_ensemble_map(da, var, fig_dir / f"{family}.{var}.{grid}.map.{period}.png", title=title)
+        save_ensemble_map(da, var, fig_dir / f"{family}.{var}.{grid}.map.{period}.png", title=title, family=family)
     if inputs.sizes["member"] > 1:
         for var in ("lai", "pr", "rn"):
             save_member_maps(inputs[var], var, fig_dir / f"{family}.{var}.{grid}.map_members.{period}.png", title=title)
@@ -512,24 +523,26 @@ def plot_bin_summary(
     bs: xr.DataArray,
     dim: str | None = None,
     *,
+    family: str | None = None,
     title: str = "",
     fout: str | Path | None = None,
 ):
     """
     Three-panel diagnostic of a bin-stats result: mean ET (averaged over `dim`),
     total sample count (log scale), and spread (std across `dim` if given,
-    otherwise the within-bin sample std).
+    otherwise the within-bin sample std). With `family`, the mean and std are
+    across its groups of variants (`variants.group_means`), each counting once.
     """
     bs = ensure_bin_coords(bs)
     mean = bs.sel(stats="mean")
     count = bs.sel(stats="count")
     if dim is not None:
-        # Unweighted across `dim`: each member/source counts equally, whatever its sample count
-        # (unlike `binning.pool_members`)
-        mean = mean.mean(dim)
+        # Unweighted across `dim` (or the groups of variants): each counts equally, whatever its
+        # sample count (unlike `binning.pool_members`)
+        mean = mean.mean(dim) if family is None else variants.group_means(mean, family, dim).mean("group")
         count = count.sum(dim)
-        spread = ensemble_spread(bs, dim)
-        spread_label = f"std of bin mean across {dim}"
+        spread = ensemble_spread(bs, dim, family=family)
+        spread_label = f"std of bin mean across {dim if family is None else 'groups of variants'}"
     else:
         spread = np.sqrt(bs.sel(stats="var_samp"))
         spread_label = "within-bin std"
