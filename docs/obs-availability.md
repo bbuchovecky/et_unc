@@ -8,6 +8,8 @@ Every observational product of each variable runs through the same spatial and t
 - Climatological maps and factorial differences between products
 - Histograms of valid data with vertical lines for specified quantiles
 
+The script's `PREP_ID` constant is required: the period, target grid, latitude bounds, `NA_THRESH` and `MIN_ANNUAL_ET` are the prep settings registered under it in `config/runs.csv`, and the outputs are saved under it (`<root>/<prep_id>/obs/coverage/`).
+
 These diagnostics were first made in `notebooks/check-et-obs.ipynb` (ET) and `notebooks/check-clara-a3.ipynb` (Rn).
 
 ## Products

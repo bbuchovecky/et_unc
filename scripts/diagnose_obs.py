@@ -12,6 +12,14 @@ Products
   ET of PML-V2.2, GLEAM v4.3 and SiTHv2, and Rn of CLARA-A3.
 A product without files is skipped.
 
+Prep ID
+-------
+PREP_ID (required) fixes the inputs: TIME_SLICE, TARGET_RES, LAT_BNDS,
+NA_THRESH and MIN_ANNUAL_ET are the prep settings registered under it in
+config/runs.csv (`cfg.prep_settings`), not those of the current config
+(pipeline.yml, ETUNC_RUN), and the outputs are tagged with it. Set it to the
+PREP_ID of the prep_obs.py inputs the diagnostics are for.
+
 Processing
 ----------
 Each product is read once over RECORD_SLICE (its full record by default) on
@@ -34,7 +42,7 @@ Outputs
 -------
 <var>    : et, lai, pr, rn
 <grid>    : grid tag of TARGET_RES, e.g. "1deg"
-<prep_id> : PREP_ID of the prep settings (TIME_SLICE, TARGET_RES, ...; etunc.config, config/runs.csv)
+<prep_id> : PREP_ID below (its settings in config/runs.csv)
 
 PROC_ROOT/<prep_id>/obs/coverage/obs.<var>.coverage.<prep_id>.csv
     per product: record, valid years, land area covered on the native and target grids (global and by
@@ -92,12 +100,20 @@ warnings.filterwarnings("ignore", message="invalid value encountered in divide",
 # Settings
 # ------------------------------------------------------------------
 
+# Required: the prep ID whose settings fix the inputs (must be registered in config/runs.csv)
+PREP_ID = "p2abea0a"
+_prep = cfg.prep_settings(PREP_ID)  # raises if PREP_ID is not registered
+
+TIME_SLICE = slice(*_prep["time_slice"])  # coverage statistics, climatologies and histograms (the pipeline's period)
+TARGET_RES = _prep["target_res"]
+LAT_BNDS = slice(*_prep["lat_bnds"])
+NA_THRESH = _prep["na_thresh"]
+MIN_ANNUAL_ET = _prep["min_annual_et"]
+
 FAMILY = "obs"
 
 VARIABLES = ("et", "lai", "pr", "rn")
-TIME_SLICE = cfg.TIME_SLICE         # coverage statistics, climatologies and histograms (the pipeline's period)
 RECORD_SLICE = slice(None, None)    # zonal and regional timeseries: each product's full record
-TARGET_RES = cfg.TARGET_RES
 
 # ILAMB products of each variable (keys of il.PRODUCTS[variable])
 ILAMB_PRODUCTS = {v: list(il.PRODUCTS[v]) for v in VARIABLES}
@@ -124,7 +140,7 @@ REQUIRE_ALL_MONTHS = {"et": True, "lai": False, "pr": True, "rn": True}
 # Latitude bands of the regional timeseries and the coverage table: high-latitude (winter) gaps apart
 # from the tropics
 REGIONS = {
-    "Global":                    cfg.LAT_BNDS,
+    "Global":                    LAT_BNDS,
     "NH high (50N-90N)":         slice(50, 90),
     "NH mid (23N-50N)":          slice(23, 50),
     "Tropics (23S-23N)":         slice(-23, 23),
@@ -177,7 +193,7 @@ def load(v: str, p: str) -> xr.DataArray:
         # Keyed on the file's units attr (kg m-2 s-1, W m-2, MJ m-2 day-1, mm/day)
         da = da.assign_attrs(units="m2/m2") if v == "lai" else units.flux_to_wm2(da)
     # Pipeline domain without Antarctica; LAT_BNDS (-58) is a cell edge of every product's grid
-    return da.sel(lat=cfg.LAT_BNDS).rename(v).chunk({"time": 12, "lat": -1, "lon": -1})
+    return da.sel(lat=LAT_BNDS).rename(v).chunk({"time": 12, "lat": -1, "lon": -1})
 
 
 def month_axis(da: xr.DataArray) -> xr.DataArray:
@@ -233,10 +249,10 @@ def to_target(da: xr.DataArray, land: xr.DataArray, v: str, label: str) -> xr.Da
     a = temporal.aggregate(da.sel(time=TIME_SLICE), "year", require_all_months=REQUIRE_ALL_MONTHS[v], label=label)
     a = rg.mask_to_land(a, land, label)
     if v == "et":
-        a = binning.drop_et_outliers(a, cfg.MIN_ANNUAL_ET, label=label)
+        a = binning.drop_et_outliers(a, MIN_ANNUAL_ET, label=label)
     regridder = rg.bounded_conservative_regridder(rg.bounded_src_grid(a), TARGET_RES)
-    a = rg.on_grid(rg.regrid_with_na_thresh(a, regridder, cfg.NA_THRESH), TARGET_RES, label)
-    return a.sel(lat=cfg.LAT_BNDS)
+    a = rg.on_grid(rg.regrid_with_na_thresh(a, regridder, NA_THRESH), TARGET_RES, label)
+    return a.sel(lat=LAT_BNDS)
 
 
 def hist_quantiles(hist: np.ndarray, bins: np.ndarray) -> np.ndarray:
@@ -288,7 +304,7 @@ def plot_maps(fields: dict, title: str, fout, *, cbar_label: str, extend: str = 
     fig, axs = plotting.facets(len(fields), ncols=4, maps=True, panel_size=(4.6, 2.2))
     for ax, (label, da) in zip(axs, fields.items()):
         pm = da.plot.pcolormesh(ax=ax, transform=cfg.PROJECTION, add_colorbar=False, **kwargs)
-        plotting.map_ax(ax, cfg.LAT_BNDS)
+        plotting.map_ax(ax, LAT_BNDS)
         ax.set_title(label, fontsize=9)
     fig.colorbar(pm, ax=axs, location="bottom", shrink=0.5, aspect=40, extend=extend, ticks=ticks,
                  label=cbar_label)
@@ -311,7 +327,7 @@ def plot_zonal(fields: dict, x: str, title: str, fout, *, time_box: bool = False
         if x == "month":
             ax.set_xticks(range(1, 13), list("JFMAMJJASOND"))
         ax.set_title(p, loc="left", fontsize=9)
-        ax.set_ylim(cfg.LAT_BNDS.start, cfg.LAT_BNDS.stop)
+        ax.set_ylim(LAT_BNDS.start, LAT_BNDS.stop)
     for ax in axs:
         ax.set_ylabel("latitude")
         ax.label_outer()
@@ -373,7 +389,7 @@ def plot_diff_matrix(ann1: dict, land_area1: xr.DataArray, v: str, title: str, f
                 ax.remove()
                 continue
             x, y = xr.align(ann1[a], ann1[b], join="inner")  # shared years
-            plotting.map_ax(ax, cfg.LAT_BNDS)
+            plotting.map_ax(ax, LAT_BNDS)
             used.append(ax)
             if x.sizes["year"] == 0:
                 ax.set_title(f"{a} - {b}\nno shared years", fontsize=7)
@@ -434,7 +450,7 @@ def product_colors(products: list[str], info: dict) -> tuple[dict, dict]:
 # Diagnostics of one variable
 # ------------------------------------------------------------------
 
-def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, grid: str, run_id: str):
+def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, grid: str, prep_id: str):
     products = [*ILAMB_PRODUCTS[v], *GRIDDED_PRODUCTS.get(v, {})]
 
     # Load each product once and reduce it: native-grid coverage, histogram, and annual means on the target grid
@@ -502,7 +518,7 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
         row.update({f"q{100 * q:g}": x for q, x in zip(QUANTILES, hists[p]["quantiles"])})
         rows[p] = row
     table = pd.DataFrame(rows).T.infer_objects().rename_axis("product")
-    fout = proc_dir / f"{FAMILY}.{v}.coverage.{run_id}.csv"
+    fout = proc_dir / f"{FAMILY}.{v}.coverage.{prep_id}.csv"
     table.to_csv(fout, float_format="%.4g")
     print(f"\nLand area in 10^6 km2, {period}\n{table.round(2).to_string()}\n{fout}")
 
@@ -572,7 +588,7 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
             f"({grid}, {span})", f)
 
     for diag, make in figs.items():
-        fout = fig_dir / f"{FAMILY}.{v}.{diag}.{run_id}.png"
+        fout = fig_dir / f"{FAMILY}.{v}.{diag}.{prep_id}.png"
         make(fout)
         print(fout)
 
@@ -582,21 +598,21 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
 # ------------------------------------------------------------------
 
 def main():
-    cfg.summarize()
-    cfg.register_run()
+    # The prep settings come from PREP_ID (script settings below), not the current config.
+    # PREP_ID is registered already, so no cfg.register_run
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "coverage", cfg.PREP_ID)
-    proc_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "coverage", cfg.PREP_ID)
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "coverage", PREP_ID)
+    proc_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "coverage", PREP_ID)
     proc_dir.mkdir(parents=True, exist_ok=True)
 
     # Land area [km2] of each target cell within LAT_BNDS, without Greenland/Iceland
-    land_area1 = rg.land_area(rg.target_grid(TARGET_RES).sel(lat=cfg.LAT_BNDS))
+    land_area1 = rg.land_area(rg.target_grid(TARGET_RES).sel(lat=LAT_BNDS))
     land_area1 = land_area1.where(rg.greenland_mask(land_area1), 0)
 
     for v in VARIABLES:
-        diagnose(v, land_area1, fig_dir, proc_dir, period, grid, cfg.PREP_ID)
+        diagnose(v, land_area1, fig_dir, proc_dir, period, grid, PREP_ID)
 
 
 if __name__ == "__main__":
