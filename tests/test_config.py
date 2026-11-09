@@ -190,6 +190,24 @@ def test_prep_settings(tmp_path):
         cfg.prep_settings(cfg.PREP_ID, csv_path)
 
 
+def test_run_settings(tmp_path):
+    """The prep and binning settings of a registered run ID; an unknown ID or tampered settings raise."""
+    csv_path = tmp_path / "runs.csv"
+    cfg.register_run(csv_path)
+    assert cfg.run_settings(cfg.RUN_ID, csv_path) == {s: cfg.SETTINGS[s] for s in ("prep", "binning")}
+    with pytest.raises(KeyError, match="not in"):
+        cfg.run_settings("r0000000", csv_path)
+    row = cfg.read_runs(csv_path)[0]
+    other = copy.deepcopy(cfg.SETTINGS)
+    other["binning"]["n_xbins"] += 1
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=cfg.RUNS_COLUMNS)
+        writer.writeheader()
+        writer.writerow({**row, "settings_json": json.dumps({s: other[s] for s in ("prep", "binning")})})
+    with pytest.raises(ValueError, match="does not match"):
+        cfg.run_settings(cfg.RUN_ID, csv_path)
+
+
 def test_run_and_paths_from_environment(reload_config, monkeypatch, tmp_path):
     """ETUNC_RUN selects the run file and ETUNC_PATHS the paths file, from which the output roots derive."""
     run = write_yaml(tmp_path, "aw.yml", {"binning": {"area_weighted": True}})

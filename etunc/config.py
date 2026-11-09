@@ -436,6 +436,22 @@ def prep_settings(prep_id: str, csv_path: str | Path = RUNS_CSV) -> dict:
                    "(e.g. a prep_*.py) to register it")
 
 
+def run_settings(run_id: str, csv_path: str | Path = RUNS_CSV) -> dict:
+    """
+    The hashed settings ({"prep": ..., "binning": ...}) registered under `run_id` in the run
+    register, so a script can use the settings of a fixed run ID instead of the current config.
+    Raises if `run_id` is not registered, or if its settings no longer hash to it.
+    """
+    for row in read_runs(csv_path):
+        if row["run_id"] == run_id:
+            settings = json.loads(row["settings_json"])
+            if settings_id(settings, ("prep", "binning"), "r") != run_id:
+                raise ValueError(f"run ID {run_id} in {csv_path} does not match its settings")
+            return settings
+    raise KeyError(f"run ID {run_id!r} is not in {csv_path}: run a script with its settings first "
+                   "(e.g. bin_all_clim.py with ETUNC_RUN set to its run file) to register it")
+
+
 def register_run(csv_path: str | Path = RUNS_CSV) -> bool:
     """
     Add this run (RUN_ID, PREP_ID, run file, time, git commit and branch, key settings and all

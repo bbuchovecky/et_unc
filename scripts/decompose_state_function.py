@@ -7,11 +7,18 @@ at a given LAI and AI ("function"), and how much from the two together
 ("interaction")? An analysis of the step 14 outputs, not part of the pipeline
 (`scripts/run_all.sh` does not run it).
 
+Run ID: RUN_ID (required) fixes the inputs and the settings: the period, grid,
+families, bin counts, weighting and bin variable are those registered under it
+in config/runs.csv (`cfg.run_settings`), not those of the current config
+(pipeline.yml, ETUNC_RUN), and the outputs are tagged with it. The environment
+variable ETUNC_RUN_ID, if set, replaces it (scripts/run_decomp.sh sets it for
+each run). The run must have binning.area_weighted true and
+binning.bin_variable et (e.g. the run of config/runs/aw_bins15.yml).
+
 Inputs: the land-area weighted climatological ET binned with the pooled_all
-edges by bin_all_clim.py in the same run, which must have binning.area_weighted
-true and binning.bin_variable et (e.g. ETUNC_RUN=config/runs/aw_bins15.yml), per
-member, for the reference family obs and the evaluated families (cfg.FAMILIES
-without obs, and TRENDY_FAMILIES). From each member's bins (`decomposition`):
+edges by bin_all_clim.py in run RUN_ID, per member, for the reference family
+obs and the evaluated families (the run's binning.families without obs, and
+TRENDY_FAMILIES). From each member's bins (`decomposition`):
 
     f(b) = bin-mean ET [W m-2]     p(b) = fraction of the domain's land area in bin b
     E    = sum_b p f = area-mean ET over the common area mask
@@ -95,7 +102,7 @@ Interpretation
 
 Outputs
 -------
-<run_id> : RUN_ID of the run's settings (period, grid, bins; etunc.config, config/runs.csv)
+<run_id> : RUN_ID below (its settings in config/runs.csv)
 <stem>   : all.et_clim.decomp_<kind>.qbin_pooled_all
 
 PROC_ROOT/<run_id>/all/decomp/<stem: vs_obs>.<run_id>.nc
@@ -128,6 +135,7 @@ FIG_ROOT/<run_id>/all/decomp/<stem: state_shift>.<family>.<run_id>.png
 from __future__ import annotations
 
 import json
+import os
 
 import matplotlib
 matplotlib.use("Agg")
@@ -146,17 +154,22 @@ import etunc.variants as variants
 # Settings
 # ------------------------------------------------------------------
 
+# Required: the run ID whose settings fix the inputs (must be registered in config/runs.csv);
+# ETUNC_RUN_ID, if set, replaces it. Default: the run of config/runs/aw_bins15.yml
+RUN_ID = os.environ.get("ETUNC_RUN_ID") or "r59533f4"
+_run = cfg.run_settings(RUN_ID)  # raises if RUN_ID is not registered
+
 # Required of the run (checked in main): sum_b p f is the area-mean ET only for land-area weighted
 # bins of ET, and only a shared partition (the pooled_all edges) makes the datasets comparable bin by bin
-AREA_WEIGHTED = cfg.AREA_WEIGHTED  # must be True
-BIN_VARIABLE = cfg.BIN_VARIABLE    # must be "et"
+AREA_WEIGHTED = _run["binning"]["area_weighted"]  # must be True
+BIN_VARIABLE = _run["binning"]["bin_variable"]    # must be "et"
 EDGES = "pooled_all"
 
 REFERENCE_FAMILY = "obs"
 TRENDY_FAMILIES = ("trendy_s3", "trendy_s2")
 OPTIONAL_FAMILIES = ("trendy_s2",)  # skipped with a note if not binned
 EVALUATED_FAMILIES = tuple(dict.fromkeys(
-    [f for f in cfg.FAMILIES if f != REFERENCE_FAMILY] + list(TRENDY_FAMILIES)))
+    [f for f in _run["binning"]["families"] if f != REFERENCE_FAMILY] + list(TRENDY_FAMILIES)))
 OBS_PRODUCT_AXES = ("et", "lai", "pr", "rn")
 OBS_POOL_WEIGHTING = "variant"     # obs_pooled: each group of variants weighs once (dc.source_weights)
 FAMILY_POOL_WEIGHTING = "variant"  # <family>_pooled: the same for the sources of each evaluated family
@@ -164,10 +177,10 @@ LENS_FAMILY = "lens"            # internal-variability floor of comparison 4
 PPE_FAMILIES = ("fppe", "ippe")  # compared with it
 SHIFT_THRESHOLD = 0.10          # comparison 6: flag fraction shifts across bin counts above this
 
-TIME_SLICE = cfg.TIME_SLICE
-TARGET_RES = cfg.TARGET_RES
-N_YBINS = cfg.N_YBINS        # LAI
-N_XBINS = cfg.N_XBINS        # AI
+TIME_SLICE = slice(*_run["prep"]["time_slice"])
+TARGET_RES = _run["prep"]["target_res"]
+N_YBINS = _run["binning"]["n_ybins"]  # LAI
+N_XBINS = _run["binning"]["n_xbins"]  # AI
 
 # The three terms (comparison 2 and the figures), and the four counterfactual means
 TERMS = ("FUNCTION", "STATE", "INTERACTION")
@@ -187,15 +200,15 @@ def stem(kind: str) -> str:
 
 
 def load_binned(family: str, area_path) -> xr.DataArray | None:
-    """The area-weighted pooled_all clim ET bins of bin_all_clim.py in this run; None if optional and missing."""
-    run = cfg.RUN_ID
+    """The area-weighted pooled_all clim ET bins of bin_all_clim.py in run RUN_ID; None if optional and missing."""
+    run = RUN_ID
     path = cfg.output_dir(cfg.PROC_ROOT, family, "qbin", run) / f"{family}.{BIN_VARIABLE}_clim.qbin_{EDGES}.{run}.nc"
     if not path.exists():
         if family in OPTIONAL_FAMILIES:
             print(f"{family}: no {path.name}, skipped")
             return None
         raise FileNotFoundError(
-            f"No {path}; run bin_all_clim.py for {family} in this run (ETUNC_RUN={cfg.RUN_FILE or ''}, "
+            f"No {path}; run bin_all_clim.py for {family} in run {RUN_ID} (ETUNC_RUN=<its run file> "
             "pixi run bin-all-clim)")
     bs = xr.load_dataarray(path)
     # The decomposition needs land-area weights, the pooled_all edges and the current common area mask
@@ -350,24 +363,24 @@ def plot_state_shift(shift: xr.Dataset, family: str, title: str, fout):
 # ------------------------------------------------------------------
 
 def main():
-    cfg.summarize()
-    cfg.register_run()
+    # The settings come from RUN_ID (script settings below), not the current config.
+    # RUN_ID is registered already, so no cfg.register_run
     cfg.summarize_settings(globals())
     if not AREA_WEIGHTED or BIN_VARIABLE != "et":
         raise ValueError(
-            f"run {cfg.RUN_ID} has area_weighted {AREA_WEIGHTED} and bin_variable {BIN_VARIABLE!r}; the decomposition "
+            f"run {RUN_ID} has area_weighted {AREA_WEIGHTED} and bin_variable {BIN_VARIABLE!r}; the decomposition "
             "needs a run with binning.area_weighted: true and binning.bin_variable: et, e.g. "
-            "ETUNC_RUN=config/runs/aw_bins15.yml")
+            "the run of config/runs/aw_bins15.yml")
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
-    run = cfg.RUN_ID  # folder and file tag of every output (the run's settings set the period and bins)
+    run = RUN_ID  # folder and file tag of every output (the run's settings set the period and bins)
     bins = f"lai{N_YBINS}_ai{N_XBINS}"  # bin counts, in titles and attrs
     out_dir = cfg.output_dir(cfg.PROC_ROOT, "all", "decomp", run)
     fig_dir = cfg.output_dir(cfg.FIG_ROOT, "all", "decomp", run)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Common area mask of all families (make_edges.py), which every binned file must have used
-    area_path = cfg.area_mask_path()
+    area_path = cfg.area_mask_path(RUN_ID)
     if not area_path.exists():
         raise FileNotFoundError(f"No common area mask at {area_path}; run scripts/make_edges.py first")
 

@@ -119,7 +119,7 @@ pixi run bin-plumber-clim # step 14 for the PLUMBER2 flux towers with climatolog
 
 # Analyses of the step 14 outputs, not part of the pipeline
 pixi run regress-lai-aridity   # OLS of ET on LAI and AI: variance explained, with the bins' eta2
-pixi run decompose-state-function  # state, function and interaction terms of the area-mean ET against the obs (an area-weighted run, e.g. ETUNC_RUN=config/runs/aw_bins15.yml)
+pixi run decompose-state-function  # state, function and interaction terms of the area-mean ET against the obs (an area-weighted run: RUN_ID in the script, default that of config/runs/aw_bins15.yml)
 pixi run run-decomp                # scripts/run_decomp.sh: decompose-state-function for each run of RUNS (default config/runs/aw_bins{10,15,20}.yml)
 pixi run make-mask             # common valid-data mask of the obs products
 pixi run diagnose-obs          # coverage of every obs ET, LAI, P and Rn product (docs/obs-availability.md)
