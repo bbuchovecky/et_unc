@@ -56,8 +56,8 @@ TARGET_RES = cfg.TARGET_RES
 
 # GDEX "meanflux" parameter codes of each ERA5 variable
 ERA5_CODES = {"et": ["mer"], "pr": ["mtpr"], "rn": ["msnswrf", "msnlwrf"]}
-# ILAMB LAI product (key of il.PRODUCTS["lai"]); GIMMS_LAI4g covers all of TIME_SLICE
-LAI_PRODUCT = "GIMMS_LAI4g"
+# ILAMB LAI product (key of il.PRODUCTS["lai"]): prep.era5 of config/pipeline.yml
+LAI_PRODUCT = cfg.ERA5_LAI_PRODUCT
 
 
 # ------------------------------------------------------------------

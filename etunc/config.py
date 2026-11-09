@@ -5,7 +5,8 @@ Settings, paths and run IDs, read from the files in config/ (each explained
 in its header):
 
 - config/pipeline.yml: the default settings of the pipeline, in three
-  sections: `prep` (steps 1-11), `binning` (steps 12-14 and the analyses) and
+  sections: `prep` (steps 1-11, including each family's products, models and
+  members in `prep.<family>`), `binning` (steps 12-14 and the analyses) and
   `plotting`.
 - config/runs/<name>.yml: one run's changes to the defaults (only the keys
   that differ), selected with the environment variable ETUNC_RUN; without it,
@@ -67,20 +68,22 @@ def read_yaml(path: str | Path) -> dict:
     return out
 
 
-def merge_settings(defaults: dict, changes: dict, where: str = "") -> dict:
+def merge_settings(defaults: dict, changes: dict, where: str = "", depth: int = 0) -> dict:
     """
-    `defaults` with the values of `changes`, section by section. A key of `changes` that is
-    not in `defaults` raises a KeyError, so a misspelt setting never passes silently.
+    `defaults` with the values of `changes`, key by key in a section (e.g. `prep`) and in a
+    mapping of a section (e.g. `prep.cmip`). A key of `changes` that is not in `defaults` raises
+    a KeyError, so a misspelt setting never passes silently. Deeper mappings (e.g.
+    `prep.cmip.member_ids`) are values, replaced whole, so their keys are free.
     """
     out = dict(defaults)
     for key, value in changes.items():
         name = f"{where}{key}"
         if key not in defaults:
             raise KeyError(f"unknown setting {name!r}; the settings are those of {PIPELINE_FILE}")
-        if isinstance(defaults[key], dict):
+        if isinstance(defaults[key], dict) and depth < 2:
             if not isinstance(value, dict):
                 raise ValueError(f"setting {name!r} must be a mapping, not {value!r}")
-            out[key] = merge_settings(defaults[key], value, f"{name}.")
+            out[key] = merge_settings(defaults[key], value, f"{name}.", depth + 1)
         else:
             out[key] = value
     return out
@@ -104,17 +107,104 @@ def _pair(value, name: str, kind) -> list:
     return [kind(v, name) for v in value]
 
 
+def _string(value, name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"setting {name!r} must be a string, not {value!r}")
+    return value
+
+
+def _list(value, name: str, kind, allow_none: bool = False) -> list | None:
+    """A list of values of `kind` (or None, if `allow_none`)."""
+    if value is None and allow_none:
+        return None
+    if not isinstance(value, list):
+        raise ValueError(f"setting {name!r} must be a list{' or null' if allow_none else ''}, not {value!r}")
+    return [kind(v, name) for v in value]
+
+
+def _mapping(value, name: str, keys=None) -> dict:
+    """A mapping with string keys (exactly `keys`, if given)."""
+    if not isinstance(value, dict) or not all(isinstance(k, str) for k in value):
+        raise ValueError(f"setting {name!r} must be a mapping with string keys, not {value!r}")
+    if keys is not None and set(value) != set(keys):
+        raise ValueError(f"setting {name!r} must have exactly the keys {list(keys)}, not {list(value)}")
+    return value
+
+
+def _cmip_members(value, name: str) -> str | list[str]:
+    """CMIP members of a model: "top", "max_r", "all" or a list of member_ids."""
+    if isinstance(value, str):
+        if value not in CMIP_MEMBER_CHOICES:
+            raise ValueError(f"setting {name!r} must be one of {CMIP_MEMBER_CHOICES} or a list, not {value!r}")
+        return value
+    return _list(value, name, _string)
+
+
+def _ppe_member(value, name: str) -> int:
+    """A member of the CESM2 PPEs (0-N_PPE_MEMBERS)."""
+    value = _int(value, name)
+    if not 0 <= value <= N_PPE_MEMBERS:
+        raise ValueError(f"setting {name!r}: PPE members are 0-{N_PPE_MEMBERS}, not {value}")
+    return value
+
+
+ILAMB_VARIABLES = ("et", "lai", "pr", "rn")
+GRIDDED_PRODUCT_KEYS = ("dataset", "version", "variable", "freq")  # lo.load_obs arguments
+CMIP_MEMBER_CHOICES = ("top", "max_r", "all")  # cmip.select_members
+N_PPE_MEMBERS = 28
+TRENDY_EXPERIMENTS_ALL = ("S2", "S3")  # as etunc.load.trendy.EXPERIMENTS (which imports this module)
+
+
+def validate_products(prep: dict) -> dict:
+    """The product, model and member settings of each family (prep.obs, prep.era5, ...), checked."""
+    obs, cmip, trendy = prep["obs"], prep["cmip"], prep["trendy"]
+    ilamb = _mapping(obs["ilamb_products"], "prep.obs.ilamb_products", ILAMB_VARIABLES)
+    gridded = _mapping(obs["gridded_et_products"], "prep.obs.gridded_et_products")
+    member_ids = _mapping(cmip["member_ids"], "prep.cmip.member_ids")
+    omit_models = _mapping(trendy["omit_models"], "prep.trendy.omit_models")
+    experiments = _list(trendy["experiments"], "prep.trendy.experiments", _string)
+    if not experiments or not set(experiments) <= set(TRENDY_EXPERIMENTS_ALL):
+        raise ValueError(f"setting 'prep.trendy.experiments' must be a non-empty list of {TRENDY_EXPERIMENTS_ALL}, "
+                         f"not {experiments!r}")
+    gridded_out = {}
+    for label, g in gridded.items():
+        name = f"prep.obs.gridded_et_products.{label}"
+        g = _mapping(g, name, GRIDDED_PRODUCT_KEYS)
+        gridded_out[label] = {k: _string(g[k], f"{name}.{k}") for k in GRIDDED_PRODUCT_KEYS}
+    out = {
+        "obs": {
+            "ilamb_products": {v: _list(ilamb[v], f"prep.obs.ilamb_products.{v}", _string, allow_none=True)
+                               for v in ILAMB_VARIABLES},
+            "gridded_et_products": gridded_out,
+        },
+        "era5": {"lai_product": _string(prep["era5"]["lai_product"], "prep.era5.lai_product")},
+        "cmip": {
+            "source_ids": _list(cmip["source_ids"], "prep.cmip.source_ids", _string, allow_none=True),
+            "omit_source_ids": _list(cmip["omit_source_ids"], "prep.cmip.omit_source_ids", _string),
+            "default_members": _cmip_members(cmip["default_members"], "prep.cmip.default_members"),
+            "member_ids": {sid: _cmip_members(m, f"prep.cmip.member_ids.{sid}") for sid, m in member_ids.items()},
+        },
+        "lens": {"members": _list(prep["lens"]["members"], "prep.lens.members", _string, allow_none=True)},
+        "trendy": {
+            "experiments": experiments,
+            "models": _list(trendy["models"], "prep.trendy.models", _string, allow_none=True),
+            "omit_models": {m: _string(why, f"prep.trendy.omit_models.{m}") for m, why in omit_models.items()},
+        },
+    }
+    for ppe in ("fppe", "ippe"):
+        out[ppe] = {
+            "members": _list(prep[ppe]["members"], f"prep.{ppe}.members", _ppe_member, allow_none=True),
+            "drop_outliers": _list(prep[ppe]["drop_outliers"], f"prep.{ppe}.drop_outliers", _ppe_member),
+        }
+    return out
+
+
 def validate_settings(settings: dict) -> dict:
     """
     The settings with every value checked and given one type (e.g. 1 -> 1.0 for a number), so
     that equal settings always hash to the same ID. Raises ValueError for an invalid value.
     """
     prep, binning, plotting = settings["prep"], settings["binning"], settings["plotting"]
-
-    def string(v, name):
-        if not isinstance(v, str):
-            raise ValueError(f"setting {name!r} must be a string, not {v!r}")
-        return v
 
     if binning["bin_variable"] not in ("et", "et_pr"):
         raise ValueError(f"setting 'binning.bin_variable' must be 'et' or 'et_pr', not {binning['bin_variable']!r}")
@@ -125,13 +215,14 @@ def validate_settings(settings: dict) -> dict:
         raise ValueError(f"setting 'binning.families' must be a list of family names, not {families!r}")
     out = {
         "prep": {
-            "time_slice": _pair(prep["time_slice"], "prep.time_slice", string),
+            "time_slice": _pair(prep["time_slice"], "prep.time_slice", _string),
             "target_res": _number(prep["target_res"], "prep.target_res"),
             "min_years": _int(prep["min_years"], "prep.min_years"),
             "min_annual_et": _number(prep["min_annual_et"], "prep.min_annual_et"),
             "lat_bnds": _pair(prep["lat_bnds"], "prep.lat_bnds", _number),
             "na_thresh": _number(prep["na_thresh"], "prep.na_thresh"),
             "lf_thresh": _number(prep["lf_thresh"], "prep.lf_thresh"),
+            **validate_products(prep),
         },
         "binning": {
             "families": list(families),
@@ -150,6 +241,11 @@ def validate_settings(settings: dict) -> dict:
     }
     if out["binning"]["n_xbins"] < 1 or out["binning"]["n_ybins"] < 1:
         raise ValueError("settings 'binning.n_xbins' and 'binning.n_ybins' must be at least 1")
+    # Every TRENDY family binned must be prepared: trendy_<experiment> with its experiment in prep.trendy
+    prepared = {f"trendy_{e.lower()}" for e in out["prep"]["trendy"]["experiments"]}
+    if missing := [f for f in families if f.startswith("trendy_") and f not in prepared]:
+        raise ValueError(f"setting 'binning.families' has {missing}, whose experiments are not in "
+                         f"'prep.trendy.experiments' {out['prep']['trendy']['experiments']}")
     return out
 
 
@@ -192,6 +288,23 @@ MIN_ANNUAL_ET = SETTINGS["prep"]["min_annual_et"]
 LAT_BNDS = slice(*SETTINGS["prep"]["lat_bnds"])
 NA_THRESH = SETTINGS["prep"]["na_thresh"]
 LF_THRESH = SETTINGS["prep"]["lf_thresh"]
+
+# Products, models and members of each family (prep.<family>), read by prep_<family>.py
+OBS_ILAMB_PRODUCTS = SETTINGS["prep"]["obs"]["ilamb_products"]            # {variable: products or None (all)}
+OBS_GRIDDED_ET_PRODUCTS = SETTINGS["prep"]["obs"]["gridded_et_products"]  # {label: lo.load_obs arguments}
+ERA5_LAI_PRODUCT = SETTINGS["prep"]["era5"]["lai_product"]
+CMIP_SOURCE_IDS = SETTINGS["prep"]["cmip"]["source_ids"]
+CMIP_OMIT_SOURCE_IDS = SETTINGS["prep"]["cmip"]["omit_source_ids"]
+CMIP_DEFAULT_MEMBERS = SETTINGS["prep"]["cmip"]["default_members"]
+CMIP_MEMBER_IDS = SETTINGS["prep"]["cmip"]["member_ids"]
+LENS_MEMBERS = SETTINGS["prep"]["lens"]["members"]
+FPPE_MEMBERS = SETTINGS["prep"]["fppe"]["members"]
+FPPE_DROP_OUTLIERS = SETTINGS["prep"]["fppe"]["drop_outliers"]
+IPPE_MEMBERS = SETTINGS["prep"]["ippe"]["members"]
+IPPE_DROP_OUTLIERS = SETTINGS["prep"]["ippe"]["drop_outliers"]
+TRENDY_EXPERIMENTS = SETTINGS["prep"]["trendy"]["experiments"]  # each the family trendy_<experiment>
+TRENDY_MODELS = SETTINGS["prep"]["trendy"]["models"]
+TRENDY_OMIT_MODELS = SETTINGS["prep"]["trendy"]["omit_models"]  # {model: reason}
 
 # Steps 12-14 and the analyses
 FAMILIES = tuple(SETTINGS["binning"]["families"])

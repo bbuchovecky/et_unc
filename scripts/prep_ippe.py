@@ -65,9 +65,9 @@ STREAM = "h0"
 # {CESM variable: component}; offline CLM, so all "lnd"
 VARIABLES = {"EFLX_LH_TOT": "lnd", "TLAI": "lnd", "RAIN": "lnd", "SNOW": "lnd", "FSA": "lnd", "FIRA": "lnd"}
 
-# Members (0-28): None = every member not in DROP_OUTLIERS, or an explicit list (the same as the FHIST PPE)
-MEMBERS: list[int] | None = None
-DROP_OUTLIERS = (13, 28)  # unreasonable LAI and ET in the FHIST PPE
+# Members (0-28, prep.ippe of config/pipeline.yml): None = every member not in DROP_OUTLIERS, or a list
+MEMBERS = cfg.IPPE_MEMBERS
+DROP_OUTLIERS = cfg.IPPE_DROP_OUTLIERS  # unreasonable LAI and ET in the FHIST PPE
 
 
 # ------------------------------------------------------------------

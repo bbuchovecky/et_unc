@@ -165,7 +165,7 @@ All settings shared by the scripts are in `config/` (read by `etunc/config.py`):
 
 | File | What it holds |
 | --- | --- |
-| `config/pipeline.yml` | The default settings: `prep` (period, grid, thresholds of steps 1-11), `binning` (families, binned variable, weighting, bin counts of steps 12-14) and `plotting` |
+| `config/pipeline.yml` | The default settings: `prep` (period, grid, thresholds of steps 1-11, and each family's products, models and members), `binning` (families, binned variable, weighting, bin counts of steps 12-14) and `plotting` |
 | `config/runs/<name>.yml` | One run's changes to the defaults, only the keys that differ, selected with `ETUNC_RUN=config/runs/<name>.yml` |
 | `config/paths.yml` | Every input and output path (not in git; copy `config/paths.example.yml`, or set `ETUNC_PATHS`) |
 | `config/runs.csv` | Every run ID: its prep ID, run file, time, git commit and branch, and settings |

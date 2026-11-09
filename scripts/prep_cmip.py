@@ -64,22 +64,14 @@ TARGET_RES = cfg.TARGET_RES
 EXPERIMENT_ID = "historical"
 VARIABLES = ["evspsbl", "lai", "pr", "rsds", "rsus", "rlds", "rlus"]
 
+# Models and members: prep.cmip of config/pipeline.yml
 # None = every model with all VARIABLES and sftlf, minus OMIT_SOURCE_IDS
-SOURCE_IDS: list[str] | None = None
-OMIT_SOURCE_IDS: list[str] = [
-    "CAMS-CSM1-0",  # most evspsbl over land is NaN 
-]
-
-# Members per model: a list of member_ids, or
-#   "top"   : first member sorted by r/i/p/f (one member per model)
-#   "max_r" : the largest group of members sharing i/p/f (initial-condition ensemble)
-#   "all"   : every member with all VARIABLES
-# Models not listed use DEFAULT_MEMBERS.
-DEFAULT_MEMBERS: str | list[str] = "top"
-MEMBER_IDS: dict[str, str | list[str]] = {
-    # "CESM2": ["r1i1p1f1", "r2i1p1f1", "r3i1p1f1"],
-    # "CanESM5": "max_r",
-}
+SOURCE_IDS = cfg.CMIP_SOURCE_IDS
+OMIT_SOURCE_IDS = cfg.CMIP_OMIT_SOURCE_IDS
+# Members per model: "top" (one per model), "max_r", "all" or a list of member_ids. Models not in
+# MEMBER_IDS use DEFAULT_MEMBERS
+DEFAULT_MEMBERS = cfg.CMIP_DEFAULT_MEMBERS
+MEMBER_IDS = cfg.CMIP_MEMBER_IDS
 
 
 # ------------------------------------------------------------------

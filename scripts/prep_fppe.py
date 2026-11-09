@@ -60,9 +60,9 @@ STREAM = "h0"
 # {CESM variable: component}
 VARIABLES = {"EFLX_LH_TOT": "lnd", "TLAI": "lnd", "PRECT_calculated": "atm", "FSNS": "atm", "FLNS": "atm"}
 
-# Members (0-28): None = every member not in DROP_OUTLIERS, or an explicit list
-MEMBERS: list[int] | None = None
-DROP_OUTLIERS = (13, 28)  # unreasonable LAI and ET
+# Members (0-28, prep.fppe of config/pipeline.yml): None = every member not in DROP_OUTLIERS, or a list
+MEMBERS = cfg.FPPE_MEMBERS
+DROP_OUTLIERS = cfg.FPPE_DROP_OUTLIERS  # unreasonable LAI and ET
 
 
 # ------------------------------------------------------------------

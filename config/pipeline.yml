@@ -10,7 +10,8 @@
 # so runs that differ only in `binning` share their prep inputs. `plotting` is not hashed. Each ID is
 # registered in config/runs.csv when a script runs. Changing a default here changes the ID of every run.
 
-# Steps 1-11 (prep_<family>.py): what each family's binning inputs are
+# Steps 1-11 (prep_<family>.py): what each family's binning inputs are, including each family's
+# products, models and members
 prep:
   time_slice: ["2001-01", "2014-12"]  # one period for every family (first and last month)
   target_res: 1                       # deg, target grid of the conservative regridding
@@ -20,6 +21,61 @@ prep:
   na_thresh: 0.5                      # conservative regridding: target cells with more than this fraction
                                       # of missing source area are NaN
   lf_thresh: 0.5                      # gridcell land fraction threshold (land where strictly greater)
+
+  # Products, models and members of each family (steps 1-2 of prep_<family>.py). They are part of
+  # `prep`, so of PREP_ID. A run file changes single keys of a family (e.g. prep.cmip.default_members),
+  # but replaces a mapping inside a family (ilamb_products, gridded_et_products, member_ids,
+  # omit_models) whole, so it must give every entry of it
+  obs:
+    # ILAMB products by variable (keys of il.PRODUCTS[variable]); null = every product of the variable.
+    # Every variable (et, lai, pr, rn) must be given
+    ilamb_products:
+      et: null
+      lai: [GIMMS_LAI4g]
+      pr: [GPCPv2.3]
+      rn: [CERESed4.2]
+    # Gridded ET products read from their native files: {label: lo.load_obs arguments}
+    gridded_et_products:
+      PMLv2.2a_MODIS: {dataset: pml, version: V2.2a-MODIS, variable: ET, freq: monthly}
+      # PMLv2.2b:     {dataset: pml, version: V2.2b, variable: ET, freq: monthly}
+      PMLv2.2c:       {dataset: pml, version: V2.2c, variable: ET, freq: monthly}
+      GLEAMv4.3a:     {dataset: gleam, version: v4.3a, variable: E, freq: monthly}
+      GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly}
+      SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly}
+  era5:
+    lai_product: GIMMS_LAI4g  # ILAMB LAI product (ERA5 has no LAI); GIMMS_LAI4g covers all of time_slice
+  cmip:
+    source_ids: null          # null = every model with all variables and an sftlf file, or a list
+    omit_source_ids:
+      - CAMS-CSM1-0           # most evspsbl over land is NaN
+    # Members per model: a list of member_ids, or
+    #   top   : first member sorted by r/i/p/f (one member per model)
+    #   max_r : the largest group of members sharing i/p/f (initial-condition ensemble)
+    #   all   : every member with all variables
+    default_members: top
+    member_ids: {}            # {source_id: members} for models other than default_members, e.g.
+                              # {CESM2: [r1i1p1f1, r2i1p1f1, r3i1p1f1], CanESM5: max_r}
+  lens:
+    members: null             # null = all 50, or a list of ens_name ("<branch year>-<member>", e.g. "1001-001")
+  fppe:
+    members: null             # members 0-28: null = every member not in drop_outliers, or a list
+    drop_outliers: [13, 28]   # unreasonable LAI and ET
+  ippe:
+    members: null             # as fppe (the same parameter perturbations)
+    drop_outliers: [13, 28]   # unreasonable LAI and ET in the FHIST PPE
+  trendy:
+    # Experiments, each the family trendy_<experiment>: S2 = climate + CO2, S3 = climate + CO2 + land use change
+    experiments: [S3]
+    models: null              # null = every model directory with evapotrans and lai, or a list
+    omit_models:              # {model: reason}
+      CARDAMOM: data-assimilation system covering 2003-2024 only
+      # Gridcell LAI far above observed values (90th percentile 8-11, max 20-41 m2/m2), likely a sum
+      # over PFTs not weighted by their cover
+      LPJml: implausible LAI
+      LPJwsl: implausible LAI
+      LPX-Bern: implausible LAI
+      VISIT: implausible LAI
+      ED: ET=0 in high northern latitudes
 
 # Steps 12-14 (make_edges.py, bin_*.py) and the analyses
 binning:

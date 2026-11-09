@@ -61,8 +61,8 @@ BB = "cmip6"
 # {CESM variable: component}
 VARIABLES = {"EFLX_LH_TOT": "lnd", "TLAI": "lnd", "PRECT": "atm", "FSNS": "atm", "FLNS": "atm"}
 
-# None = all 50 members, or a list of ens_name ("<branch year>-<member>", e.g. "1001-001", "1231-005")
-MEMBERS: list[str] | None = None
+# Members (prep.lens of config/pipeline.yml): None = all 50, or a list of ens_name ("<branch year>-<member>")
+MEMBERS = cfg.LENS_MEMBERS
 
 
 # ------------------------------------------------------------------

@@ -69,24 +69,11 @@ MIN_YEARS = cfg.MIN_YEARS  # minimum complete years shared by the four products 
 
 FACTORS = ("et", "lai", "pr", "rn")  # order of the products in a combination
 
-# ILAMB products used, by variable (keys of il.PRODUCTS[variable]); a variable missing here
-# (or None) uses all of its il.PRODUCTS
-ILAMB_PRODUCTS = {
-    "et":  list(il.PRODUCTS["et"]),  # every ILAMB ET product
-    "lai": ["GIMMS_LAI4g"],
-    "pr":  ["GPCPv2.3"],
-    "rn":  ["CERESed4.2"],
-}
-
-# Gridded ET products, read from their native files: {label: (load_obs dataset, version, variable, freq)}
-GRIDDED_ET_PRODUCTS = {
-    "PMLv2.2a_MODIS": ("pml", "V2.2a-MODIS", "ET", "monthly"),
-    # "PMLv2.2b":       ("pml", "V2.2b", "ET", "monthly"),
-    "PMLv2.2c":       ("pml", "V2.2c", "ET", "monthly"),
-    "GLEAMv4.3a":     ("gleam", "v4.3a", "E", "monthly"),
-    "GLEAMv4.3b":     ("gleam", "v4.3b", "E", "monthly"),
-    "SiTHv2":         ("sith", "v2", "ET", "monthly"),
-}
+# Products: prep.obs of config/pipeline.yml
+# ILAMB products used, by variable (keys of il.PRODUCTS[variable]); None = all of its il.PRODUCTS
+ILAMB_PRODUCTS = cfg.OBS_ILAMB_PRODUCTS
+# Gridded ET products, read from their native files: {label: {dataset, version, variable, freq}} (lo.load_obs)
+GRIDDED_ET_PRODUCTS = cfg.OBS_GRIDDED_ET_PRODUCTS
 
 
 # ------------------------------------------------------------------
@@ -101,7 +88,7 @@ def main():
 
     # (variable, product, kind) of every product
     products = (
-        [(v, p, "ilamb") for v in FACTORS for p in (ILAMB_PRODUCTS.get(v) or il.PRODUCTS[v])]
+        [(v, p, "ilamb") for v in FACTORS for p in (ILAMB_PRODUCTS[v] or il.PRODUCTS[v])]
         + [("et", p, "gridded") for p in GRIDDED_ET_PRODUCTS]
     )
 
@@ -119,8 +106,9 @@ def main():
             if kind == "ilamb":
                 da = il.load_native(v, p, TIME_SLICE)
             else:
-                dataset, version, var, freq = GRIDDED_ET_PRODUCTS[p]
-                da = lo.load_obs(dataset, var, TIME_SLICE, version=version, freq=freq)
+                g = GRIDDED_ET_PRODUCTS[p]
+                freq = g["freq"]
+                da = lo.load_obs(g["dataset"], g["variable"], TIME_SLICE, version=g["version"], freq=freq)
         except FileNotFoundError as err:
             print(f"{err}; skipping {label}")
             continue
