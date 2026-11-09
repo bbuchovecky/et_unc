@@ -19,30 +19,36 @@ mask (make_edges.py).
   source with the most shared years, along the dim `lai_pr_rn`. Product sets
   with a product in EXCLUDE_PRODUCTS are left out.
 
-- ET/P (BIN_VARIABLE = "et_pr" only): each year's tower ET over that year's P
-  at the nearest gridcell, from the pr product of each product set (the P of
-  its AI). Annual P is computed here over TIME_SLICE (steps 1-8 of
-  prep_obs.py), not taken from the obs inputs, whose years end with the obs
-  climatology (2007), so every tower-year keeps its ratio. NaN where P <= 0.
+- ET/P: each year's tower ET over that year's P at the nearest gridcell,
+  from the pr product of each product set (the P of its AI). Annual P is
+  computed here over TIME_SLICE (steps 1-8 of prep_obs.py), not taken from
+  the obs inputs, whose years end with the obs climatology (2007), so every
+  tower-year keeps its ratio. NaN where P <= 0. Always saved, as in the
+  prep_*.py scripts (step 11b), and binned when BIN_VARIABLE = "et_pr".
+
+The inputs and the tower climatology depend on the prep settings only, so they
+are saved under the PREP_ID like the inputs of prep_*.py, and shared by every
+run with that PREP_ID; the binned outputs are saved under the RUN_ID.
 
 As in bin_all.py, every (year, tower) ET (or ET/P) sample is binned by the tower's
 climatological LAI and AI (`binning.bin_stats`), separately for each product
 set; the samples of all towers are pooled. The towers are not masked by the
-common area mask: `in_common_area` records which towers are in it, and a
-tower whose nearest gridcell has no obs data is not binned.
+common area mask (the binned outputs record how many towers are in it in
+attr n_towers_in_common_area), and a tower whose nearest gridcell has no obs
+data is not binned.
 
 Outputs
 -------
-<var>    : BIN_VARIABLE, et or et_pr
-<edges>  : pooled_all or pooled_obs
-<run_id> : RUN_ID of the run's settings (period, grid, bins, weighting; etunc.config, config/runs.csv)
+<var>     : BIN_VARIABLE, et or et_pr
+<edges>   : pooled_all or pooled_obs
+<prep_id> : PREP_ID of the prep settings (period, grid; etunc.config, config/runs.csv)
+<run_id>  : RUN_ID of the run's settings (period, grid, bins, weighting; etunc.config, config/runs.csv)
 
-PROC_ROOT/<run_id>/plumber/inputs/plumber.inputs.<run_id>.nc
-    et (member, year), NaN outside a tower's longest run of consecutive complete years; lai, pr, rn, ai (lai_pr_rn, member).
-    `member` is the site name, with coords lat/lon (tower), grid_lat/grid_lon (nearest gridcell),
-    n_years, time_period and in_common_area; `lai_pr_rn` has coords obs_source, <v>_product,
-    clim_n_years and clim_period; with BIN_VARIABLE = "et_pr", also et_pr (lai_pr_rn, member, year).
-    Also the input of bin_plumber_clim.py
+PROC_ROOT/<prep_id>/plumber/inputs/plumber.inputs.<prep_id>.nc  (cfg.inputs_path("plumber"))
+    et (member, year), NaN outside a tower's longest run of consecutive complete years; lai, pr, rn, ai (lai_pr_rn, member);
+    et_pr (lai_pr_rn, member, year). `member` is the site name, with coords lat/lon (tower), grid_lat/grid_lon
+    (nearest gridcell), n_years and time_period; `lai_pr_rn` has coords obs_source, <v>_product,
+    clim_n_years and clim_period. Also the input of bin_plumber_clim.py
 PROC_ROOT/<run_id>/plumber/qbin/plumber.<var>.qbin_<edges>.<run_id>.nc
     (lai_pr_rn, stats, y_bin, x_bin), the samples of all towers pooled
 FIG_ROOT/<run_id>/plumber/qbin/plumber.<var>.qbin_<edges>.{summary,bin_mean,bin_mean_signif}.<run_id>.png
@@ -56,11 +62,11 @@ the climatological LAI and AI of SCATTER_PRODUCTS at its nearest gridcell. The c
 covers the years of the longest tower record, so it is computed here from the products
 (steps 1-11 of prep_obs.py) rather than taken from the obs inputs (MODIS LAI ends in 2005).
 
-PROC_ROOT/<run_id>/plumber/clim/plumber.tower_clim.<run_id>.nc
+PROC_ROOT/<prep_id>/plumber/clim/plumber.tower_clim.<prep_id>.nc
     et, n_years (member): mean annual ET and number of years of each tower's longest run of complete years;
     lai, pr, rn, ai (member): climatology of SCATTER_PRODUCTS at the nearest gridcell, over the years of the
     longest tower record (attr clim_period)
-FIG_ROOT/<run_id>/plumber/clim/plumber.tower_scatter.<run_id>.png
+FIG_ROOT/<prep_id>/plumber/clim/plumber.tower_scatter.<prep_id>.png
     AI (x) vs LAI (y), colored by tower ET, marker area proportional to the record length
 """
 
@@ -273,7 +279,8 @@ def main():
     cfg.register_run()
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
-    run = cfg.RUN_ID  # folder and file tag of every output (the run's settings set the period and bins)
+    prep = cfg.PREP_ID  # folder and file tag of the inputs and tower climatology (prep settings only)
+    run = cfg.RUN_ID    # folder and file tag of the binned outputs (the run's settings set the bins)
 
     obs_path = cfg.inputs_path("obs")
     area_path = cfg.area_mask_path()
@@ -316,32 +323,30 @@ def main():
               f"{missing['member'].values[missing.values].tolist()}")
 
     # ------------------------------------------------------------------
-    # Annual evaporation ratio ET/P of each tower (BIN_VARIABLE = "et_pr" only)
+    # Annual evaporation ratio ET/P of each tower (always saved, binned when BIN_VARIABLE = "et_pr")
     # ------------------------------------------------------------------
     # Tower ET over the annual P at the nearest gridcell, from each product set's pr product (the P of its AI).
     # P is computed over TIME_SLICE (steps 1-8 of prep_obs.py), not only over the obs climatology years
-    ratio = {}
-    if BIN_VARIABLE == "et_pr":
-        pr_products = clim["pr_product"].values.tolist()
-        pr_at_towers = {pr: nearest_to_towers(obs_annual("pr", pr, TIME_SLICE), site_lat, site_lon)
-                        for pr in dict.fromkeys(pr_products)}
-        # Annual P of each product set on the tower years; NaN in a tower year without P
-        pr_ann = xr.concat(
-            [pr_at_towers[pr].reindex(year=et["year"].values) for pr in pr_products], dim="lai_pr_rn",
-        ).assign_coords(lai_pr_rn=list(sets))
-        ratio["et_pr"] = binning.evaporation_ratio(et, pr_ann, label="PLUMBER2 Qle/P").transpose("lai_pr_rn", "member", "year")
+    pr_products = clim["pr_product"].values.tolist()
+    pr_at_towers = {pr: nearest_to_towers(obs_annual("pr", pr, TIME_SLICE), site_lat, site_lon)
+                    for pr in dict.fromkeys(pr_products)}
+    # Annual P of each product set on the tower years; NaN in a tower year without P
+    pr_ann = xr.concat(
+        [pr_at_towers[pr].reindex(year=et["year"].values) for pr in pr_products], dim="lai_pr_rn",
+    ).assign_coords(lai_pr_rn=list(sets))
+    et_pr = binning.evaporation_ratio(et, pr_ann, label="PLUMBER2 Qle/P").transpose("lai_pr_rn", "member", "year")
 
-    inputs = xr.Dataset({"et": et, **at_towers.data_vars, **ratio}).assign_coords(
+    # Saved under the PREP_ID (as the inputs of prep_*.py): nothing here depends on the binning settings
+    inputs = xr.Dataset({"et": et, **at_towers.data_vars, "et_pr": et_pr}).assign_coords(
         lat=site_lat, lon=site_lon, n_years=n_years, time_period=("member", time_period),
-        in_common_area=in_area,
     )
     inputs.attrs = {
         "family": FAMILY, "dataset": "PLUMBER2 flux towers: tower ET, obs LAI/P/Rn/AI at the nearest gridcell",
-        "time_period": temporal.period_str(inputs["year"].values), "grid": grid, "run_id": run,
+        "time_period": temporal.period_str(inputs["year"].values), "grid": grid, "prep_id": prep,
         "plumber_root": str(PLUMBER_ROOT), "obs_inputs": str(obs_path), "min_annual_et": cfg.MIN_ANNUAL_ET,
         "min_consecutive_years": MIN_CONSECUTIVE_YEARS,  # read by bin_plumber_clim.py
     }
-    fout = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "inputs", run) / f"{FAMILY}.inputs.{run}.nc"
+    fout = cfg.inputs_path(FAMILY)
     fout.parent.mkdir(parents=True, exist_ok=True)
     inputs.to_netcdf(fout)
     print(fout)
@@ -360,7 +365,8 @@ def main():
             member_dim="lai_pr_rn", y_name="lai", x_name="ai", name=BIN_VARIABLE,
             attrs={
                 "family": FAMILY, "edges": kind, "time_period": inputs.attrs["time_period"], "grid": grid, "run_id": run,
-                "n_towers": inputs.sizes["member"], "obs_inputs": str(obs_path),
+                "n_towers": inputs.sizes["member"], "n_towers_in_common_area": int(in_area.sum()),
+                "obs_inputs": str(obs_path), "plumber_inputs": str(fout),
             },
         )
         # bin_stats keeps only the coords of the binned variable along the member dim, so add those of the product sets
@@ -421,18 +427,18 @@ def main():
     }).assign_coords(lat=rec_lat, lon=rec_lon)
     towers.attrs = {
         "dataset": "PLUMBER2 flux towers: record-mean tower ET, obs climatology at the nearest gridcell",
-        "clim_period": temporal.period_str(years), "grid": grid, "run_id": run,
+        "clim_period": temporal.period_str(years), "grid": grid, "prep_id": prep,
         **{f"{v}_product": p for v, p in SCATTER_PRODUCTS.items()},
     }
     no_obs = towers["lai"].isnull() | towers["ai"].isnull()
     print(f"{int(no_obs.sum())} towers without LAI or AI at the nearest gridcell, not plotted: "
           f"{towers['member'].values[no_obs.values].tolist()}")
-    fout = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "clim", run) / f"{FAMILY}.tower_clim.{run}.nc"
+    fout = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "clim", prep) / f"{FAMILY}.tower_clim.{prep}.nc"
     fout.parent.mkdir(parents=True, exist_ok=True)
     towers.to_netcdf(fout)
     print(fout)
 
-    fout = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", run) / f"{FAMILY}.tower_scatter.{run}.png"
+    fout = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "clim", prep) / f"{FAMILY}.tower_scatter.{prep}.png"
     plot_tower_scatter(
         towers.where(~no_obs, drop=True),
         title=f"PLUMBER2 towers (n = {int((~no_obs).sum())}), LAI and AI climatology {towers.attrs['clim_period']}",

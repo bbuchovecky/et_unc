@@ -23,6 +23,11 @@ to each tower, separately for each (lai, pr, rn) product set, as in
 bin_plumber.py. The towers are not masked by the common area mask, and a
 tower whose nearest gridcell has no obs data is not binned.
 
+Inputs
+------
+PROC_ROOT/<prep_id>/plumber/inputs/plumber.inputs.<prep_id>.nc of bin_plumber.py (cfg.inputs_path("plumber")),
+shared by every run with this PREP_ID.
+
 Outputs
 -------
 <var>    : BIN_VARIABLE, et or et_pr
@@ -73,10 +78,10 @@ def main():
     cfg.register_run()
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
-    run = cfg.RUN_ID  # folder and file tag of every output (the run's settings set the period and bins)
+    run = cfg.RUN_ID  # folder and file tag of the binned outputs (the run's settings set the bins)
 
-    # Tower ET and the obs LAI, P, Rn, AI at the nearest gridcell (bin_plumber.py)
-    path = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "inputs", run) / f"{FAMILY}.inputs.{run}.nc"
+    # Tower ET and the obs LAI, P, Rn, AI at the nearest gridcell (bin_plumber.py), saved under the PREP_ID
+    path = cfg.inputs_path(FAMILY)
     if not path.exists():
         raise FileNotFoundError(f"No {FAMILY} inputs at {path}; run scripts/bin_plumber.py first")
     inputs = xr.load_dataset(path)
@@ -84,7 +89,7 @@ def main():
     if "min_consecutive_years" not in inputs.attrs:
         raise ValueError(f"{path} has no consecutive-year requirement; rerun scripts/bin_plumber.py")
     if BIN_VARIABLE not in inputs:
-        raise KeyError(f"No {BIN_VARIABLE} in {path}; rerun scripts/bin_plumber.py with BIN_VARIABLE = {BIN_VARIABLE!r}")
+        raise KeyError(f"No {BIN_VARIABLE} in {path}; rerun scripts/bin_plumber.py")
     min_consecutive = int(inputs.attrs["min_consecutive_years"])
     n_towers = inputs.sizes["member"]
     print(f"{n_towers} towers with >= {min_consecutive} consecutive complete years in {inputs.attrs['time_period']}, "
