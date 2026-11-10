@@ -2,8 +2,10 @@
 etunc.load.obs
 ==============
 Load gridded observational products stored as NetCDF files per variable and
-year (GLEAM v4.3, PML-V2.2), per variable and multi-year period (SiTHv2) or
-per variable and month (CLARA-A3) into a single DataArray over a time period.
+year (GLEAM v4.3, PML-V2.2, NOAA NCEI AVHRR and VIIRS LAI), per variable and
+multi-year period (SiTHv2) or per variable and month (CLARA-A3) into a single
+DataArray over a time period. ``load_ncei_lai`` joins the AVHRR and VIIRS LAI
+records, with the sensor of each month as a coord.
 
 Each product is described by an ``ObsDataset`` in ``DATASETS``: its root
 directory, a file path template, its versions and temporal frequencies, and
@@ -45,6 +47,8 @@ Example
 >>> et = lo.load_obs("pml", "ET", slice("2003", "2005"), version="V2.2a-MODIS", freq="8-day")
 >>> et = lo.load_obs("sith", "ET", slice("1995", "2014"), freq="yearly")
 >>> rn = lo.load_obs("clara", "SRB", slice("1995", "2014"))             # W m-2, monthly means
+>>> lai = lo.load_obs("avhrr", "lai", slice("2001", "2013"))            # m2 m-2, monthly means
+>>> lai = lo.load_ncei_lai(slice("2001", "2014"))                        # AVHRR to 2013, VIIRS in 2014
 >>> et = lo.load_obs_regridded("gleam", "E", slice("1995", "2014"), 0.5)  # regridded in memory
 >>> et = lo.load_obs("gleam", "E", slice("1995", "2014"), res="1")       # saved 1 deg files (deprecated)
 >>> lo.list_variables("gleam"), lo.list_years("pml", "ET", version="V2.2b")
@@ -75,8 +79,16 @@ Notes
   low-sun months (e.g. Nov-Feb at 45-70N; valid as 0 in polar night), and over
   much of the tropics and subtropics in Oct-Dec 2000 and Jan 1995. Longwave
   (SDL, SNL) is nearly complete. The loader leaves these gaps as NaN.
+- NOAA NCEI LAI files (AVHRR v5.0, 1981-06 to 2013-12, and VIIRS v1.0,
+  2014-01 to 2024-12) hold monthly means (units "1"), NaN over water and where
+  there is no retrieval (more of the high latitudes in winter). Sep-Dec 1994
+  are entirely NaN (no AVHRR data after the NOAA-11 failure). Both share one
+  grid, whose lat/lon carry float32 noise (e.g. lon 0.0249939) that the
+  rounding to ``coord_decimals`` removes. ``load_ncei_lai`` concatenates them
+  without any adjustment at the 2014 switch of sensor and retrieval version.
 - Time stamps are kept as stored: GLEAM and SiTHv2 mark the end of each period
-  (1980-01-31, 1980-12-31), PML and CLARA-A3 the start (1980-01-01).
+  (1980-01-31, 1980-12-31), PML and CLARA-A3 the start (1980-01-01), NCEI LAI
+  the middle (1981-06-15).
 """
 
 from __future__ import annotations
@@ -253,6 +265,35 @@ register_dataset(ObsDataset(
     versions=("A3",),
     freqs={"monthly": "mm"},  # "mm": monthly mean
 ))
+
+# NOAA NCEI LAI climate data record (obs4MIPs, 0.05 deg), published as one dataset per sensor: AVHRR LAI
+# v5.0 (1981-06 to 2013-12) and VIIRS LAI v1.0 (2014-01 to 2024-12), on the same grid. One file per variable
+# and year, in the obs4MIPs directory tree written by scripts/download/download_ncei_lai.sh (esgpull). The
+# version is the ESGF publication date. `load_ncei_lai` joins the two records. "avhrr" is not the AVHRR LAI
+# of ILAMB (etunc.load.ilamb, product "AVHRR", from Boston University); ILAMB's AVH15C1 is this AVHRR record
+# averaged to 0.5 deg
+register_dataset(ObsDataset(
+    name="avhrr",
+    root=OBS_ROOT / "avhrr-lai-v5",
+    template=("data/obs4MIPs/NOAA-NCEI/NOAA-NCEI-LAI-AVHRR-5-0/{freq_tag}/{var}/gn/{version}/"
+              "{var}_{freq_tag}_NOAA-NCEI-LAI-AVHRR-5-0_BE_gn_{year_start}{month_start}-{year_end}{month_end}.nc"),
+    versions=("v20260110",),
+    freqs={"monthly": "mon"},
+))
+register_dataset(ObsDataset(
+    name="viirs",
+    root=OBS_ROOT / "viirs-lai-v1",
+    template=("data/obs4MIPs/NOAA-NCEI/NOAA-NCEI-LAI-VIIRS-1-0/{freq_tag}/{var}/gn/{version}/"
+              "{var}_{freq_tag}_NOAA-NCEI-LAI-VIIRS-1-0_BE_gn_{year_start}{month_start}-{year_end}{month_end}.nc"),
+    versions=("v20260110",),
+    freqs={"monthly": "mon"},
+))
+
+# Sensors of the joined NOAA NCEI LAI record, in time order: (sensor label, registered dataset, version)
+NCEI_LAI_SENSORS = (
+    ("AVHRR LAI v5.0", "avhrr", "v20260110"),
+    ("VIIRS LAI v1.0", "viirs", "v20260110"),
+)
 
 
 def get_dataset(dataset: str | ObsDataset) -> ObsDataset:
@@ -464,7 +505,7 @@ def load_obs(
 
     Parameters
     ----------
-    dataset : registered name ("gleam", "pml", "sith", "clara", ...) or an `ObsDataset`.
+    dataset : registered name ("gleam", "pml", "sith", "clara", "avhrr", "viirs", ...) or an `ObsDataset`.
     var : variable name as used in the directory and file names (e.g. "E", "ET").
     time_slice : passed to ``.sel(time=...)``; only files for the years it
         touches are opened.
@@ -521,6 +562,56 @@ def load_obs(
     if lat_bnds is not None:
         da = da.sel(lat=lat_bnds)
     da.attrs.update(dataset=spec.name, version=version, frequency=freq, res=res)
+    return da
+
+
+def load_ncei_lai(
+    time_slice: slice = slice(None, None),
+    *,
+    lat_bnds: slice | None = None,
+    chunks: str | int | Mapping | None = "auto",
+) -> xr.DataArray:
+    """
+    The NOAA NCEI LAI record over `time_slice`, joined across sensors: AVHRR LAI v5.0 to 2013-12, then VIIRS
+    LAI v1.0 from 2014-01 (`NCEI_LAI_SENSORS`). Each sensor is read with `load_obs`; the two share one grid
+    and do not overlap in time, so they are concatenated as they are (no adjustment of either at the switch).
+
+    Returns
+    -------
+    Lazy monthly DataArray "lai" (time, lat, lon), with a ``sensor`` coord on `time` naming the sensor of
+    each month, and attrs ``dataset`` ("ncei_lai"), ``version`` (dataset and version of each sensor),
+    ``sensors`` (each sensor and its months) and ``sensor_change`` (the first month of each new sensor;
+    "none" if `time_slice` covers one sensor only).
+    """
+    y0, y1 = _year_bounds(time_slice)
+    pieces = []
+    for sensor, dataset, version in NCEI_LAI_SENSORS:
+        years = list_years(dataset, "lai", version)
+        if not years:
+            raise FileNotFoundError(f"No {dataset} {version} LAI files under {get_dataset(dataset).root}")
+        if (y0 is not None and years[-1] < y0) or (y1 is not None and years[0] > y1):
+            continue  # this sensor's record is outside time_slice
+        da = load_obs(dataset, "lai", time_slice, version=version, lat_bnds=lat_bnds, chunks=chunks)
+        pieces.append(da.assign_coords(sensor=("time", np.full(da.sizes["time"], sensor))))
+    if not pieces:
+        raise FileNotFoundError(f"No NCEI LAI in {time_slice}")
+
+    for a, b in zip(pieces, pieces[1:]):
+        if b.time.values[0] <= a.time.values[-1]:
+            raise ValueError(f"{b.sensor.values[0]} starts before {a.sensor.values[0]} ends")
+    # join="exact": the sensors must share one grid exactly
+    da = xr.concat(pieces, dim="time", join="exact", combine_attrs="override")
+
+    def month(t):
+        return pd.Timestamp(t).strftime("%Y-%m")
+    da.attrs.update(
+        dataset="ncei_lai",
+        version=", ".join(f"{p.attrs['dataset']} {p.attrs['version']}" for p in pieces),
+        sensors="; ".join(f"{p.sensor.values[0]}: {month(p.time.values[0])} to {month(p.time.values[-1])}"
+                          for p in pieces),
+        sensor_change="; ".join(f"{month(b.time.values[0])} ({a.sensor.values[0]} to {b.sensor.values[0]})"
+                                for a, b in zip(pieces, pieces[1:])) or "none",
+    )
     return da
 
 

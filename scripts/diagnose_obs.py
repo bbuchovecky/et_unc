@@ -9,7 +9,9 @@ Products
 --------
 - ILAMB products in ILAMB_PRODUCTS (`il.load_native`), every variable.
 - Gridded products in GRIDDED_PRODUCTS (`lo.load_obs`, native monthly files):
-  ET of PML-V2.2, GLEAM v4.3 and SiTHv2, and Rn of CLARA-A3.
+  ET of PML-V2.2, GLEAM v4.3 and SiTHv2, Rn of CLARA-A3, and LAI of the NOAA
+  NCEI record (obs4MIPs, 0.05 deg), AVHRR v5 (to 2013; the CDR behind ILAMB's
+  AVH15C1) and VIIRS v1 (from 2014) as separate products.
 A product without files is skipped.
 
 Prep ID
@@ -130,6 +132,13 @@ GRIDDED_PRODUCTS = {
     },
     "rn": {
         "CLARA-A3": ("clara", "A3", "SRB"),
+    },
+    # NOAA NCEI LAI record at its native 0.05 deg (obs4MIPs, monthly means), one product per sensor: AVHRR v5
+    # (1981-06 to 2013-12; the CDR of ILAMB's AVH15C1, which ILAMB averaged to 0.5 deg) and VIIRS v1
+    # (2014-01 to 2024-12, so only 2014 falls in a TIME_SLICE ending in 2014)
+    "lai": {
+        "AVHRRv5_obs4MIPs": ("avhrr", "v20260110", "lai"),
+        "VIIRSv1_obs4MIPs": ("viirs", "v20260110", "lai"),
     },
 }
 

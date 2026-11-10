@@ -15,7 +15,7 @@ These diagnostics were first made in `notebooks/check-et-obs.ipynb` (ET) and `no
 ## Products
 
 - ILAMB: every product of `il.PRODUCTS` for each variable (`ILAMB_PRODUCTS`)
-- Gridded products from their native monthly files (`GRIDDED_PRODUCTS`): PML-V2.2 (a-MODIS, c), GLEAM v4.3 (a, b) and SiTHv2 ET, and CLARA-A3 Rn (`SRB`)
+- Gridded products from their native monthly files (`GRIDDED_PRODUCTS`): PML-V2.2 (a-MODIS, c), GLEAM v4.3 (a, b) and SiTHv2 ET, CLARA-A3 Rn (`SRB`), and the NOAA NCEI LAI record at 0.05° (obs4MIPs), one product per sensor: AVHRR v5 (1981-06 to 2013-12; the same CDR as ILAMB's AVH15C1, which ILAMB averaged to 0.5°) and VIIRS v1 (2014-01 to 2024-12, so only 2014 is in `TIME_SLICE`)
 
 A product without files, or without a complete calendar year in `TIME_SLICE`, is skipped.
 

@@ -101,8 +101,9 @@ def test_bad_names(spec):
 
 
 def test_registered_datasets():
-    """GLEAM, PML, SiTHv2 and CLARA-A3 are registered, and dataset names are case-insensitive."""
-    assert {"gleam", "pml", "sith", "clara"} <= set(lo.DATASETS)
+    """GLEAM, PML, SiTHv2, CLARA-A3 and NCEI AVHRR/VIIRS LAI are registered; names are case-insensitive."""
+    assert {"gleam", "pml", "sith", "clara", "avhrr", "viirs"} <= set(lo.DATASETS)
+    assert [d for _, d, _ in lo.NCEI_LAI_SENSORS] == ["avhrr", "viirs"]
     assert lo.get_dataset("PML") is lo.DATASETS["pml"]
 
 
@@ -212,6 +213,79 @@ def test_load_obs_monthly_files(tmp_path):
     da = lo.load_obs(s, "SRB", slice("2000-11", "2001-02"))
     assert da.sizes["time"] == 4 and da.attrs["units"] == "W m-2"
     np.testing.assert_array_equal(da.isel(lat=0, lon=0), [11, 12, 1, 2])  # months in time order
+
+
+def write_ncei_lai(root, source_id, years, first_month=1, value=None):
+    """Per-year NOAA NCEI LAI files (obs4MIPs tree) under `root`, with LAI = `value` or year - 1980."""
+    # float32 noise in the coords, as in the real files, and lon in [0, 360)
+    lat = np.array([-0.025, 0.025], dtype="float32").astype("float64")
+    lon = np.array([0.025, 359.975], dtype="float32").astype("float64")
+    folder = root / f"data/obs4MIPs/NOAA-NCEI/{source_id}/mon/lai/gn/v20260110"
+    folder.mkdir(parents=True, exist_ok=True)
+    for year in years:
+        m0 = first_month if year == years[0] else 1
+        time = pd.date_range(f"{year}-{m0:02d}", periods=13 - m0, freq="MS") + pd.Timedelta(days=14)
+        data = np.full((len(time), 2, 2), year - 1980 if value is None else value, dtype="float32")
+        ds = xr.Dataset({"lai": (("time", "lat", "lon"), data, {"units": "1"})},
+                        coords={"time": time, "lat": lat, "lon": lon})
+        ds.to_netcdf(folder / f"lai_mon_{source_id}_BE_gn_{year}{m0:02d}-{year}12.nc")
+
+
+def test_load_obs_avhrr_lai(tmp_path):
+    """AVHRR LAI layout: obs4MIPs tree, per-year files named by start and end month, a partial first year."""
+    s = lo.replace(lo.get_dataset("avhrr"), root=tmp_path)
+    write_ncei_lai(tmp_path, "NOAA-NCEI-LAI-AVHRR-5-0", [1981, 1982], first_month=6)
+
+    assert lo.list_variables(s) == ["lai"]
+    assert lo.list_years(s, "lai") == [1981, 1982]
+    assert [f.name for f in lo.find_files(s, "lai", slice("1982", "1982"))] == [
+        "lai_mon_NOAA-NCEI-LAI-AVHRR-5-0_BE_gn_198201-198212.nc"]
+
+    da = lo.load_obs(s, "lai")
+    assert da.sizes["time"] == 7 + 12 and da.attrs["dataset"] == "avhrr"
+    np.testing.assert_array_equal(da.lon, [-0.025, 0.025])  # wrapped, sorted and rounded
+    np.testing.assert_array_equal(da.lat, [-0.025, 0.025])
+    np.testing.assert_array_equal(da.isel(lat=0, lon=0), [1] * 7 + [2] * 12)
+
+
+@pytest.fixture
+def ncei_lai(tmp_path, monkeypatch):
+    """AVHRR (2012-2013) and VIIRS (2014-2015) records, each under its own root as on disk."""
+    for name, source_id, years, value in (("avhrr", "NOAA-NCEI-LAI-AVHRR-5-0", [2012, 2013], 1.0),
+                                          ("viirs", "NOAA-NCEI-LAI-VIIRS-1-0", [2014, 2015], 2.0)):
+        root = tmp_path / name
+        write_ncei_lai(root, source_id, years, value=value)
+        monkeypatch.setitem(lo.DATASETS, name, lo.replace(lo.get_dataset(name), root=root))
+    return tmp_path
+
+
+def test_load_ncei_lai_joins_sensors(ncei_lai):
+    """AVHRR then VIIRS on one time axis, each month labelled with its sensor, the switch in the attrs."""
+    da = lo.load_ncei_lai(slice("2013-07", "2014-06"))
+    assert da.sizes["time"] == 12 and da.dims == ("time", "lat", "lon")
+    assert list(da.sensor.values) == ["AVHRR LAI v5.0"] * 6 + ["VIIRS LAI v1.0"] * 6
+    np.testing.assert_array_equal(da.isel(lat=0, lon=0), [1.0] * 6 + [2.0] * 6)  # values unchanged
+    assert da.attrs["dataset"] == "ncei_lai"
+    assert da.attrs["version"] == "avhrr v20260110, viirs v20260110"
+    assert da.attrs["sensors"] == "AVHRR LAI v5.0: 2013-07 to 2013-12; VIIRS LAI v1.0: 2014-01 to 2014-06"
+    assert da.attrs["sensor_change"] == "2014-01 (AVHRR LAI v5.0 to VIIRS LAI v1.0)"
+
+
+def test_load_ncei_lai_one_sensor(ncei_lai):
+    """A period within one sensor's record reads only that sensor, and has no sensor change."""
+    da = lo.load_ncei_lai(slice("2015", "2015"))
+    assert da.sizes["time"] == 12 and set(da.sensor.values) == {"VIIRS LAI v1.0"}
+    assert da.attrs["sensor_change"] == "none" and da.attrs["version"] == "viirs v20260110"
+
+
+def test_load_ncei_lai_overlap_and_missing_raise(ncei_lai, monkeypatch):
+    """Overlapping sensor records raise, and so does a sensor without any file."""
+    write_ncei_lai(ncei_lai / "viirs", "NOAA-NCEI-LAI-VIIRS-1-0", [2013], value=2.0)
+    with pytest.raises(ValueError, match="starts before"):
+        lo.load_ncei_lai()
+    monkeypatch.setitem(lo.DATASETS, "viirs", lo.replace(lo.get_dataset("viirs"), root=ncei_lai / "empty"))
+    with pytest.raises(FileNotFoundError, match="viirs"):
+        lo.load_ncei_lai(slice("2012", "2013"))
 
 
 def test_at_resolution():
