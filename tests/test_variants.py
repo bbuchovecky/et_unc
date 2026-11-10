@@ -27,6 +27,23 @@ def obs_sources(et_products, lai_products=None):
     )
 
 
+def test_group_model_variants():
+    """Variants of one model share a base model: source_id up to the first "-", without version digits, then the aliases."""
+    sids = [
+        "CESM2-WACCM", "CESM2", "MIROC6", "MIROC-ES2L", "MPI-ESM1-2-LR", "MPI-ESM-1-2-HAM",
+        "UKESM1-0-LL", "HadGEM3-GC31-LL", "NorCPM1", "NorESM2-LM", "E3SM-1-0", "EC-Earth3-Veg", "CESM2",
+    ]
+    assert variants.group_model_variants(sids) == {
+        "CESM": ["CESM2", "CESM2-WACCM"],
+        "E3SM": ["E3SM-1-0"],
+        "EC-Earth": ["EC-Earth3-Veg"],
+        "HadGEM": ["HadGEM3-GC31-LL", "UKESM1-0-LL"],
+        "MIROC": ["MIROC-ES2L", "MIROC6"],
+        "MPI": ["MPI-ESM-1-2-HAM", "MPI-ESM1-2-LR"],
+        "NorESM": ["NorCPM1", "NorESM2-LM"],
+    }
+
+
 def test_source_groups_by_family():
     """
     cmip: the base model of each source; obs: the combination with the ET product's group (GLEAMv4.3a/b and

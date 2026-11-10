@@ -83,7 +83,7 @@ Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scrip
 	- Saved to disk so that the binning script loads the same quantile edges for every family
 	- `pooled_all`: hierarchical weights (`edges.hierarchical_weights`) reduce the contribution of members of the same model, of variants of one model or obs product, and of FPPE, IPPE and LENS2:
 	   w = 1/N_families × 1/N_groups(family) × 1/N_sources(group) × 1/N_members(source) × 1/N_values(member).
-	   A source is an obs combination, a CMIP6 model, or a PPE/LENS member. A group of variants (`variants.source_groups`) is the CMIP6 models of one base model (`load.cmip.group_model_variants`, e.g. CESM2, CESM2-WACCM, ...), or the obs combinations whose ET products are versions of one product (`variants.OBS_ET_PRODUCT_GROUPS`: GLEAMv4.3a/b, PMLv2.2a_MODIS/c; GLEAMv3.3a is its own product) with the same LAI, P and Rn; in other families each source is its own group.
+	   A source is an obs combination, a CMIP6 model, or a PPE/LENS member. A group of variants (`variants.source_groups`) is the CMIP6 models of one base model (`variants.group_model_variants`, e.g. CESM2, CESM2-WACCM, ...), or the obs combinations whose ET products are versions of one product (`variants.OBS_ET_PRODUCT_GROUPS`: GLEAMv4.3a/b, PMLv2.2a_MODIS/c; GLEAMv3.3a is its own product) with the same LAI, P and Rn; in other families each source is its own group.
 	- `pooled_<family>`: one family, its groups of variants weighted equally
 	- Weighted quantiles with `np.quantile(..., weights=, method="inverted_cdf")`: edges fall on data values, the first and last edges are the pooled minimum and maximum
 
