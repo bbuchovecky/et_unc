@@ -120,6 +120,7 @@ bin-plumber-clim = "scripts/run_logged.sh scripts/bin_plumber_clim.py"
 # Analyses of the step 14 outputs, not part of the pipeline (not in run-all)
 regress-lai-aridity = "scripts/run_logged.sh scripts/regress_lai_aridity.py"
 decompose-state-function = "scripts/run_logged.sh scripts/decompose_state_function.py"
+gridded-state-function-decomp = "scripts/run_logged.sh scripts/gridded_state_function_decomp.py"
 run-decomp = "scripts/run_decomp.sh"  # decompose-state-function for each run of RUNS (default aw_bins10/15/20), see run_decomp.sh
 # The whole pipeline: every prep-*, make-edges and bin-*, see run_all.sh
 run-all = "scripts/run_all.sh"

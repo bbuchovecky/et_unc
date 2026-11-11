@@ -304,3 +304,91 @@ def test_variant_source_weights():
     assert list(w["source"].values) == ["a1", "a2", "b"]
     with pytest.raises(ValueError, match="group of every source"):
         dc.source_weights(["a1", "a2"], "variant")
+
+
+# ------------------------------------------------------------------
+# 11. Gridded decomposition: the maps average to the scalars
+# ------------------------------------------------------------------
+
+def area_mean(da, area):
+    return (da * area).sum(("lat", "lon")) / area.sum()
+
+
+def state(bins, members, weights=None):
+    """Bin maps and weights of a mixture of the `members` along `state` (equal weights by default)."""
+    w = np.full(len(members), 1 / len(members)) if weights is None else np.asarray(weights)
+    return bins.sel(member=members).rename(member="state"), xr.DataArray(w, dims="state")
+
+
+def check_gridded(maps, d, area):
+    """Each map's land-area mean is its scalar of `decompose`; the four maps sum to DIFF everywhere."""
+    expected = {"DIFF": d["E_m"] - d["E_r"], "WITHIN": d["E_m"] - d["E_mm"] - d["E_r"] + d["E_rr"]}
+    for q in dc.GRIDDED_QUANTITIES:
+        assert abs(float(area_mean(maps[q], area)) - float(expected.get(q, d.get(q)))) < 1e-9, q
+    total = maps["STATE"] + maps["FUNCTION"] + maps["INTERACTION"] + maps["WITHIN"]
+    np.testing.assert_allclose(total, maps["DIFF"], atol=1e-10)
+
+
+def test_gridded_single_datasets(rng, area):
+    et, lai, ai = make_fields(rng, ["m", "r"])
+    p, f = dc.occupancy_and_mean(binned(et, lai, ai, area))
+    bins = binning.bin_index(lai, ai, Y_EDGES, X_EDGES)
+    maps = dc.decompose_gridded(f.sel(member="m"), f.sel(member="r"), *state(bins, ["m"]), et.sel(member=["m"]).rename(member="state"),
+                                *state(bins, ["r"]), et.sel(member=["r"]).rename(member="state"))
+    d = dc.decompose(p.sel(member="m"), f.sel(member="m"), p.sel(member="r"), f.sel(member="r"))
+    check_gridded(maps, d, area)
+    # Complete support: the within-bin anomaly averages to 0, but not at each gridcell
+    assert abs(float(area_mean(maps["WITHIN"], area))) < 1e-10 and float(abs(maps["WITHIN"]).max()) > 0
+    # At one gridcell, STATE is the observed function at m's bin minus at r's bin
+    i = dict(lat=3, lon=4)
+    b_m, b_r = int(bins.sel(member="m")[i]), int(bins.sel(member="r")[i])
+    f_r = f.sel(member="r").values.ravel()
+    assert float(maps["STATE"][i]) == pytest.approx(f_r[b_m] - f_r[b_r])
+
+
+def test_gridded_pooled_mixtures(rng, area):
+    members = ["m0", "m1", "r0", "r1", "r2"]
+    et, lai, ai = make_fields(rng, members)
+    p, f = dc.occupancy_and_mean(binned(et, lai, ai, area))
+    bins = binning.bin_index(lai, ai, Y_EDGES, X_EDGES)
+    e = et.rename(member="state")
+    # Unequal weights in the reference, as with the variant weighting of obs_pooled
+    pooled = {}
+    for label, mem, w in (("m", ["m0", "m1"], [0.5, 0.5]), ("r", ["r0", "r1", "r2"], [0.25, 0.25, 0.5])):
+        weights = xr.DataArray(w, dims="member")
+        pooled[label] = dc.pool(p.sel(member=mem), f.sel(member=mem), weights, "member")
+        pooled[label + "_state"] = (*state(bins, mem, w), e.sel(state=mem))
+    maps = dc.decompose_gridded(pooled["m"][1], pooled["r"][1], *pooled["m_state"], *pooled["r_state"])
+    check_gridded(maps, dc.decompose(*pooled["m"], *pooled["r"]), area)
+
+
+def test_gridded_off_support(rng, area):
+    et, lai, ai = make_fields(rng, ["m", "r"])
+    low = (lai < Y_EDGES[1]) & (ai < X_EDGES[1])
+    high = (lai >= Y_EDGES[-2]) & (ai >= X_EDGES[-2])
+    lai = xr.where(low & (lai.member == "m"), 1.5, lai)
+    lai = xr.where(high & (lai.member == "r"), 3.5, lai)
+    p, f = dc.occupancy_and_mean(binned(et, lai, ai, area))
+    bins = binning.bin_index(lai, ai, Y_EDGES, X_EDGES)
+    e = et.rename(member="state")
+    maps = dc.decompose_gridded(f.sel(member="m"), f.sel(member="r"), *state(bins, ["m"]), e.sel(state=["m"]),
+                                *state(bins, ["r"]), e.sel(state=["r"]))
+    d = dc.decompose(p.sel(member="m"), f.sel(member="m"), p.sel(member="r"), f.sel(member="r"))
+    assert float(d["OFF_SUPPORT_m"]) > 0 and float(d["OFF_SUPPORT_r"]) > 0
+    check_gridded(maps, d, area)
+    # The off-support maps are 1 exactly at the gridcells in the bins outside the support
+    np.testing.assert_array_equal(maps["OFF_SUPPORT_r"].values == 1, low.sel(member="r").values)
+
+
+def test_gridded_nan_outside_mask(rng, area):
+    et, lai, ai = make_fields(rng, ["m", "r"])
+    lai = lai.where(~((lai.lat > 60) & (lai.member == "r")))  # r has no LAI north of 60N
+    f = dc.occupancy_and_mean(binned(et, lai, ai, area))[1]
+    bins = binning.bin_index(lai, ai, Y_EDGES, X_EDGES)
+    e = et.rename(member="state")
+    maps = dc.decompose_gridded(f.sel(member="m"), f.sel(member="r"), *state(bins, ["m"]), e.sel(state=["m"]),
+                                *state(bins, ["r"]), e.sel(state=["r"]))
+    north = maps["lat"] > 60
+    for q in dc.GRIDDED_QUANTITIES:
+        assert bool(maps[q].where(north).isnull().all()), q
+        assert bool(maps[q].where(~north, 0).notnull().all()), q

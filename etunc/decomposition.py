@@ -28,6 +28,20 @@ counterfactual domain means (first index: state, second: function):
 The occupancy outside S (OFF_SUPPORT_m, OFF_SUPPORT_r) holds the rest of the
 full-domain means: E_m - E_mm and E_r - E_rr.
 
+Gridded (`decompose_gridded`): with b_x(i) the bin of gridcell i in dataset x (from its
+own LAI and AI, `binning.bin_index`) and e_x(i) its ET, the counterfactual means at
+each gridcell are lookups of the bin means, E_xy(i) = f_y(b_x(i)) (0 off S), so
+
+    STATE(i)       = f_r(b_m) - f_r(b_r)          FUNCTION(i) = f_m(b_r) - f_r(b_r)
+    INTERACTION(i) = f_m(b_m) - f_m(b_r) - f_r(b_m) + f_r(b_r)
+    WITHIN(i)      = (e_m - E_mm(i)) - (e_r - E_rr(i))     within-bin anomaly
+    DIFF(i)        = e_m - e_r = STATE + FUNCTION + INTERACTION + WITHIN
+
+and each map's land-area mean is its scalar of `decompose` (WITHIN: 0 on a complete
+support). A pooled dataset (`pool`) is a mixture of states: the lookups and e are
+weighted sums over its datasets' bin maps (same weights), which keeps the area means
+exact, since p_pool = sum_k w_k p_k.
+
 This is an accounting identity, not a causal attribution: in coupled runs
 LAI and AI respond to ET. FUNCTION holds every control of ET that is not on
 the two axes (soil moisture, seasonality, VPD, rooting depth, ...).
@@ -40,6 +54,7 @@ the two axes (soil moisture, seasonality, VPD, rooting depth, ...).
   each obs product of each product axis.
 - `counterfactual_mean`: sum_S p f for one state and one function.
 - `decompose`: the scalar quantities above (QUANTITIES).
+- `lookup`, `decompose_gridded`: the same quantities as maps (GRIDDED_QUANTITIES).
 - `state_shift`: the land in other bins than r, and STATE split into the bins m gains and loses land in.
 - `product_axis_range`: range of a quantity across obs references, overall and by product axis.
 - `variance_partition`: variance of E_mm - E_rr across datasets, split into the terms.
@@ -58,6 +73,11 @@ BIN_DIMS = ("y_bin", "x_bin")
 # Variables of `decompose`
 QUANTITIES = ("E_rr", "E_rm", "E_mr", "E_mm", "FUNCTION", "STATE", "INTERACTION", "E_m", "E_r",
               "OFF_SUPPORT_m", "OFF_SUPPORT_r")
+
+# Variables of `decompose_gridded` (maps); each one's land-area mean is the quantity of the same
+# name in QUANTITIES (DIFF: E_m - E_r; WITHIN: E_m - E_mm - E_r + E_rr, the off-support ET)
+GRIDDED_QUANTITIES = ("DIFF", "E_rr", "E_rm", "E_mr", "E_mm", "FUNCTION", "STATE", "INTERACTION", "WITHIN",
+                      "OFF_SUPPORT_m", "OFF_SUPPORT_r")
 
 # Components of `variance_partition`, which sum to var_E_mm_minus_E_rr
 COMPONENTS = ("var_STATE", "var_FUNCTION", "var_INTERACTION", "2cov_STATE_FUNCTION",
@@ -193,6 +213,62 @@ def decompose(p_m: xr.DataArray, f_m: xr.DataArray, p_r: xr.DataArray, f_r: xr.D
     })
     # Every variable on the dims of m and r alike, e.g. (dataset, obs_reference)
     return xr.broadcast(out)[0]
+
+
+def lookup(f: xr.DataArray, bins: xr.DataArray, weights: xr.DataArray, dim: str) -> tuple[xr.DataArray, xr.DataArray]:
+    """
+    sum_k w_k f(b_k(i)) at each gridcell: the bin means `f` (y_bin, x_bin) looked up at the bins
+    `bins` (flat index of `binning.bin_index`, along `dim` with the other dims e.g. lat, lon) of
+    a mixture of states with `weights` (along `dim`, sum 1; one state of weight 1 for a single
+    dataset). Bins where f is NaN (off the support) add 0, and their weight is returned as the
+    second map. Both are NaN where any state has no bin (bins = -1, outside the area mask).
+    """
+    f_flat = np.asarray(f.transpose(*BIN_DIMS).values, dtype=float).ravel()
+    idx = bins.values
+    vals = f_flat[np.where(idx >= 0, idx, 0)]
+    off = np.isnan(vals)
+    outside = idx < 0
+    vals = xr.DataArray(np.where(off, 0.0, vals), dims=bins.dims, coords=bins.coords)
+    off = xr.DataArray(off.astype(float), dims=bins.dims, coords=bins.coords)
+    outside = xr.DataArray(outside, dims=bins.dims, coords=bins.coords).any(dim)
+    value = (weights * vals).sum(dim).where(~outside)
+    off_weight = (weights * off).sum(dim).where(~outside)
+    return value, off_weight
+
+
+def decompose_gridded(
+    f_m: xr.DataArray, f_r: xr.DataArray,
+    bins_m: xr.DataArray, w_m: xr.DataArray, e_m: xr.DataArray,
+    bins_r: xr.DataArray, w_r: xr.DataArray, e_r: xr.DataArray,
+    dim: str = "state",
+) -> xr.Dataset:
+    """
+    The maps of GRIDDED_QUANTITIES of m relative to r. f_m, f_r: bin means (y_bin, x_bin).
+    bins_x, w_x, e_x: the bin maps (`binning.bin_index`), weights and ET maps of the states of
+    x along `dim` (a single dataset: one state of weight 1; a pooled dataset: the datasets
+    pooled, with the weights of `pool`). The four counterfactual means are lookups on the
+    common support S (bins where f_m and f_r are both finite), 0 off S (as in `decompose`), and
+    e_x = sum_k w_k e_k. The land-area mean of each map is the quantity of `decompose`.
+    """
+    # Non-index coords of m and r would clash (e.g. their member labels)
+    f_m, f_r, e_m, e_r = (da.reset_coords(drop=True) for da in (f_m, f_r, e_m, e_r))
+    support = f_m.notnull() & f_r.notnull()
+    f_m, f_r = f_m.where(support), f_r.where(support)
+    E_rr, off_r = lookup(f_r, bins_r, w_r, dim)
+    E_rm, _ = lookup(f_m, bins_r, w_r, dim)
+    E_mr, off_m = lookup(f_r, bins_m, w_m, dim)
+    E_mm, _ = lookup(f_m, bins_m, w_m, dim)
+    e_m, e_r = (w_m * e_m).sum(dim, skipna=False), (w_r * e_r).sum(dim, skipna=False)
+    out = xr.Dataset({
+        "DIFF": e_m - e_r,
+        "E_rr": E_rr, "E_rm": E_rm, "E_mr": E_mr, "E_mm": E_mm,
+        "FUNCTION": E_rm - E_rr, "STATE": E_mr - E_rr, "INTERACTION": E_mm - E_rm - E_mr + E_rr,
+        "WITHIN": (e_m - E_mm) - (e_r - E_rr),
+        "OFF_SUPPORT_m": off_m, "OFF_SUPPORT_r": off_r,
+    })
+    # NaN wherever any map is NaN (outside the area mask of m or r)
+    valid = out.to_array().notnull().all("variable")
+    return out.where(valid)
 
 
 def state_shift(p_m: xr.DataArray, f_m: xr.DataArray, p_r: xr.DataArray, f_r: xr.DataArray) -> xr.Dataset:

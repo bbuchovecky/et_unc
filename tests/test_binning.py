@@ -308,6 +308,24 @@ def test_bin_stats_flat_clips_out_of_range_values():
     np.testing.assert_array_equal(result[binning.STATS.index("count"), :, 0], [1, 1])
 
 
+def test_bin_index_matches_bin_stats(rng):
+    """Each value's bin of `bin_index` is the bin `bin_stats` counts it in, with duplicate and out-of-range edges."""
+    y_edges = np.array([0.0, 0.0, 1.0, 2.0, 3.0])  # a duplicate edge
+    x_edges = np.array([0.0, 0.5, 1.5, 2.0])
+    y = rng.uniform(-0.5, 3.5, (LAT.size, LON.size))  # out-of-range values on both sides
+    y[0, :5] = 0.0      # on the duplicate edge: the last duplicate bin
+    y[1, :5] = 2.0      # on an interior edge: the bin above
+    y[2, :5] = np.nan
+    x = rng.uniform(-0.2, 2.2, y.shape)
+    da = lambda v: xr.DataArray(v, dims=("lat", "lon"), coords={"lat": LAT, "lon": LON})
+    idx = binning.bin_index(da(y), da(x), y_edges, x_edges)
+    assert idx.dims == ("lat", "lon") and bool((idx.values[2, :5] == -1).all())
+    assert bool((idx.values[0, :5] // 3 == 1).all()) and bool((idx.values[1, :5] // 3 == 3).all())
+    count = binning.bin_stats(da(np.ones_like(y)), da(y), da(x), y_edges, x_edges).sel(stats="count")
+    from_index = np.bincount(idx.values[idx.values >= 0], minlength=count.size).reshape(count.shape)
+    np.testing.assert_array_equal(from_index, count.values)
+
+
 def test_bin_stats_flat_count_pos_and_empty_bins():
     """
     count_pos counts positive values, mean and sample variance are right, and empty bins have NaN mean and count

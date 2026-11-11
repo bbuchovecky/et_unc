@@ -34,8 +34,9 @@ bin_*.py           step 14      bin statistics of ET in each LAI-AI bin (bin_all
                                 climatological ET; bin_area: land area; bin_plumber[_clim]: flux towers)
 ```
 
-After step 14, two analyses are run separately: `regress_lai_aridity.py` (OLS of ET on LAI and AI) and
-`decompose_state_function.py` (state/function/interaction decomposition of area-mean ET against obs).
+After step 14, three analyses are run separately: `regress_lai_aridity.py` (OLS of ET on LAI and AI),
+`decompose_state_function.py` (state/function/interaction decomposition of area-mean ET against obs) and
+`gridded_state_function_decomp.py` (the same decomposition mapped back to the lat/lon grid).
 
 ## Setup
 

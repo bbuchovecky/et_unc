@@ -11,6 +11,7 @@ docs/binning-workflow.md and written out step by step in the scripts.
 - `bin_stats`: statistics of every (year, gridcell) ET sample, binned by its
   gridcell's climatological LAI and AI (step 14), optionally per member and
   optionally weighted (e.g. by the gridcell's land area, `grid.land_area`).
+- `bin_index`: the bin of each gridcell, with the assignment rule of `bin_stats`.
 - Post-processing: `pool_members`, `pool_by_source`, `drop_zero_width_bins`,
   `frac_valid`, `test_significance`, `between_bin_fraction`, `et_product_spread`,
   `ensemble_spread`.
@@ -81,6 +82,37 @@ def evaporation_ratio(et: xr.DataArray, pr: xr.DataArray, label: str | None = No
 # Binning
 # ------------------------------------------------------------------
 
+def _bin_index_flat(
+    y: np.ndarray, x: np.ndarray, y_edges: np.ndarray, x_edges: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    (y, x) bin index of each sample, the assignment rule of `bin_stats`. Bins are
+    [lower, upper): a value on an interior edge goes to the bin above it. The clip puts the
+    maximum (== last edge, which side="right" places past the last bin) into the last bin,
+    and out-of-range values into the edge bins. NaN gets a (clipped) index too: callers drop it.
+    """
+    y_idx = np.clip(np.searchsorted(y_edges, y, side="right") - 1, 0, len(y_edges) - 2)
+    x_idx = np.clip(np.searchsorted(x_edges, x, side="right") - 1, 0, len(x_edges) - 2)
+    return y_idx, x_idx
+
+
+def bin_index(
+    y_var: xr.DataArray, x_var: xr.DataArray, y_edges: xr.DataArray | np.ndarray, x_edges: xr.DataArray | np.ndarray,
+) -> xr.DataArray:
+    """
+    Flat bin index y_bin * n_x + x_bin of each value of (y_var, x_var), e.g. each gridcell's
+    LAI-AI bin, with the assignment rule of `bin_stats`; -1 where y_var or x_var is not finite.
+    Same dims and coords as y_var and x_var (which must match exactly).
+    """
+    y_edges, _ = edges_and_attrs(y_edges)
+    x_edges, _ = edges_and_attrs(x_edges)
+    y_var, x_var = _align_exact(y_var, x_var)
+    y, x = np.asarray(y_var.values, dtype=float), np.asarray(x_var.values, dtype=float)
+    y_idx, x_idx = _bin_index_flat(y, x, y_edges, x_edges)
+    idx = np.where(np.isfinite(y) & np.isfinite(x), y_idx * (len(x_edges) - 1) + x_idx, -1)
+    return xr.DataArray(idx, dims=y_var.dims, coords=y_var.coords, name="bin_index")
+
+
 def _bin_stats_flat(
     target: np.ndarray,
     y: np.ndarray,
@@ -107,11 +139,7 @@ def _bin_stats_flat(
     if weights is None:
         weights = np.ones_like(target, dtype=np.float64)
 
-    # Bins are [lower, upper): a value on an interior edge goes to the bin above it. The clip
-    # puts the maximum (== last edge, which side="right" places past the last bin) into the
-    # last bin, and out-of-range values into the edge bins
-    y_idx = np.clip(np.searchsorted(y_edges, y, side="right") - 1, 0, n_y - 1)
-    x_idx = np.clip(np.searchsorted(x_edges, x, side="right") - 1, 0, n_x - 1)
+    y_idx, x_idx = _bin_index_flat(y, x, y_edges, x_edges)
 
     # NaN samples got a (clipped) index above; they are dropped here
     valid = np.isfinite(target) & np.isfinite(y) & np.isfinite(x) & np.isfinite(weights)
