@@ -1,16 +1,18 @@
 __pycache__/
-dask-worker*
-# *.o*
-*.log
-# download_*.sh
 *.egg-info/
 .pytest_cache/
 .pixi/
 .vscode
 
-# symlink
+# Symlinks
 fig
 proc
 logs
+
 # Machine-specific paths (copy of config/paths.example.yml)
 config/paths.yml
+
+# Download and job scripts
+# download_*.sh
+*.pbs
+!template.pbs
