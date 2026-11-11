@@ -6,7 +6,6 @@
 campaign_root: /glade/campaign/univ/uwas0155
 obs_root: /glade/campaign/univ/uwas0155/obs                 # gridded obs products (etunc.load.obs)
 ilamb_root: /glade/campaign/univ/uwas0155/obs/ilamb         # ILAMB products (etunc.load.ilamb)
-obs_regrid_root: /glade/campaign/univ/uwas0155/obs/regridded  # DEPRECATED: regridded files of the legacy scripts
 
 # PLUMBER2 flux tower files (Abramowitz et al.): met/ and flux/, one file per site
 plumber_root: /glade/work/bbuchovecky/data/fluxnet_abramowitz

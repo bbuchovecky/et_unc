@@ -3,13 +3,12 @@ etunc.load.cesm
 ===============
 Load CESM2 ensemble output from the CESM time-series (tseries) archives on glade:
 the coupled FHIST perturbed-parameter ensemble ("fppe"), its offline CLM
-counterpart ("ippe", same parameter perturbations and member ids), the GOGA2
-10-member ensemble ("goga") and the CESM2 Large Ensemble ("lens"). Also holds
-each ensemble's grid file (LANDFRAC, LANDAREA, ...) and the PPE member names.
+counterpart ("ippe", same parameter perturbations and member ids) and the
+CESM2 Large Ensemble ("lens"). Also holds each ensemble's grid file
+(LANDFRAC, LANDAREA, ...; also the GOGA2 grid, "goga", whose loader
+`load_goga2` was removed with `etunc/legacy/`) and the PPE member names.
 
-Every ensemble loader (`load_ppe`, `load_cesm2le`; `load_goga2` is in
-`etunc.legacy.load_cesm`)
-returns a lazy (dask) Dataset of native monthly fields with a ``member``
+Every ensemble loader (`load_ppe`, `load_cesm2le`) returns a lazy (dask) Dataset of native monthly fields with a ``member``
 dimension. Its time axis is shifted from CESM's end-of-interval stamps to the
 month the data averages (see ``shift_time``).
 

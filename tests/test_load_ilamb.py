@@ -1,8 +1,8 @@
 """
 Tests that pin the behavior of the ILAMB product loaders in `etunc.load.ilamb`:
 `load_native` (raw monthly fields for the binning pipeline, scripts/prep_obs.py)
-and `load_ilamb` (monthly, regridded; used by make_mask.py and, with
-`wm2=True`, obs_et_availability.py).
+and `load_ilamb` (monthly, regridded; used by make_mask.py, and with
+`wm2=True` by the former obs_et_availability.py, since removed).
 Run from the project root with:
 
     python -m pytest tests/test_load_ilamb.py
@@ -44,13 +44,13 @@ PR_FILL = (-20.5, 200.5, "2002-03")
 RES = 0.5                                           # 1 deg products are regridded onto 0.5 deg
 GRID = rg.target_grid(RES)
 MASK_TIME_SLICE = slice("1982-01", "2025-12")      # mask.TIME_SLICE
-AV_TIME_SLICE = slice("2000-01", "2014-12")        # obs_et_availability.TIME_SLICE
+AV_TIME_SLICE = slice("2000-01", "2014-12")        # TIME_SLICE of the former obs_et_availability.py
 AV_MONTHS = pd.date_range(AV_TIME_SLICE.start, AV_TIME_SLICE.stop, freq="MS")
 ALL = slice(None, None)
 
 
 def availability_ilamb(product):
-    """obs_et_availability.load_ilamb: monthly ET in W/m2 on the AV_MONTHS axis."""
+    """As the former obs_et_availability.load_ilamb: monthly ET in W/m2 on the AV_MONTHS axis."""
     return temporal.on_month_axis(il.load_ilamb("et", product, AV_TIME_SLICE, RES, wm2=True), AV_MONTHS)
 
 
@@ -170,7 +170,7 @@ def test_load_ilamb_native(ilamb_root):
 
 def test_availability_load_ilamb_wm2_on_month_axis(ilamb_root):
     """
-    load_ilamb with wm2=True (as in obs_et_availability.py) converts ET to W/m2, reindexes it to MONTHS (NaN
+    load_ilamb with wm2=True (as in the former obs_et_availability.py) converts ET to W/m2, reindexes it to MONTHS (NaN
     outside the data), and regrids each month.
     """
     da = availability_ilamb("FAKE")

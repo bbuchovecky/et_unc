@@ -18,10 +18,12 @@
 #      SKIP_PREP=1 RUNS=config/runs/bins10.yml scripts/run_all.sh
 #
 # Not run here:
-#   - scripts/download/                       the data downloads
-#   - regress_lai_aridity.py,                 analyses of the step 14 outputs, not part
-#                                             of the pipeline
-#   - make_mask.py, obs_et_availability.py    diagnostics, no pipeline step reads them
+#   - scripts/download/                          the data downloads
+#   - regress_lai_aridity.py,                    analyses of the step 14 outputs, not part
+#     decompose_state_function.py                of the pipeline (run_decomp.sh runs the latter
+#                                                for several runs)
+#   - make_mask.py, diagnose_obs.py,             diagnostics, no pipeline step reads them
+#     compare_rn.py
 
 set -euo pipefail
 

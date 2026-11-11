@@ -8,7 +8,7 @@ lon in [-180, 180] and lat ascending.
   native units (step 1 of the binning pipeline, scripts/prep_obs.py).
 - `load_ilamb`: monthly fields over a time slice within LAT_BNDS, each month
   conservatively regridded (or native with `res=None`), in native units or
-  (`wm2=True`) converted to W/m2 first (make_mask.py, obs_et_availability.py).
+  (`wm2=True`, no current caller) converted to W/m2 first (make_mask.py).
 
 Both set undecoded fill values (|value| >= FILL_THRESH) to NaN.
 """

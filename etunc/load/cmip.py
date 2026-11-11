@@ -9,10 +9,6 @@ scripts/prep_cmip.py:
   `sftlf_files`) and native land fraction (`load_land_fraction`);
 - `load_native`: one model's monthly fields on its native grid, in native
   units (step 1 of the binning pipeline).
-
-The whole-field regridding of the deprecated scripts/legacy_regrid/regrid_cmip.py
-(`regrid_to_target`) and the loader's unused convenience methods
-(`LegacyCMIPESGFLoader`) are in `etunc.legacy.load_cmip`.
 """
 
 from __future__ import annotations

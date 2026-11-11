@@ -192,4 +192,4 @@ state_shift()                            # land in other bins than obs; STATE fr
 product_axis_range()                     # range of a quantity across obs references, by product axis
 variance_partition()                     # Var(E_mm - E_rr) across datasets split into the terms
 ```
-Code that the pipeline no longer uses is in `etunc/legacy/` (unmaintained, untested).
+Code that the pipeline no longer uses was removed (`etunc/legacy/` and `scripts/legacy_regrid/`, commit 8b26f0b); it is in the git history.

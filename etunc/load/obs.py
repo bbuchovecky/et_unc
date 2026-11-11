@@ -24,20 +24,20 @@ works. Only files overlapping the requested years are opened, and the time
 selection is applied after opening.
 
 ``load_obs_regridded`` reads the native files and conservatively regrids each time step in memory onto
-``etunc.grid.target_grid(res)`` (used by make_mask.py and
-obs_et_availability.py).
+``etunc.grid.target_grid(res)`` (used by make_mask.py).
 
 The binning pipeline (scripts/prep_obs.py) reads the native monthly files
 with ``load_obs`` (step 1) and converts, averages, masks and regrids them in
 the script.
 
 Every function also takes ``res``: "native" (default) reads the original
-files, "0.5" or "1" the copies regridded by ``regrid_obs.py`` to 0.5 or 1 deg,
-stored under ``OBS_REGRID_ROOT/<dataset dir>/<0.5deg|1deg>`` with the same layout
-as the dataset dir (see ``at_resolution``). These saved files are deprecated
-in favor of ``load_obs_regridded``; their writer (``regrid_file``) and the
-per-product wrappers (``load_gleam``, ``load_pml``, ``load_sith``) are in
-``etunc.legacy.load_obs``.
+files, "0.5" or "1" the copies regridded to 0.5 or 1 deg by the former
+scripts/legacy_regrid/regrid_obs.py, stored under
+``OBS_REGRID_ROOT/<dataset dir>/<0.5deg|1deg>`` with the same layout as the
+dataset dir (see ``at_resolution``). These saved files are deprecated in favor
+of ``load_obs_regridded``; their writer (``regrid_file``) and the per-product
+wrappers (``load_gleam``, ``load_pml``, ``load_sith``) were removed with
+``etunc/legacy/`` (commit 8b26f0b).
 
 Example
 -------
@@ -718,8 +718,3 @@ def load_obs_regridded(
     print(f"{spec.name} {version} {freq} {var}: regridded {len(reads)} files to {spacing:g} deg "
           f"(load {t['load']:.1f}s, regrid {t['regrid']:.1f}s)")
     return da
-
-
-# ------------------------------------------------------------------
-# Writing regridded files (regrid_obs.py, deprecated: use load_obs_regridded)
-# ------------------------------------------------------------------

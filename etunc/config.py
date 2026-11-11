@@ -342,7 +342,6 @@ PATHS = read_yaml(PATHS_FILE)
 CAMPAIGN_ROOT = Path(PATHS["campaign_root"])
 OBS_ROOT = Path(PATHS["obs_root"])
 ILAMB_ROOT = Path(PATHS["ilamb_root"])
-OBS_REGRID_ROOT = Path(PATHS["obs_regrid_root"])  # DEPRECATED: regridded files of the legacy scripts
 PLUMBER_ROOT = Path(PATHS["plumber_root"])
 CMIP_FETCH_ROOT = Path(PATHS["cmip_fetch_root"])
 CMIP_CATALOG_ROOT = CMIP_FETCH_ROOT / "catalogs"
