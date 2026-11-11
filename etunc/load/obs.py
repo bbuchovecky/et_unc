@@ -28,16 +28,7 @@ selection is applied after opening.
 
 The binning pipeline (scripts/prep_obs.py) reads the native monthly files
 with ``load_obs`` (step 1) and converts, averages, masks and regrids them in
-the script.
-
-Every function also takes ``res``: "native" (default) reads the original
-files, "0.5" or "1" the copies regridded to 0.5 or 1 deg by the former
-scripts/legacy_regrid/regrid_obs.py, stored under
-``OBS_REGRID_ROOT/<dataset dir>/<0.5deg|1deg>`` with the same layout as the
-dataset dir (see ``at_resolution``). These saved files are deprecated in favor
-of ``load_obs_regridded``; their writer (``regrid_file``) and the per-product
-wrappers (``load_gleam``, ``load_pml``, ``load_sith``) were removed with
-``etunc/legacy/`` (commit 8b26f0b).
+the script. No regridded copies are saved.
 
 Example
 -------
@@ -50,7 +41,6 @@ Example
 >>> lai = lo.load_obs("avhrr", "lai", slice("2001", "2013"))            # m2 m-2, monthly means
 >>> lai = lo.load_ncei_lai(slice("2001", "2014"))                        # AVHRR to 2013, VIIRS in 2014
 >>> et = lo.load_obs_regridded("gleam", "E", slice("1995", "2014"), 0.5)  # regridded in memory
->>> et = lo.load_obs("gleam", "E", slice("1995", "2014"), res="1")       # saved 1 deg files (deprecated)
 >>> lo.list_variables("gleam"), lo.list_years("pml", "ET", version="V2.2b")
 >>> lo.list_files("sith", "ET")   # {path: (1982, 2022)}
 >>> et_wm2 = units.latent_heat_to_wm2(units.accumulation_to_flux(et))  # import etunc.units as units
@@ -98,7 +88,7 @@ import re
 import string
 import time
 import warnings
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -106,12 +96,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from etunc.config import NA_THRESH, OBS_ROOT, OBS_REGRID_ROOT
+from etunc.config import NA_THRESH, OBS_ROOT
 from etunc.grid import (
     RESOLUTIONS, conservative_regridder, regrid_with_na_thresh,
 )
-
-RES_DIRS = {"0.5": "0.5deg", "1": "1deg"}  # res -> directory under OBS_REGRID_ROOT/<dataset dir>
 
 
 # ------------------------------------------------------------------
@@ -176,8 +164,7 @@ def _fix_gleam_units(ds: xr.Dataset, var: str, version: str, freq: str) -> xr.Da
 def _mask_gleam_like_v43a(ds: xr.Dataset, var: str, version: str, freq: str) -> xr.Dataset:
     """
     v4.3b stores the ocean as 0 instead of NaN; apply the NaN pattern of the
-    matching v4.3a file (same variable, frequency and year). Both versions
-    share one layout, so this also works for the regridded files.
+    matching v4.3a file (same variable, frequency and year).
     """
     if version != "v4.3b":
         return ds
@@ -306,24 +293,8 @@ def get_dataset(dataset: str | ObsDataset) -> ObsDataset:
         raise KeyError(f"Unknown dataset {dataset!r}; registered: {sorted(DATASETS)}") from None
 
 
-def at_resolution(dataset: str | ObsDataset, res: str = "native") -> ObsDataset:
-    """
-    The product at resolution `res`: "native" returns it unchanged; "0.5" or
-    "1" returns a copy rooted at its regridded tree, ``OBS_REGRID_ROOT/<root
-    dir name>/<0.5deg|1deg>``, whose files have lat/lon coordinates.
-    """
+def _resolve(dataset: str | ObsDataset, version: str | None, freq: str) -> tuple[ObsDataset, str]:
     spec = get_dataset(dataset)
-    if res == "native":
-        return spec
-    if res not in RES_DIRS:
-        raise ValueError(f"Unknown res {res!r}; options: {('native', *RES_DIRS)}")
-    return replace(spec, root=OBS_REGRID_ROOT / spec.root.name / RES_DIRS[res], lat_name="lat", lon_name="lon")
-
-
-def _resolve(
-    dataset: str | ObsDataset, version: str | None, freq: str, res: str = "native"
-) -> tuple[ObsDataset, str]:
-    spec = at_resolution(dataset, res)
     version = spec.versions[0] if version is None else version
     if version not in spec.versions:
         raise ValueError(f"{spec.name}: unknown version {version!r}; options: {spec.versions}")
@@ -396,21 +367,18 @@ def _file_years(groups: Mapping[str, str]) -> tuple[int, int]:
     return int(groups["year_start"]), int(groups["year_end"])
 
 
-def list_variables(
-    dataset: str | ObsDataset, version: str | None = None, freq: str = "monthly", res: str = "native"
-) -> list[str]:
-    """Variables with at least one file for this version, frequency and resolution."""
-    spec, version = _resolve(dataset, version, freq, res)
+def list_variables(dataset: str | ObsDataset, version: str | None = None, freq: str = "monthly") -> list[str]:
+    """Variables with at least one file for this version and frequency."""
+    spec, version = _resolve(dataset, version, freq)
     found = _scan(spec, **_fixed_fields(spec, version, freq))
     return sorted({groups["var"] for groups, _ in found})
 
 
 def list_files(
     dataset: str | ObsDataset, var: str, version: str | None = None, freq: str = "monthly",
-    res: str = "native",
 ) -> dict[Path, tuple[int, int]]:
-    """Every file for this variable, version, frequency and resolution -> (first, last) year it covers, sorted by year."""
-    spec, version = _resolve(dataset, version, freq, res)
+    """Every file for this variable, version and frequency -> (first, last) year it covers, sorted by year."""
+    spec, version = _resolve(dataset, version, freq)
     if not _has_year(spec):
         raise ValueError(f"{spec.name}: template has no year field")
     found = _scan(spec, **_fixed_fields(spec, version, freq), var=var)
@@ -419,10 +387,9 @@ def list_files(
 
 def list_years(
     dataset: str | ObsDataset, var: str, version: str | None = None, freq: str = "monthly",
-    res: str = "native",
 ) -> list[int]:
-    """Years covered by a file for this variable, version, frequency and resolution."""
-    spans = list_files(dataset, var, version, freq, res).values()
+    """Years covered by a file for this variable, version and frequency."""
+    spans = list_files(dataset, var, version, freq).values()
     return sorted({y for first, last in spans for y in range(first, last + 1)})
 
 
@@ -440,14 +407,13 @@ def find_files(
     *,
     version: str | None = None,
     freq: str = "monthly",
-    res: str = "native",
 ) -> list[Path]:
     """
     Files for `var` overlapping the years of `time_slice`, sorted by first year.
     Warns about years missing inside the requested (or, if open-ended, found)
     range.
     """
-    spec, version = _resolve(dataset, version, freq, res)
+    spec, version = _resolve(dataset, version, freq)
     if not _has_year(spec):
         return [path for _, path in _scan(spec, **_fixed_fields(spec, version, freq), var=var)]
 
@@ -462,7 +428,7 @@ def find_files(
         covered = {y for first, last in selected.values() for y in range(first, last + 1)}
         missing = sorted(set(range(lo, hi + 1)) - covered)
         if missing:
-            warnings.warn(f"{spec.name} {version} {freq} {var} ({res}): no files for years {missing}")
+            warnings.warn(f"{spec.name} {version} {freq} {var}: no files for years {missing}")
     return list(selected)
 
 
@@ -495,7 +461,6 @@ def load_obs(
     *,
     version: str | None = None,
     freq: str = "monthly",
-    res: str = "native",
     lat_bnds: slice | None = None,
     chunks: str | int | Mapping | None = "auto",
     parallel: bool = False,
@@ -511,7 +476,6 @@ def load_obs(
         touches are opened.
     version : product version; defaults to the first in `ObsDataset.versions`.
     freq : temporal frequency, a key of `ObsDataset.freqs`.
-    res : "native", or "0.5" / "1" for the files regridded to 0.5 / 1 deg.
     lat_bnds : optional latitude slice applied after sorting lat ascending,
         e.g. ``etunc.config.LAT_BNDS``.
     chunks : dask chunks for `xr.open_mfdataset`; dict keys may use lat/lon.
@@ -520,15 +484,15 @@ def load_obs(
     Returns
     -------
     DataArray with dims (time, lat, lon) and attrs ``dataset``, ``version``,
-    ``frequency`` and ``res`` added to the file's variable attrs.
+    ``frequency`` and ``res`` ("native") added to the file's variable attrs.
     """
-    spec, version = _resolve(dataset, version, freq, res)
-    files = find_files(dataset, var, time_slice, version=version, freq=freq, res=res)
+    spec, version = _resolve(dataset, version, freq)
+    files = find_files(dataset, var, time_slice, version=version, freq=freq)
     if not files:
         y0, y1 = _year_bounds(time_slice)
         raise FileNotFoundError(
-            f"No {spec.name} {version} {freq} ({res}) files for {var!r} in years {y0}-{y1} under "
-            f"{spec.root}. Available variables: {list_variables(dataset, version, freq, res)}"
+            f"No {spec.name} {version} {freq} files for {var!r} in years {y0}-{y1} under "
+            f"{spec.root}. Available variables: {list_variables(dataset, version, freq)}"
         )
 
     def preprocess(ds: xr.Dataset) -> xr.Dataset:
@@ -561,7 +525,7 @@ def load_obs(
     da = ds[var].sel(time=time_slice)
     if lat_bnds is not None:
         da = da.sel(lat=lat_bnds)
-    da.attrs.update(dataset=spec.name, version=version, frequency=freq, res=res)
+    da.attrs.update(dataset=spec.name, version=version, frequency=freq, res="native")
     return da
 
 
@@ -659,9 +623,8 @@ def load_obs_regridded(
     Load one variable from its native files and conservatively regrid it onto
     `target_grid(res)` in memory, without writing regridded files.
 
-    Each time step is regridded as `regrid_obs.py` does (`regrid_with_na_thresh`,
-    NaN where more than `na_thresh` of a target cell's area is missing), so the
-    result equals ``load_obs(..., res=...)`` on the files it wrote. Files are
+    Each time step is regridded with `regrid_with_na_thresh` (NaN where more
+    than `na_thresh` of a target cell's area is missing). Files are
     read one at a time (per-year files whole, multi-year files in blocks of
     their on-disk time chunks), so only one block is in memory at native
     resolution.

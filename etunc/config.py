@@ -499,7 +499,7 @@ def summarize():
     print(f"{'PATHS_FILE':18} = {PATHS_FILE}")
     print("\nPaths:")
     print("------")
-    for name in ("CAMPAIGN_ROOT", "OBS_ROOT", "ILAMB_ROOT", "OBS_REGRID_ROOT", "PLUMBER_ROOT", "CMIP_CATALOG",
+    for name in ("CAMPAIGN_ROOT", "OBS_ROOT", "ILAMB_ROOT", "PLUMBER_ROOT", "CMIP_CATALOG",
                  "CMIP_FX_CATALOG", "TRENDY_ROOT", "FHIST_PPE_ROOT", "IHIST_PPE_ROOT", "LENS2_ROOT", "ERA5_GRID_PATH",
                  "WORK_ROOT", "PROC_ROOT", "FIG_ROOT"):
         print(f"{name:18} = {globals()[name]}")

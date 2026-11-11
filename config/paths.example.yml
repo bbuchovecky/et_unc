@@ -2,7 +2,7 @@
 # machine; etunc/config.py reads config/paths.yml, or the file named by the environment variable ETUNC_PATHS.
 # Paths are not part of the run IDs. The values below are those on NCAR's glade.
 
-# Shared campaign storage: read-only unless writing regridded files on purpose
+# Shared campaign storage: read-only
 campaign_root: /glade/campaign/univ/uwas0155
 obs_root: /glade/campaign/univ/uwas0155/obs                 # gridded obs products (etunc.load.obs)
 ilamb_root: /glade/campaign/univ/uwas0155/obs/ilamb         # ILAMB products (etunc.load.ilamb)

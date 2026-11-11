@@ -12,7 +12,6 @@ import pytest
 import xarray as xr
 
 import etunc.config as config
-import etunc.load.obs as lo
 import etunc.grid as rg
 
 
@@ -69,12 +68,6 @@ def test_grid_tag_only_standard_grids(res):
     """grid_tag (output directory names) only knows the standard 0.5 and 1 deg grids."""
     with pytest.raises(ValueError, match="unsupported resolution"):
         rg.grid_tag(res)
-
-
-def test_load_obs_reads_the_standard_grid_tags():
-    """load_obs reads regridded files under the same tags as grid.RESOLUTIONS."""
-    assert set(lo.RES_DIRS.values()) == set(rg.RESOLUTIONS)
-    assert {float(r) for r in lo.RES_DIRS} == set(rg.RESOLUTIONS.values())
 
 
 # ------------------------------------------------------------------

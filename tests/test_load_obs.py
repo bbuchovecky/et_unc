@@ -5,6 +5,8 @@ project root with:
     python -m pytest tests/test_load_obs.py
 """
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -193,7 +195,7 @@ def test_load_obs_period_files(tmp_path):
 
 def test_load_obs_monthly_files(tmp_path):
     """CLARA-A3 layout: one file per month, {year} twice, {standard_name} directory matched from the path."""
-    s = lo.replace(lo.get_dataset("clara"), root=tmp_path)
+    s = replace(lo.get_dataset("clara"), root=tmp_path)
     lat, lon = np.array([-0.125, 0.125]), np.array([-0.125, 0.125])
     for var, name in (("SRB", "surface_net_downward_radiative_flux"), ("SNS", "surface_net_downward_shortwave_flux")):
         for year in (2000, 2001):
@@ -233,7 +235,7 @@ def write_ncei_lai(root, source_id, years, first_month=1, value=None):
 
 def test_load_obs_avhrr_lai(tmp_path):
     """AVHRR LAI layout: obs4MIPs tree, per-year files named by start and end month, a partial first year."""
-    s = lo.replace(lo.get_dataset("avhrr"), root=tmp_path)
+    s = replace(lo.get_dataset("avhrr"), root=tmp_path)
     write_ncei_lai(tmp_path, "NOAA-NCEI-LAI-AVHRR-5-0", [1981, 1982], first_month=6)
 
     assert lo.list_variables(s) == ["lai"]
@@ -255,7 +257,7 @@ def ncei_lai(tmp_path, monkeypatch):
                                           ("viirs", "NOAA-NCEI-LAI-VIIRS-1-0", [2014, 2015], 2.0)):
         root = tmp_path / name
         write_ncei_lai(root, source_id, years, value=value)
-        monkeypatch.setitem(lo.DATASETS, name, lo.replace(lo.get_dataset(name), root=root))
+        monkeypatch.setitem(lo.DATASETS, name, replace(lo.get_dataset(name), root=root))
     return tmp_path
 
 
@@ -283,42 +285,9 @@ def test_load_ncei_lai_overlap_and_missing_raise(ncei_lai, monkeypatch):
     write_ncei_lai(ncei_lai / "viirs", "NOAA-NCEI-LAI-VIIRS-1-0", [2013], value=2.0)
     with pytest.raises(ValueError, match="starts before"):
         lo.load_ncei_lai()
-    monkeypatch.setitem(lo.DATASETS, "viirs", lo.replace(lo.get_dataset("viirs"), root=ncei_lai / "empty"))
+    monkeypatch.setitem(lo.DATASETS, "viirs", replace(lo.get_dataset("viirs"), root=ncei_lai / "empty"))
     with pytest.raises(FileNotFoundError, match="viirs"):
         lo.load_ncei_lai(slice("2012", "2013"))
-
-
-def test_at_resolution():
-    """
-    at_resolution points a dataset at its regridded files (root, lat/lon names) for a supported res and raises
-    otherwise.
-    """
-    spec = lo.get_dataset("pml")
-    assert lo.at_resolution(spec) is spec
-    regridded = lo.at_resolution("pml", "0.5")
-    assert regridded.root == lo.OBS_REGRID_ROOT / "pml-v2.2" / "0.5deg"
-    assert (regridded.lat_name, regridded.lon_name) == ("lat", "lon")
-    assert regridded.template == spec.template and regridded.preprocess is spec.preprocess
-    with pytest.raises(ValueError, match="res"):
-        lo.at_resolution("pml", "0.25")
-
-
-def test_load_obs_saved_regridded(spec, monkeypatch, tmp_path):
-    """res="1" reads REGRID_ROOT/<root dir name>/1deg/<same relative path>, with lat/lon coords."""
-    monkeypatch.setattr(lo, "OBS_REGRID_ROOT", tmp_path / "regridded")
-    lat, lon = np.array([45.5, 44.5]), np.array([-0.5, 0.5])
-    for year in (2001, 2002):
-        write_year(tmp_path / f"regridded/{tmp_path.name}/1deg/v1/monthly/ET/FAKE-v1_ET_{year}.nc", "ET", year,
-                   lat=lat, lon=lon, lat_name="lat", lon_name="lon")
-    assert lo.list_years(spec, "ET", res="1") == [2001, 2002]
-    assert lo.list_variables(spec, res="1") == ["ET"]
-    da = lo.load_obs(spec, "ET", slice("2001", "2002"), res="1")
-    assert da.sizes == {"time": 24, "lat": 2, "lon": 2}
-    np.testing.assert_array_equal(da.lat, [44.5, 45.5])
-    assert da.attrs["res"] == "1"
-    assert lo.load_obs(spec, "ET", slice("2001", "2001")).attrs["res"] == "native"
-    with pytest.raises(FileNotFoundError, match=r"\(0\.5\)"):
-        lo.load_obs(spec, "ET", res="0.5")
 
 
 def test_gleam_units_fix():
@@ -338,7 +307,7 @@ def gleam(tmp_path):
             ds = xr.load_dataset(path)
             ds["E"][:, 0, 1] = ocean
             ds.to_netcdf(path)
-    return lo.replace(lo.get_dataset("gleam"), root=tmp_path)
+    return replace(lo.get_dataset("gleam"), root=tmp_path)
 
 
 @pytest.mark.parametrize("chunks", ["auto", None])
