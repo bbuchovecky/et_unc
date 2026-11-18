@@ -32,6 +32,8 @@ import xarray as xr
 OBS_ET_PRODUCT_GROUPS = {
     "GLEAMv4.3a": "GLEAMv4.3",
     "GLEAMv4.3b": "GLEAMv4.3",
+    "MOD16A2": "MOD16",
+    "MODIS": "MOD16",
     "PMLv2.2a_MODIS": "PMLv2.2",
     "PMLv2.2b": "PMLv2.2",
     "PMLv2.2c": "PMLv2.2",

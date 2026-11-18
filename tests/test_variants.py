@@ -46,18 +46,19 @@ def test_group_model_variants():
 
 def test_source_groups_by_family():
     """
-    cmip: the base model of each source; obs: the combination with the ET product's group (GLEAMv4.3a/b and
-    PMLv2.2a_MODIS/c merged, GLEAMv3.3a apart); any other family: each source.
+    cmip: the base model of each source; obs: the combination with the ET product's group (GLEAMv4.3a/b,
+    PMLv2.2a_MODIS/c and MOD16A2/MODIS merged, GLEAMv3.3a apart); any other family: each source.
     """
     cmip = xr.DataArray(np.zeros(3), dims="member", coords={"source": ("member", ["CESM2", "CESM2-WACCM", "MIROC6"])})
     np.testing.assert_array_equal(variants.source_groups("cmip", cmip, "member"), ["CESM", "CESM", "MIROC"])
     np.testing.assert_array_equal(variants.source_groups("lens", cmip, "member"), ["CESM2", "CESM2-WACCM", "MIROC6"])
 
-    obs = obs_sources(["GLEAMv4.3a", "GLEAMv4.3b", "GLEAMv3.3a", "PMLv2.2a_MODIS", "PMLv2.2c", "GLEAMv4.3a"],
-                      ["L", "L", "L", "L", "L", "L2"])
+    obs = obs_sources(["GLEAMv4.3a", "GLEAMv4.3b", "GLEAMv3.3a", "PMLv2.2a_MODIS", "PMLv2.2c", "GLEAMv4.3a",
+                       "MOD16A2", "MODIS"],
+                      ["L", "L", "L", "L", "L", "L2", "L", "L"])
     np.testing.assert_array_equal(variants.source_groups("obs", obs, "source"), [
         "GLEAMv4.3-L-P-R", "GLEAMv4.3-L-P-R", "GLEAMv3.3a-L-P-R", "PMLv2.2-L-P-R", "PMLv2.2-L-P-R",
-        "GLEAMv4.3-L2-P-R",
+        "GLEAMv4.3-L2-P-R", "MOD16-L-P-R", "MOD16-L-P-R",
     ])
 
 
