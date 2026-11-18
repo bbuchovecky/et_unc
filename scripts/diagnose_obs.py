@@ -9,8 +9,10 @@ Products
 --------
 - ILAMB products in ILAMB_PRODUCTS (`il.load_native`), every variable.
 - Gridded products in GRIDDED_PRODUCTS (`lo.load_obs`, native monthly files):
-  ET of PML-V2.2, GLEAM v4.3, SiTHv2 and ERA5-Land (`le.load_era5_land`), Rn of CLARA-A3, and LAI of the NOAA
-  NCEI record (obs4MIPs, 0.05 deg), AVHRR v5 (to 2013; the CDR behind ILAMB's
+  ET of PML-V2.2, GLEAM v4.3, SiTHv2, ERA5-Land (`le.load_era5_land`),
+  FLUXCOM-X-BASE and GLDAS (2.0 and 2.1 Noah, 2.2 Catchment with GRACE data
+  assimilation), P of GPCP v3.3, Rn of CLARA-A3, and LAI of the NOAA NCEI
+  record (obs4MIPs, 0.05 deg), AVHRR v5 (to 2013; the CDR behind ILAMB's
   AVH15C1) and VIIRS v1 (from 2014) as separate products.
 A product without files is skipped.
 
@@ -122,7 +124,8 @@ RECORD_SLICE = slice(None, None)    # zonal and regional timeseries: each produc
 ILAMB_PRODUCTS = {v: list(il.PRODUCTS[v]) for v in VARIABLES}
 
 # Gridded products, read from their native monthly files: {variable: {label: (load_obs dataset, version,
-# variable)}}. ET as GRIDDED_ET_PRODUCTS of prep_obs.py (monthly totals); CLARA-A3 holds monthly mean W/m2
+# variable)}}. ET as GRIDDED_ET_PRODUCTS of prep_obs.py (monthly totals), plus FLUXCOM-X (mm hr-1) and GLDAS
+# (kg m-2 s-1); GPCP holds mm/day and CLARA-A3 W/m2, all monthly means
 GRIDDED_PRODUCTS = {
     "et": {
         "PMLv2.2a_MODIS": ("pml", "V2.2a-MODIS", "ET"),
@@ -131,6 +134,13 @@ GRIDDED_PRODUCTS = {
         "GLEAMv4.3b":     ("gleam", "v4.3b", "E"),
         "SiTHv2":         ("sith", "v2", "ET"),
         "ERA5-Land":      ("era5-land", "monthly-means", "e"),  # le.load_era5_land (version is a label)
+        "FLUXCOM-X-BASE": ("fluxcom-x", "X-BASE", "ET"),
+        "GLDAS-2.0":      ("gldas", "2.0", "Evap_tavg"),  # Noah, to 2014
+        "GLDAS-2.1":      ("gldas", "2.1", "Evap_tavg"),  # Noah
+        "GLDAS-2.2_GRACE-DA": ("gldas", "2.2-grace-da", "Evap_tavg"),  # Catchment, GRACE assimilation, from 2003-02
+    },
+    "pr": {
+        "GPCPv3.3": ("gpcp", "3.3", "sat_gauge_precip"),  # combined satellite-gauge (ILAMB's GPCP is v2.3)
     },
     "rn": {
         "CLARA-A3": ("clara", "A3", "SRB"),
@@ -201,9 +211,12 @@ def load(v: str, p: str) -> xr.DataArray:
             da = units.latent_heat_to_wm2(units.era5_land_evaporation_to_flux(da))
         else:
             da = lo.load_obs(dataset, var, RECORD_SLICE, version=version, freq="monthly")
-            if v == "et":
-                # Monthly totals -> kg m-2 s-1 -> W/m2
-                da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
+            if v in ("et", "pr"):
+                # Water depth per month (totals), day or hour (mean rates) -> kg m-2 s-1, unless already a flux
+                # (GLDAS); then -> W/m2
+                if da.attrs.get("units") != "kg m-2 s-1":
+                    da = units.accumulation_to_flux(da)
+                da = units.latent_heat_to_wm2(da)
     else:
         da = il.load_native(v, p, RECORD_SLICE)
         # Keyed on the file's units attr (kg m-2 s-1, W m-2, MJ m-2 day-1, mm/day)
@@ -451,14 +464,18 @@ def zonal_fraction(z: xr.Dataset) -> xr.DataArray:
 def product_colors(products: list[str], info: dict) -> tuple[dict, dict]:
     """
     Color of each product in fixed PALETTE order, and the groups of the line plots: all products together,
-    or ILAMB and gridded products apart when there are more than len(PALETTE).
+    or ILAMB and gridded products apart when there are more than len(PALETTE), each split into consecutive
+    groups of at most len(PALETTE) ("gridded 1/2", "gridded 2/2") if it is still longer.
     """
     if len(products) <= len(PALETTE):
         groups = {"all": products}
     else:
-        groups = {g: [p for p in products if info[p]["source"] == g] for g in ("ILAMB", "gridded")}
-    if any(len(ps) > len(PALETTE) for ps in groups.values()):
-        raise ValueError(f"more than {len(PALETTE)} products in a group: {groups}")
+        groups = {}
+        for g in ("ILAMB", "gridded"):
+            ps = [p for p in products if info[p]["source"] == g]
+            chunks = [ps[i:i + len(PALETTE)] for i in range(0, len(ps), len(PALETTE))]
+            for i, chunk in enumerate(chunks, 1):
+                groups[g if len(chunks) == 1 else f"{g} {i}/{len(chunks)}"] = chunk
     colors = {p: PALETTE[i] for ps in groups.values() for i, p in enumerate(ps)}
     return colors, groups
 

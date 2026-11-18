@@ -5,7 +5,7 @@ Unit conversions and net radiation. Water fluxes become their energy
 equivalent [W/m2] with L = LATENT_HEAT_VAPORIZATION. There are two conversion
 paths: `convert_units` keys on the variable name (CMIP, CESM, CLM, ERA5) and
 `latent_heat_to_wm2` on the `units` attr (ILAMB; `flux_to_wm2` also takes
-mm/day). `accumulation_to_flux` turns water depths per day, month or year
+mm/day). `accumulation_to_flux` turns water depths per hour, day, month or year
 (the gridded obs products) into kg m-2 s-1, and
 `era5_land_evaporation_to_flux` does the same for ERA5-Land evaporation
 (m of water per day, positive downward). Net radiation sign
@@ -92,12 +92,13 @@ def flux_to_wm2(da: xr.DataArray) -> xr.DataArray:
     return latent_heat_to_wm2(da)
 
 
-_ACCUMULATION_PERIODS = {"d": "day", "day": "day", "month": "month", "mon": "month", "year": "year", "yr": "year"}
+_ACCUMULATION_PERIODS = {"h": "hour", "hr": "hour", "hour": "hour", "d": "day", "day": "day",
+                         "month": "month", "mon": "month", "year": "year", "yr": "year"}
 
 
 def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
     """
-    Convert a water depth per day, month or year (mm/day, mm.month-1, mm/year, ...)
+    Convert a water depth per hour, day, month or year (mm hr-1, mm/day, mm.month-1, mm/year, ...)
     to a mass flux [kg m-2 s-1], using each time step's days in month or year.
     The result can go straight into ``latent_heat_to_wm2``.
     """
@@ -109,7 +110,9 @@ def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
 
     # Each time stamp must lie inside the month or year it covers (not at its end, as in
     # raw CESM output), or the wrong month length is used
-    if period == "day":
+    if period == "hour":  # a mean hourly rate (FLUXCOM-X)
+        days = 1 / 24
+    elif period == "day":
         days = 1
     elif period == "month":
         days = da.time.dt.days_in_month

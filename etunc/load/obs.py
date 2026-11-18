@@ -2,10 +2,11 @@
 etunc.load.obs
 ==============
 Load gridded observational products stored as NetCDF files per variable and
-year (GLEAM v4.3, PML-V2.2, NOAA NCEI AVHRR and VIIRS LAI), per variable and
-multi-year period (SiTHv2) or per variable and month (CLARA-A3) into a single
-DataArray over a time period. ``load_ncei_lai`` joins the AVHRR and VIIRS LAI
-records, with the sensor of each month as a coord.
+year (GLEAM v4.3, PML-V2.2, NOAA NCEI AVHRR and VIIRS LAI, FLUXCOM-X-BASE,
+GLDAS), per variable and multi-year period (SiTHv2), per variable and month
+(CLARA-A3) or per month with every variable (GPCP v3) into a single DataArray
+over a time period. ``load_ncei_lai`` joins the AVHRR and VIIRS LAI records,
+with the sensor of each month as a coord.
 
 Each product is described by an ``ObsDataset`` in ``DATASETS``: its root
 directory, a file path template, its versions and temporal frequencies, and
@@ -20,7 +21,7 @@ The path template may use the fields {version}, {freq}, {freq_dir}, {freq_tag},
 (one file per period, e.g. A1982_2022), plus {month} with {year} (one file per
 month). Any other field (e.g. {standard_name}) matches any text in that part of
 the path. A template without any year field (one file holding every year) also
-works. Only files overlapping the requested years are opened, and the time
+works, and so does one without {var} (every variable in each file, as GPCP). Only files overlapping the requested years are opened, and the time
 selection is applied after opening.
 
 ``load_obs_regridded`` reads the native files and conservatively regrids each time step in memory onto
@@ -40,6 +41,9 @@ Example
 >>> rn = lo.load_obs("clara", "SRB", slice("1995", "2014"))             # W m-2, monthly means
 >>> lai = lo.load_obs("avhrr", "lai", slice("2001", "2013"))            # m2 m-2, monthly means
 >>> lai = lo.load_ncei_lai(slice("2001", "2014"))                        # AVHRR to 2013, VIIRS in 2014
+>>> et = lo.load_obs("fluxcom-x", "ET", slice("2001", "2014"))          # mm hr-1, monthly means
+>>> et = lo.load_obs("gldas", "Evap_tavg", slice("2001", "2014"), version="2.0")  # kg m-2 s-1
+>>> pr = lo.load_obs("gpcp", "sat_gauge_precip", slice("2001", "2014"))  # v3.3, mm/day, monthly means
 >>> et = lo.load_obs_regridded("gleam", "E", slice("1995", "2014"), 0.5)  # regridded in memory
 >>> lo.list_variables("gleam"), lo.list_years("pml", "ET", version="V2.2b")
 >>> lo.list_files("sith", "ET")   # {path: (1982, 2022)}
@@ -76,9 +80,22 @@ Notes
   grid, whose lat/lon carry float32 noise (e.g. lon 0.0249939) that the
   rounding to ``coord_decimals`` removes. ``load_ncei_lai`` concatenates them
   without any adjustment at the 2014 switch of sensor and retrieval version.
+- FLUXCOM-X-BASE ET (0.5 deg, 2001-2021) holds monthly means of the hourly
+  rate (mm hr-1), NaN over the ocean; the files' static ``land_fraction`` is
+  not read.
+- GLDAS files are those of scripts/download/download_gldas.py: monthly means of
+  Evap_tavg (kg m-2 s-1, already a flux) on the native 0.25 deg grid (60S-90N),
+  from Earth Engine, for GLDAS-2.0 Noah (to 2014), 2.1 Noah and 2.2 Catchment
+  with GRACE data assimilation (from 2003-02; 2003-01 is NaN). The loader sets
+  a month to NaN where it has fewer valid time steps than the full month
+  (``n_steps`` < ``n_steps_full``), so every value is a complete-month mean.
+- GPCP v3 (GPCPMON, 0.5 deg, v3.3 1983-2025, v3.2 1983-2023) has one file per
+  month holding every variable (``sat_gauge_precip``: combined
+  satellite-gauge precipitation, mm/day monthly mean), ocean included, with
+  float32 coordinates. Each version is in its own folder (gpcp-v<version>).
 - Time stamps are kept as stored: GLEAM and SiTHv2 mark the end of each period
-  (1980-01-31, 1980-12-31), PML and CLARA-A3 the start (1980-01-01), NCEI LAI
-  the middle (1981-06-15).
+  (1980-01-31, 1980-12-31), PML, CLARA-A3, FLUXCOM-X, GLDAS and GPCP the start
+  (1980-01-01), NCEI LAI the middle (1981-06-15).
 """
 
 from __future__ import annotations
@@ -282,6 +299,49 @@ NCEI_LAI_SENSORS = (
     ("VIIRS LAI v1.0", "viirs", "v20260110"),
 )
 
+# FLUXCOM-X-BASE (Nelson et al. 2024, 0.5 deg, 2001-2021), from the ICOS Carbon Portal
+# (scripts/download/download_fluxcom_x.py): one file per variable and year, ET in mm hr-1
+register_dataset(ObsDataset(
+    name="fluxcom-x",
+    root=OBS_ROOT / "fluxcom-x",
+    template="050_{freq}/{var}/{var}_{year}_050_{freq}.nc",
+    versions=("X-BASE",),
+    freqs={"monthly": ""},
+))
+
+
+def _mask_incomplete_gldas_months(ds: xr.Dataset, var: str, version: str, freq: str) -> xr.Dataset:
+    """NaN where a monthly mean has fewer valid time steps than the month (n_steps < n_steps_full)."""
+    # Written by download_gldas.py next to each monthly mean, so a partial month is not taken as a full one
+    if "n_steps" not in ds:
+        return ds
+    with xr.set_options(keep_attrs=True):
+        return ds.assign({var: ds[var].where(ds["n_steps"] >= ds["n_steps_full"])})
+
+
+# GLDAS (0.25 deg, 60S-90N), monthly means of Evap_tavg (kg m-2 s-1) computed on Earth Engine by
+# scripts/download/download_gldas.py: one folder per product version, one file per year.
+# 2.1: Noah (2000 on), 2.0: Noah (to 2014), 2.2-grace-da: Catchment with GRACE data assimilation (2003-02 on)
+register_dataset(ObsDataset(
+    name="gldas",
+    root=OBS_ROOT / "gldas",
+    template="{version}/GLDAS_{version}_{var}_{freq}_{year}.nc",
+    versions=("2.1", "2.0", "2.2-grace-da"),
+    freqs={"monthly": ""},
+    preprocess=_mask_incomplete_gldas_months,
+))
+
+# GPCP v3 monthly precipitation (GPCPMON, 0.5 deg) from NASA GES DISC (scripts/download/download_gpcp.py):
+# one folder per version, one file per month holding every variable (no {var} in the file name), e.g.
+# gpcp-v3.3/GPCPMON_L3_200101_V3.3.nc4. Precipitation is sat_gauge_precip (mm/day)
+register_dataset(ObsDataset(
+    name="gpcp",
+    root=OBS_ROOT,
+    template="gpcp-v{version}/GPCPMON_L3_{year}{month}_V{version}.nc4",
+    versions=("3.3", "3.2"),
+    freqs={"monthly": ""},
+))
+
 
 def get_dataset(dataset: str | ObsDataset) -> ObsDataset:
     """Look up a registered product by name, or pass an `ObsDataset` through."""
@@ -371,6 +431,13 @@ def list_variables(dataset: str | ObsDataset, version: str | None = None, freq: 
     """Variables with at least one file for this version and frequency."""
     spec, version = _resolve(dataset, version, freq)
     found = _scan(spec, **_fixed_fields(spec, version, freq))
+    if not any(f == "var" for _, f, _, _ in string.Formatter().parse(spec.template)):
+        # Every variable is in each file (e.g. GPCP): the numeric time-varying variables of the first file
+        # (not time bounds)
+        if not found:
+            return []
+        with xr.open_dataset(found[0][1]) as ds:
+            return sorted(v for v in ds.data_vars if "time" in ds[v].dims and ds[v].dtype.kind in "fiu")
     return sorted({groups["var"] for groups, _ in found})
 
 
@@ -470,7 +537,8 @@ def load_obs(
 
     Parameters
     ----------
-    dataset : registered name ("gleam", "pml", "sith", "clara", "avhrr", "viirs", ...) or an `ObsDataset`.
+    dataset : registered name ("gleam", "pml", "sith", "clara", "avhrr", "viirs", "fluxcom-x", "gldas",
+        "gpcp", ...) or an `ObsDataset`.
     var : variable name as used in the directory and file names (e.g. "E", "ET").
     time_slice : passed to ``.sel(time=...)``; only files for the years it
         touches are opened.
@@ -520,7 +588,7 @@ def load_obs(
         join="exact",
         parallel=parallel,
     )
-    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML, CLARA-A3) of each period, so
+    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML, CLARA-A3, FLUXCOM-X, GLDAS, GPCP) of each period, so
     # slice with year or year-month strings rather than exact dates
     da = ds[var].sel(time=time_slice)
     if lat_bnds is not None:

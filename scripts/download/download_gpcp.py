@@ -1,9 +1,11 @@
-"""Download GPCP V3.2 monthly precipitation (GPCPMON, 0.5 deg, 1983-01 to 2023-12) from NASA GES DISC.
-Dataset: GPCP Precipitation Level 3 Monthly 0.5-Degree V3.2, Huffman et al., doi:10.5067/MEASURES/GPCP/DATA304
+"""Download GPCP V3.3 monthly precipitation (GPCPMON, 0.5 deg, 1983-01 to 2025-12) from NASA GES DISC.
+Dataset: GPCP Precipitation Level 3 Monthly 0.5-Degree V3.3, Huffman et al., doi:10.5067/MEASURES/GPCP/DATA306
+(V3.2, 1983-01 to 2023-12, is doi:10.5067/MEASURES/GPCP/DATA304: set VERSION = "3.2".)
 The file URLs are listed by the NASA CMR granule search (https://cmr.earthdata.nasa.gov/search/site/docs/search/api.html).
 
-Local layout:  OUTPUT_ROOT/GPCPMON_L3_<yyyymm>_V3.2.nc4   (one file per month, ~6.5 MB, 492 files, ~3.2 GB)
-OUTPUT_ROOT is SCRATCH_ROOT/gpcp-v<VERSION> (config/paths.yml); move it to OBS_ROOT by hand once complete.
+Local layout:  OUTPUT_ROOT/GPCPMON_L3_<yyyymm>_V3.3.nc4   (one file per month, ~7.4 MB, 516 files, ~3.8 GB)
+OUTPUT_ROOT is SCRATCH_ROOT/gpcp-v<VERSION> (config/paths.yml); move it to OBS_ROOT by hand once complete,
+where etunc.load.obs (dataset "gpcp") reads OBS_ROOT/gpcp-v<VERSION>.
 Each file is written to <name>.part and renamed only once it is complete and starts with the HDF5
 signature (netCDF-4), so a file that exists is complete: re-running is safe and retries only the
 missing files.

@@ -103,8 +103,12 @@ def test_bad_names(spec):
 
 
 def test_registered_datasets():
-    """GLEAM, PML, SiTHv2, CLARA-A3 and NCEI AVHRR/VIIRS LAI are registered; names are case-insensitive."""
-    assert {"gleam", "pml", "sith", "clara", "avhrr", "viirs"} <= set(lo.DATASETS)
+    """
+    GLEAM, PML, SiTHv2, CLARA-A3, NCEI AVHRR/VIIRS LAI, FLUXCOM-X, GLDAS and GPCP are registered (GPCP v3.3 by
+    default); names are case-insensitive.
+    """
+    assert {"gleam", "pml", "sith", "clara", "avhrr", "viirs", "fluxcom-x", "gldas", "gpcp"} <= set(lo.DATASETS)
+    assert lo.get_dataset("gpcp").versions[0] == "3.3" and lo.get_dataset("gldas").versions[0] == "2.1"
     assert [d for _, d, _ in lo.NCEI_LAI_SENSORS] == ["avhrr", "viirs"]
     assert lo.get_dataset("PML") is lo.DATASETS["pml"]
 
@@ -290,6 +294,95 @@ def test_load_ncei_lai_overlap_and_missing_raise(ncei_lai, monkeypatch):
         lo.load_ncei_lai(slice("2012", "2013"))
 
 
+def test_load_obs_fluxcom_x(tmp_path):
+    """
+    FLUXCOM-X layout: per-year files of one variable, lat descending, a static land_fraction that is not
+    read, ET in mm hr-1 left as stored.
+    """
+    s = replace(lo.get_dataset("fluxcom-x"), root=tmp_path)
+    lat, lon = np.array([0.25, -0.25]), np.array([-0.25, 0.25])
+    for year in (2001, 2002):
+        time = pd.date_range(f"{year}-01", periods=12, freq="MS")
+        ds = xr.Dataset({"ET": (("time", "lat", "lon"), np.full((12, 2, 2), 0.1, "float32"), {"units": "mm hr-1"}),
+                         "land_fraction": (("lat", "lon"), np.ones((2, 2)))},
+                        coords={"time": time, "lat": lat, "lon": lon})
+        path = tmp_path / f"050_monthly/ET/ET_{year}_050_monthly.nc"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ds.to_netcdf(path)
+
+    assert lo.list_variables(s) == ["ET"] and lo.list_years(s, "ET") == [2001, 2002]
+    da = lo.load_obs(s, "ET", slice("2002", "2002"))
+    assert da.name == "ET" and da.dims == ("time", "lat", "lon") and da.sizes["time"] == 12
+    np.testing.assert_array_equal(da.lat, [-0.25, 0.25])
+    assert da.attrs["units"] == "mm hr-1" and da.attrs["dataset"] == "fluxcom-x"
+
+
+def write_gldas(root, version, year, n_steps_full=8):
+    """One year of a download_gldas.py file: Evap_tavg, and n_steps = n_steps_full except one cell-month."""
+    time = pd.date_range(f"{year}-01", periods=12, freq="MS")
+    n_steps = np.full((12, 2, 2), n_steps_full, dtype="int16")
+    n_steps[0, 0, 0] = n_steps_full - 1  # an incomplete month
+    n_steps[:, 1, 1] = 0                  # ocean: no time step, NaN
+    evap = np.where(n_steps > 0, 1e-5, np.nan).astype("float32")
+    ds = xr.Dataset({"Evap_tavg": (("time", "lat", "lon"), evap, {"units": "kg m-2 s-1"}),
+                     "n_steps": (("time", "lat", "lon"), n_steps),
+                     "n_steps_full": ("time", np.full(12, n_steps_full, dtype="int16"))},
+                    coords={"time": time, "lat": [-0.125, 0.125], "lon": [-0.125, 0.125]})
+    path = root / f"{version}/GLDAS_{version}_Evap_tavg_monthly_{year}.nc"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ds.to_netcdf(path)
+
+
+def test_load_obs_gldas(tmp_path):
+    """
+    GLDAS layout: one folder per version; a month with fewer valid time steps than the full month is NaN,
+    and the n_steps variables are not returned.
+    """
+    s = replace(lo.get_dataset("gldas"), root=tmp_path)
+    write_gldas(tmp_path, "2.1", 2001)
+    write_gldas(tmp_path, "2.2-grace-da", 2003, n_steps_full=31)
+
+    assert lo.list_variables(s) == ["Evap_tavg"] and lo.list_years(s, "Evap_tavg", version="2.2-grace-da") == [2003]
+    da = lo.load_obs(s, "Evap_tavg").load()  # default version 2.1
+    assert da.name == "Evap_tavg" and da.attrs["version"] == "2.1" and da.attrs["units"] == "kg m-2 s-1"
+    assert np.isnan(da.isel(time=0, lat=0, lon=0)) and np.isfinite(da.isel(time=1, lat=0, lon=0))
+    assert int(da.isnull().sum()) == 1 + 12  # the incomplete month and the ocean cell
+    with pytest.raises(FileNotFoundError):
+        lo.load_obs(s, "Evap_tavg", version="2.0")
+
+
+def test_load_obs_gpcp(tmp_path):
+    """
+    GPCP layout: one folder per version, one file per month holding every variable (no {var} in the name),
+    float32 coords with lat descending.
+    """
+    s = replace(lo.get_dataset("gpcp"), root=tmp_path)
+    lat = np.array([0.25, -0.25], dtype="float32")
+    lon = np.array([-0.25, 0.25], dtype="float32")
+    for version, years in (("3.3", (2000, 2001)), ("3.2", (2000,))):
+        (tmp_path / f"gpcp-v{version}").mkdir()
+        for year in years:
+            for month in range(1, 13):
+                time = pd.DatetimeIndex([f"{year}-{month:02d}-01"])
+                full = np.full((1, 2, 2), month, "float32")
+                ds = xr.Dataset({"sat_gauge_precip": (("time", "lat", "lon"), full, {"units": "mm/day"}),
+                                 "gauge_precip": (("time", "lat", "lon"), full, {"units": "mm/day"}),
+                                 "time_bnds": (("time", "bnds"), np.array([[time[0], time[0]]]))},
+                                coords={"time": time, "lat": lat, "lon": lon})
+                ds.to_netcdf(tmp_path / f"gpcp-v{version}/GPCPMON_L3_{year}{month:02d}_V{version}.nc4")
+
+    assert lo.list_variables(s) == ["gauge_precip", "sat_gauge_precip"]  # from the file; no time bounds
+    assert lo.list_years(s, "sat_gauge_precip") == [2000, 2001]
+    assert lo.list_years(s, "sat_gauge_precip", version="3.2") == [2000]
+    da = lo.load_obs(s, "sat_gauge_precip", slice("2000-11", "2001-02"))
+    assert da.sizes["time"] == 4 and da.attrs["version"] == "3.3" and da.attrs["units"] == "mm/day"
+    assert da.lat.dtype == np.float64
+    np.testing.assert_array_equal(da.lat, [-0.25, 0.25])
+    np.testing.assert_array_equal(da.isel(lat=0, lon=0), [11, 12, 1, 2])
+    with pytest.raises(FileNotFoundError, match="Available variables"):
+        lo.load_obs(s, "sat_gauge_precip", slice("2005", "2005"))
+
+
 def test_gleam_units_fix():
     """The mislabeled units of GLEAM v4.3b yearly files are corrected to mm.year-1."""
     ds = xr.Dataset({"E": ("time", [1.0], {"units": "mm.day-1"})})
@@ -339,9 +432,10 @@ def test_gleam_v43b_needs_v43a_file(gleam, tmp_path):
     ("mm.year-1", ["2004-12-31"], [366]),
     ("mm/day", ["2000-01-01"], [1]),
     ("mm.day-1", ["2000-01-01"], [1]),
+    ("mm hr-1", ["2000-01-01"], [1 / 24]),  # FLUXCOM-X: mean hourly rate
 ])
 def test_accumulation_to_flux(units, time, days):
-    """Totals in mm per month, year or day are divided by the length of each time step's period in seconds."""
+    """Water depths per month, year, day or hour are divided by the length of the period in seconds."""
     da = xr.DataArray(np.ones(len(time)), dims="time", coords={"time": pd.DatetimeIndex(time)},
                       attrs={"units": units, "long_name": "x"})
     out = accumulation_to_flux(da)
@@ -350,7 +444,7 @@ def test_accumulation_to_flux(units, time, days):
 
 
 def test_accumulation_to_flux_bad_units():
-    """Units other than mm per day, month or year raise."""
+    """Units other than mm per hour, day, month or year raise."""
     da = xr.DataArray([1.0], dims="time", coords={"time": pd.DatetimeIndex(["2000-01-01"])},
                       attrs={"units": "gC/m2/month"})
     with pytest.raises(ValueError, match="Cannot convert"):
