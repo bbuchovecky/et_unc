@@ -34,7 +34,8 @@ prep:
       lai: [GIMMS_LAI4g]
       pr: [GPCPv2.3]
       rn: [CERESed4.2]
-    # Gridded ET products read from their native files: {label: lo.load_obs arguments}
+    # Gridded ET products read from their native files: {label: lo.load_obs arguments}. dataset era5-land
+    # is read by le.load_era5_land (variable only; version is a label)
     gridded_et_products:
       PMLv2.2a_MODIS: {dataset: pml, version: V2.2a-MODIS, variable: ET, freq: monthly}
       # PMLv2.2b:     {dataset: pml, version: V2.2b, variable: ET, freq: monthly}
@@ -42,6 +43,7 @@ prep:
       GLEAMv4.3a:     {dataset: gleam, version: v4.3a, variable: E, freq: monthly}
       GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly}
       SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly}
+      ERA5-Land:      {dataset: era5-land, version: monthly-means, variable: e, freq: monthly}
   era5:
     lai_product: GIMMS_LAI4g  # ILAMB LAI product (ERA5 has no LAI); GIMMS_LAI4g covers all of time_slice
   cmip:

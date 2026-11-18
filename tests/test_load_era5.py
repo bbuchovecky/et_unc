@@ -97,3 +97,60 @@ def test_load_land_fraction(gdex):
     np.testing.assert_array_equal(landfrac.isel(lat=0) == 1, land)
     np.testing.assert_array_equal(src_grid.lat, landfrac.lat)
     assert src_grid.sizes["lat_b"] == landfrac.sizes["lat"] + 1
+
+
+# ------------------------------------------------------------------
+# ERA5-Land
+# ------------------------------------------------------------------
+
+# Evaporation in m of water per day, positive downward (so negative), as in the CDS monthly means
+E_VALUE = -2e-3
+
+
+def write_land_year(root, year):
+    """One CDS-like ERA5-Land yearly file: `valid_time`, lat descending with the poles, the CDS aux coords."""
+    time = pd.date_range(f"{year}-01-01", periods=12, freq="MS")
+    e = np.full((12, LAT.size, LON.size), E_VALUE, dtype="f4")
+    e[:, :, LON < 180] = np.nan  # ocean (NaN) in the eastern hemisphere
+    ds = xr.Dataset(
+        {"e": (("valid_time", "latitude", "longitude"), e, {"units": "m of water equivalent"})},
+        coords={"valid_time": time, "latitude": LAT, "longitude": LON, "number": 0,
+                "expver": ("valid_time", np.full(12, "0001"))},
+    )
+    d = root / "monthly" / str(year)
+    d.mkdir(parents=True)
+    ds.to_netcdf(d / "data_stream-moda.nc")
+
+
+@pytest.fixture
+def era5_land(tmp_path, monkeypatch):
+    """ERA5-Land tree with 2000 and 2001, plus a file that is not a year directory."""
+    root = tmp_path / "era5-land"
+    for year in (2000, 2001):
+        write_land_year(root, year)
+    (root / "monthly" / "README").write_text("not a year")
+    monkeypatch.setattr(le, "ERA5_LAND_ROOT", root)
+    return root
+
+
+def test_load_era5_land_raw_months_on_formatted_grid(era5_land):
+    """
+    load_era5_land returns the variable's monthly field over the time slice only, with time/lat/lon dims, lon
+    in [-180, 180) and lat ascending, in native units and sign (e stays negative), without the CDS aux coords.
+    """
+    e = le.load_era5_land("e", slice("2000-03", "2001-06"))
+    assert e.dims == ("time", "lat", "lon")
+    assert e.sizes["time"] == 16 and str(e.time.values[0])[:7] == "2000-03" and str(e.time.values[-1])[:7] == "2001-06"
+    assert np.all(np.diff(e.lat) > 0) and e.lon.min() >= -180 and e.lon.max() < 180
+    assert "expver" not in e.coords and "number" not in e.coords
+    assert e.attrs["units"] == "m of water equivalent"
+    # Land (GDEX lon 180-360) is now lon [-180, 0); ocean stays NaN
+    np.testing.assert_allclose(e.where(e.lon < 0, drop=True), E_VALUE)
+    assert e.where(e.lon >= 0, drop=True).isnull().all()
+
+
+def test_load_era5_land_open_slice_and_missing_year(era5_land):
+    """An open-ended slice reads every year on disk; a requested year without a file raises."""
+    assert le.load_era5_land("e", slice(None, None)).sizes["time"] == 24
+    with pytest.raises(FileNotFoundError, match="2002"):
+        le.load_era5_land("e", slice("2001-01", "2002-12"))

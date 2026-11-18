@@ -13,7 +13,7 @@ Each data family is prepared separately and then binned on the same edges:
 
 | Family | Data | Source |
 | --- | --- | --- |
-| `obs` | ET: ILAMB products, PML-V2.2, GLEAM v4.3, SiTHv2. LAI: GIMMS_LAI4g. P: GPCPv2.3. Rn: CERESed4.2 | `scripts/download/` |
+| `obs` | ET: ILAMB products, PML-V2.2, GLEAM v4.3, SiTHv2, ERA5-Land. LAI: GIMMS_LAI4g. P: GPCPv2.3. Rn: CERESed4.2 | `scripts/download/` (ERA5-Land: Copernicus CDS) |
 | `era5` | ERA5 ET, P, Rn with obs LAI | NCAR GDEX |
 | `cmip` | CMIP6 historical, one member per model | external `cmip-intake-esgf-fetch` catalogs |
 | `lens` | CESM2 Large Ensemble | NCAR GDEX |
@@ -77,7 +77,7 @@ makes `run_all.pbs` start at `make-edges`. Each task's log, with the git commit 
   `ETUNC_RUN=config/runs/<name>.yml`.
 - Every run is identified by hashes of its settings. `PREP_ID` (`p…`) hashes `prep`, and `RUN_ID` (`r…`)
   hashes `prep` + `binning`. Each script records its run in `config/runs.csv`. The defaults are
-  `p2abea0a` / `r183a58a`.
+  `p22665b4` / `r42915ba`.
 - Outputs go to `<work_root>/{proc,fig}/<id>/<family>/<kind>/`, with file names ending in `.<id>.nc`.
   Prep inputs are stored under the `PREP_ID`; everything from `make-edges` on is under the `RUN_ID`.
 

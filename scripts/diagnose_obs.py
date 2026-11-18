@@ -9,7 +9,7 @@ Products
 --------
 - ILAMB products in ILAMB_PRODUCTS (`il.load_native`), every variable.
 - Gridded products in GRIDDED_PRODUCTS (`lo.load_obs`, native monthly files):
-  ET of PML-V2.2, GLEAM v4.3 and SiTHv2, Rn of CLARA-A3, and LAI of the NOAA
+  ET of PML-V2.2, GLEAM v4.3, SiTHv2 and ERA5-Land (`le.load_era5_land`), Rn of CLARA-A3, and LAI of the NOAA
   NCEI record (obs4MIPs, 0.05 deg), AVHRR v5 (to 2013; the CDR behind ILAMB's
   AVH15C1) and VIIRS v1 (from 2014) as separate products.
 A product without files is skipped.
@@ -90,6 +90,7 @@ import etunc.grid as rg
 import etunc.plotting as plotting
 import etunc.temporal as temporal
 import etunc.units as units
+import etunc.load.era5 as le
 import etunc.load.ilamb as il
 import etunc.load.obs as lo
 
@@ -129,6 +130,7 @@ GRIDDED_PRODUCTS = {
         "GLEAMv4.3a":     ("gleam", "v4.3a", "E"),
         "GLEAMv4.3b":     ("gleam", "v4.3b", "E"),
         "SiTHv2":         ("sith", "v2", "ET"),
+        "ERA5-Land":      ("era5-land", "monthly-means", "e"),  # le.load_era5_land (version is a label)
     },
     "rn": {
         "CLARA-A3": ("clara", "A3", "SRB"),
@@ -193,15 +195,21 @@ def load(v: str, p: str) -> xr.DataArray:
     """
     if p in GRIDDED_PRODUCTS.get(v, {}):
         dataset, version, var = GRIDDED_PRODUCTS[v][p]
-        da = lo.load_obs(dataset, var, RECORD_SLICE, version=version, freq="monthly")
-        if v == "et":
-            # Monthly totals -> kg m-2 s-1 -> W/m2
-            da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
+        if dataset == "era5-land":
+            # Mean daily evaporation [m of water/day, positive downward] -> kg m-2 s-1 (positive upward) -> W/m2
+            da = le.load_era5_land(var, RECORD_SLICE)
+            da = units.latent_heat_to_wm2(units.era5_land_evaporation_to_flux(da))
+        else:
+            da = lo.load_obs(dataset, var, RECORD_SLICE, version=version, freq="monthly")
+            if v == "et":
+                # Monthly totals -> kg m-2 s-1 -> W/m2
+                da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
     else:
         da = il.load_native(v, p, RECORD_SLICE)
         # Keyed on the file's units attr (kg m-2 s-1, W m-2, MJ m-2 day-1, mm/day)
         da = da.assign_attrs(units="m2/m2") if v == "lai" else units.flux_to_wm2(da)
-    # Pipeline domain without Antarctica; LAT_BNDS (-58) is a cell edge of every product's grid
+    # Pipeline domain without Antarctica; LAT_BNDS (-58) is a cell edge of every product's grid but ERA5-Land's
+    # (centers on whole tenths), whose -58 row, half below -58, is kept
     return da.sel(lat=LAT_BNDS).rename(v).chunk({"time": 12, "lat": -1, "lon": -1})
 
 

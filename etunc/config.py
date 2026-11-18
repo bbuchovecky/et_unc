@@ -149,7 +149,7 @@ def _ppe_member(value, name: str) -> int:
 
 
 ILAMB_VARIABLES = ("et", "lai", "pr", "rn")
-GRIDDED_PRODUCT_KEYS = ("dataset", "version", "variable", "freq")  # lo.load_obs arguments
+GRIDDED_PRODUCT_KEYS = ("dataset", "version", "variable", "freq")  # lo.load_obs arguments (or le.load_era5_land)
 CMIP_MEMBER_CHOICES = ("top", "max_r", "all")  # cmip.select_members
 N_PPE_MEMBERS = 28
 TRENDY_EXPERIMENTS_ALL = ("S2", "S3")  # as etunc.load.trendy.EXPERIMENTS (which imports this module)
@@ -291,7 +291,7 @@ LF_THRESH = SETTINGS["prep"]["lf_thresh"]
 
 # Products, models and members of each family (prep.<family>), read by prep_<family>.py
 OBS_ILAMB_PRODUCTS = SETTINGS["prep"]["obs"]["ilamb_products"]            # {variable: products or None (all)}
-OBS_GRIDDED_ET_PRODUCTS = SETTINGS["prep"]["obs"]["gridded_et_products"]  # {label: lo.load_obs arguments}
+OBS_GRIDDED_ET_PRODUCTS = SETTINGS["prep"]["obs"]["gridded_et_products"]  # {label: lo.load_obs arguments; era5-land: le.load_era5_land}
 ERA5_LAI_PRODUCT = SETTINGS["prep"]["era5"]["lai_product"]
 CMIP_SOURCE_IDS = SETTINGS["prep"]["cmip"]["source_ids"]
 CMIP_OMIT_SOURCE_IDS = SETTINGS["prep"]["cmip"]["omit_source_ids"]

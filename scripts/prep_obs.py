@@ -11,7 +11,10 @@ Products
 --------
 - ILAMB products in ILAMB_PRODUCTS (`il.load_native`): ET, LAI, P and Rn.
 - Gridded ET products in GRIDDED_ET_PRODUCTS (`lo.load_obs`, native 0.1 deg
-  files of monthly or yearly totals): PML-V2.2, GLEAM v4.3, SiTHv2.
+  files of monthly or yearly totals): PML-V2.2, GLEAM v4.3, SiTHv2; and
+  ERA5-Land total evaporation (dataset "era5-land", `le.load_era5_land`,
+  0.1 deg monthly means of daily accumulations). ERA5-Land is an offline
+  land model run forced by ERA5, so it is not independent of the era5 family.
 ERA5 is its own family (prep_era5.py). Native land mask: Natural Earth land
 (the products have no land fraction), without Greenland and Iceland. A product
 without data in TIME_SLICE is skipped.
@@ -52,6 +55,7 @@ import etunc.grid as rg
 import etunc.plotting as plotting
 import etunc.temporal as temporal
 import etunc.units as units
+import etunc.load.era5 as le
 import etunc.load.ilamb as il
 import etunc.load.obs as lo
 
@@ -72,7 +76,8 @@ FACTORS = ("et", "lai", "pr", "rn")  # order of the products in a combination
 # Products: prep.obs of config/pipeline.yml
 # ILAMB products used, by variable (keys of il.PRODUCTS[variable]); None = all of its il.PRODUCTS
 ILAMB_PRODUCTS = cfg.OBS_ILAMB_PRODUCTS
-# Gridded ET products, read from their native files: {label: {dataset, version, variable, freq}} (lo.load_obs)
+# Gridded ET products, read from their native files: {label: {dataset, version, variable, freq}} (lo.load_obs;
+# dataset "era5-land": le.load_era5_land, which uses only the variable)
 GRIDDED_ET_PRODUCTS = cfg.OBS_GRIDDED_ET_PRODUCTS
 
 
@@ -86,10 +91,11 @@ def main():
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
 
-    # (variable, product, kind) of every product
+    # (variable, product, kind) of every product; kind "era5-land" is read by le.load_era5_land
     products = (
         [(v, p, "ilamb") for v in FACTORS for p in (ILAMB_PRODUCTS[v] or il.PRODUCTS[v])]
-        + [("et", p, "gridded") for p in GRIDDED_ET_PRODUCTS]
+        + [("et", p, "era5-land" if g["dataset"] == "era5-land" else "gridded")
+           for p, g in GRIDDED_ET_PRODUCTS.items()]
     )
 
     # ------------------------------------------------------------------
@@ -108,7 +114,10 @@ def main():
             else:
                 g = GRIDDED_ET_PRODUCTS[p]
                 freq = g["freq"]
-                da = lo.load_obs(g["dataset"], g["variable"], TIME_SLICE, version=g["version"], freq=freq)
+                if kind == "era5-land":
+                    da = le.load_era5_land(g["variable"], TIME_SLICE)
+                else:
+                    da = lo.load_obs(g["dataset"], g["variable"], TIME_SLICE, version=g["version"], freq=freq)
         except FileNotFoundError as err:
             print(f"{err}; skipping {label}")
             continue
@@ -117,13 +126,16 @@ def main():
         if kind == "ilamb":
             # Keyed on the file's units attr (kg m-2 s-1, W m-2, MJ m-2 day-1, mm/day)
             da = da.assign_attrs(units="m2/m2") if v == "lai" else units.flux_to_wm2(da)
+        elif kind == "era5-land":
+            # Mean daily evaporation [m of water/day, positive downward] -> kg m-2 s-1 (positive upward) -> W/m2
+            da = units.latent_heat_to_wm2(units.era5_land_evaporation_to_flux(da))
         else:
             # Totals per month (or year) -> kg m-2 s-1 -> W/m2
             da = units.latent_heat_to_wm2(units.accumulation_to_flux(da))
 
         # 4. Annual means over complete years: ET, P and Rn need all 12 months, a missing LAI month
         # counts as 0. A yearly total (gridded products only) is already the annual mean
-        if kind == "gridded" and freq == "yearly":
+        if kind != "ilamb" and freq == "yearly":
             a = temporal.yearly_to_annual(da).load()
         else:
             a = temporal.aggregate(da, "year", require_all_months=(v != "lai"), label=label)
@@ -190,7 +202,7 @@ def main():
     # ET is NaN in the years outside a combination's shared years
     inputs = xr.concat(combos, dim="member", join="outer", combine_attrs="drop_conflicts")
     inputs.attrs = {
-        "family": FAMILY, "dataset": "observational products (ILAMB, gridded ET)",
+        "family": FAMILY, "dataset": "observational products (ILAMB, gridded ET, ERA5-Land)",
         "time_period": temporal.period_str(inputs.year.values), "grid": grid, "prep_id": cfg.PREP_ID,
         # Products in at least one saved combination
         "native_res": "; ".join(

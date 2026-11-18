@@ -52,7 +52,7 @@ Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scrip
 	- Missing LAI months count as zero
 	- The number of gridcell-years affected is printed
 5. Mask to land and remove AR6 region 0 (`grid.mask_to_land`) [native grid]
-	- Use Natural Earth for observational products (ILAMB, PML, GLEAM, SiTH): `grid.landne_mask`
+	- Use Natural Earth for observational products (ILAMB, PML, GLEAM, SiTH, ERA5-Land): `grid.landne_mask`
 	- Use land fraction > `LF_THRESH` for model output and ERA5, since they have a land fraction variable: `grid.landfrac_mask`
 	- ERA5 family: ERA5 ET, P and Rn use the ERA5 land fraction, and its obs LAI (GIMMS_LAI4g) uses Natural Earth
 	- CMIP6 only: annual LAI missing on land is set to 0 (some models leave LAI undefined where there is no vegetation)
@@ -129,6 +129,7 @@ Core modules and their respective functions.
 load/*.py:
 load_native(...)                         # step 1: raw monthly fields in native units
 obs.load_obs(dataset, var, time_slice)   # step 1 for the gridded obs products
+era5.load_era5_land(variable, time_slice)  # step 1 for ERA5-Land (obs ET product, dataset "era5-land")
 trendy.load_forcing(variable, time_slice)  # step 1 for the TRENDY forcing ("pre": P in mm/month, "dlwrf", "fd")
 load_land_fraction()                     # land fraction and native grid (era5, cmip, cesm)
 
@@ -136,6 +137,7 @@ units.py:
 convert_units()                          # keyed on the variable name (CMIP, CESM, ERA5)
 flux_to_wm2() / latent_heat_to_wm2()     # keyed on the units attr (ILAMB)
 accumulation_to_flux()                   # totals per month/year (gridded obs)
+era5_land_evaporation_to_flux()          # ERA5-Land evaporation, m/day positive downward
 net_radiation_*()
 
 temporal.py:

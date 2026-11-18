@@ -196,6 +196,21 @@ def test_latent_heat_to_wm2_unknown_units():
         units.latent_heat_to_wm2(xr.DataArray([1.0], attrs={"units": "mm d-1"}))
 
 
+def test_era5_land_evaporation_to_flux():
+    """
+    ERA5-Land evaporation, m of water per day and positive downward, becomes a mass flux positive upward:
+    -1e-3 m/day (1 mm/day of evaporation) = 1/86400 kg m-2 s-1; any other units raise.
+    """
+    e = xr.DataArray([-1e-3, 0.0, 2e-4], attrs={"units": "m of water equivalent", "long_name": "Evaporation"})
+    out = units.era5_land_evaporation_to_flux(e)
+    np.testing.assert_allclose(out, [1 / 86400, 0.0, -0.2 / 86400], rtol=1e-12)
+    assert out.attrs == {"units": "kg m-2 s-1", "long_name": "Evaporation"}
+    # Then to W/m2 as every other ET product: 1 mm/day = L / 86400 W/m2
+    np.testing.assert_allclose(units.latent_heat_to_wm2(out)[0], config.LATENT_HEAT_VAPORIZATION / 86400)
+    with pytest.raises(ValueError, match="mm/day"):
+        units.era5_land_evaporation_to_flux(e.assign_attrs(units="mm/day"))
+
+
 def test_landfrac_and_greenland_masks():
     """
     landfrac_mask is True where land fraction > threshold, except in Greenland (greenland_mask False there);

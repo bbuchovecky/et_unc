@@ -6,7 +6,9 @@ equivalent [W/m2] with L = LATENT_HEAT_VAPORIZATION. There are two conversion
 paths: `convert_units` keys on the variable name (CMIP, CESM, CLM, ERA5) and
 `latent_heat_to_wm2` on the `units` attr (ILAMB; `flux_to_wm2` also takes
 mm/day). `accumulation_to_flux` turns water depths per day, month or year
-(the gridded obs products) into kg m-2 s-1. Net radiation sign
+(the gridded obs products) into kg m-2 s-1, and
+`era5_land_evaporation_to_flux` does the same for ERA5-Land evaporation
+(m of water per day, positive downward). Net radiation sign
 conventions differ by source, so each has its own `net_radiation_*`.
 """
 
@@ -114,6 +116,22 @@ def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
     else:
         days = xr.where(da.time.dt.is_leap_year, 366, 365)
     out = da / (days * 86400)  # 1 mm of liquid water = 1 kg m-2
+    out.attrs = {**da.attrs, "units": "kg m-2 s-1"}
+    return out
+
+
+def era5_land_evaporation_to_flux(da: xr.DataArray) -> xr.DataArray:
+    """
+    Convert ERA5-Land monthly mean evaporation "e" to a mass flux [kg m-2 s-1],
+    positive upward. The monthly means of ERA5-Land accumulations are means of
+    daily accumulations, so "m of water equivalent" is m of water per day, and
+    ECMWF fluxes are positive downward, so evaporation is negative. The result
+    can go straight into ``latent_heat_to_wm2``.
+    """
+    units = str(da.attrs.get("units", ""))
+    if units != "m of water equivalent":
+        raise ValueError(f"Cannot convert units {units!r} of {da.name!r}: expected 'm of water equivalent' per day")
+    out = -da * LIQ_WATER_DENSITY / 86400  # m/day -> kg m-2 s-1, sign flipped to positive upward
     out.attrs = {**da.attrs, "units": "kg m-2 s-1"}
     return out
 
