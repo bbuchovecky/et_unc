@@ -8,6 +8,8 @@ longwave and net fluxes. The thematic climate data record (TCDR) covers 1979-202
 record (ICDR, CDR_TYPE = "interim_climate_data_record") continues it from 2021.
 
 Local layout:  OUTPUT_ROOT/<variable>/<year>/*.nc
+OUTPUT_ROOT is SCRATCH_ROOT/clara-a3 (config/paths.yml); move it to OBS_ROOT/clara-a3, where
+etunc.load.obs reads it, by hand once complete.
 There is one CDS request per variable and year, sent one at a time: the CDS rejects requests
 beyond its per-user queue limit for this dataset ("Maximum number queued requests ... reached").
 A year whose folder exists is skipped, so re-running is safe and retries only the failed requests.
@@ -22,11 +24,12 @@ Long runs: run inside tmux, or nohup ... > download_clara_a3.log 2>&1 &
 import shutil
 import time
 import zipfile
-from pathlib import Path
 
 import cdsapi
 
-OUTPUT_ROOT = Path("/glade/derecho/scratch/bbuchovecky/clara-a3")
+from etunc.config import SCRATCH_ROOT
+
+OUTPUT_ROOT = SCRATCH_ROOT / "clara-a3"
 DATASET = "satellite-surface-radiation-budget"
 CDR_TYPE = "thematic_climate_data_record"
 YEARS = range(1979, 2021)

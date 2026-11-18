@@ -338,6 +338,9 @@ if not PATHS_FILE.exists():
         "and edit it for this machine (or set ETUNC_PATHS)")
 PATHS = read_yaml(PATHS_FILE)
 
+# Downloads (scripts/download/ write here first; moved to OBS_ROOT by hand)
+SCRATCH_ROOT = Path(PATHS["scratch_root"])
+
 # Inputs
 CAMPAIGN_ROOT = Path(PATHS["campaign_root"])
 OBS_ROOT = Path(PATHS["obs_root"])
@@ -361,6 +364,22 @@ WORK_ROOT = Path(PATHS["work_root"])
 PROC_ROOT = WORK_ROOT / "proc"
 FIG_ROOT = WORK_ROOT / "fig"
 LOG_ROOT = WORK_ROOT / "logs"
+
+# Logins of the download servers of scripts/download/: config/auth.yml (gitignored, template
+# config/auth.example.yml), or the file named by ETUNC_AUTH. Read only when a download script asks.
+AUTH_FILE = Path(os.environ.get("ETUNC_AUTH") or CONFIG_ROOT / "auth.yml")
+
+
+def auth(service: str) -> dict:
+    """Login ({"user": ..., "password": ...}) of a download server, from AUTH_FILE."""
+    if not AUTH_FILE.exists():
+        raise FileNotFoundError(
+            f"No auth file {AUTH_FILE}: copy {CONFIG_ROOT / 'auth.example.yml'} to {CONFIG_ROOT / 'auth.yml'}, "
+            "fill in the logins and chmod 600 it (or set ETUNC_AUTH)")
+    logins = read_yaml(AUTH_FILE)
+    if service not in logins:
+        raise KeyError(f"No login for {service!r} in {AUTH_FILE}")
+    return logins[service]
 
 
 # ------------------------------------------------------------------
@@ -499,7 +518,7 @@ def summarize():
     print(f"{'PATHS_FILE':18} = {PATHS_FILE}")
     print("\nPaths:")
     print("------")
-    for name in ("CAMPAIGN_ROOT", "OBS_ROOT", "ILAMB_ROOT", "PLUMBER_ROOT", "CMIP_CATALOG",
+    for name in ("SCRATCH_ROOT", "CAMPAIGN_ROOT", "OBS_ROOT", "ILAMB_ROOT", "PLUMBER_ROOT", "CMIP_CATALOG",
                  "CMIP_FX_CATALOG", "TRENDY_ROOT", "FHIST_PPE_ROOT", "IHIST_PPE_ROOT", "LENS2_ROOT", "ERA5_GRID_PATH",
                  "WORK_ROOT", "PROC_ROOT", "FIG_ROOT"):
         print(f"{name:18} = {globals()[name]}")

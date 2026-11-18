@@ -12,6 +12,9 @@ logs
 # Machine-specific paths (copy of config/paths.example.yml)
 config/paths.yml
 
+# Logins of the download servers (copy of config/auth.example.yml): never commit
+config/auth.yml
+
 # Download and job scripts
 # download_*.sh
 *.pbs

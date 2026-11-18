@@ -1,0 +1,14 @@
+# Conda env for scripts/download/download_fluxcom_x.py: icoscp_core, the ICOS Carbon Portal client
+# (https://github.com/ICOS-Carbon-Portal/data/tree/master/src/main/python/icoscp_core), from PyPI.
+# Kept outside the pixi env so the etunc env and pixi.lock are unchanged.
+# Create:  conda env create -f envs/icos.yml
+name: icos
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - pyyaml  # reads scratch_root from config/paths.yml
+  - pip
+  - pip:
+      - icoscp_core

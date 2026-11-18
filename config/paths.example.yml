@@ -2,6 +2,9 @@
 # machine; etunc/config.py reads config/paths.yml, or the file named by the environment variable ETUNC_PATHS.
 # Paths are not part of the run IDs. The values below are those on NCAR's glade.
 
+# Scratch storage: destination of the downloads of scripts/download/, moved to obs_root by hand
+scratch_root: /glade/derecho/scratch/bbuchovecky
+
 # Shared campaign storage: read-only
 campaign_root: /glade/campaign/univ/uwas0155
 obs_root: /glade/campaign/univ/uwas0155/obs                 # gridded obs products (etunc.load.obs)

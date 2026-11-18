@@ -222,6 +222,18 @@ def test_run_and_paths_from_environment(reload_config, monkeypatch, tmp_path):
     assert c.PROC_ROOT == tmp_path / "work" / "proc" and c.FIG_ROOT == tmp_path / "work" / "fig"
 
 
+def test_auth(monkeypatch, tmp_path):
+    """auth() reads one server's login from the auth file, and says what is missing."""
+    assert cfg.AUTH_FILE == cfg.CONFIG_ROOT / "auth.example.yml"  # never the real logins in tests
+    for service in ("gleam", "pml", "sith"):
+        assert cfg.auth(service) == {"user": "<user>", "password": "<password>"}
+    with pytest.raises(KeyError, match="no_such_server"):
+        cfg.auth("no_such_server")
+    monkeypatch.setattr(cfg, "AUTH_FILE", tmp_path / "none.yml")
+    with pytest.raises(FileNotFoundError, match="auth.example.yml"):
+        cfg.auth("gleam")
+
+
 def test_missing_files_raise(reload_config, monkeypatch, tmp_path):
     monkeypatch.setenv("ETUNC_PATHS", str(tmp_path / "none.yml"))
     with pytest.raises(FileNotFoundError, match="paths.example.yml"):

@@ -255,10 +255,10 @@ register_dataset(ObsDataset(
 
 # NOAA NCEI LAI climate data record (obs4MIPs, 0.05 deg), published as one dataset per sensor: AVHRR LAI
 # v5.0 (1981-06 to 2013-12) and VIIRS LAI v1.0 (2014-01 to 2024-12), on the same grid. One file per variable
-# and year, in the obs4MIPs directory tree written by scripts/download/download_ncei_lai.sh (esgpull). The
-# version is the ESGF publication date. `load_ncei_lai` joins the two records. "avhrr" is not the AVHRR LAI
-# of ILAMB (etunc.load.ilamb, product "AVHRR", from Boston University); ILAMB's AVH15C1 is this AVHRR record
-# averaged to 0.5 deg
+# and year, in the obs4MIPs directory tree of ESGF (written by scripts/download/download_ncei_lai.py). The
+# version is the ESGF publication date. `load_ncei_lai` joins the two records. "avhrr"
+# is not the AVHRR LAI of ILAMB (etunc.load.ilamb, product "AVHRR", from Boston University); ILAMB's
+# AVH15C1 is this AVHRR record averaged to 0.5 deg
 register_dataset(ObsDataset(
     name="avhrr",
     root=OBS_ROOT / "avhrr-lai-v5",

@@ -1,0 +1,28 @@
+# Logins of the download servers of scripts/download/. Copy this file to config/auth.yml (ignored by git),
+# fill in the logins and keep it private (chmod 600 config/auth.yml); etunc.config.auth reads config/auth.yml,
+# or the file named by the environment variable ETUNC_AUTH. Quote passwords that contain "#" or ":".
+#
+# The other downloads use the standard credential files of their tools, not this one:
+#   download_era5_land.py, download_clara_a3.py   ~/.cdsapirc (Copernicus CDS)
+#   download_gpcp.py                              ~/.netrc, machine urs.earthdata.nasa.gov (NASA Earthdata)
+#   download_fluxcom_x.py                         icoscp_core config file (ICOS Carbon Portal)
+#   download_gldas.py                             `earthengine authenticate` (Google Earth Engine)
+
+# GLEAM SFTP server (aether.ugent.be:2225), login sent on registration at https://www.gleam.eu
+# Used by download_gleam.py
+gleam:
+  user: "<user>"
+  password: "<password>"
+
+# TPDC FTP account (ftp2/ftp3.tpdc.ac.cn:6201) of the PML-V2.2 download request at
+# https://data.tpdc.ac.cn/en/data/1eec058e-74fd-452d-9255-dae4f1340783 (each dataset gets its own account)
+# Used by download_pml.py
+pml:
+  user: "<user>"
+  password: "<password>"
+
+# TPDC FTP account (ftp2/ftp3.tpdc.ac.cn:6201) of the SiTH v2 download request
+# Used by download_sith.py
+sith:
+  user: "<user>"
+  password: "<password>"

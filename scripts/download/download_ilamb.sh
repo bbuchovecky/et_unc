@@ -5,7 +5,10 @@
 #   ilamb-fetch --local_root <destination-path> --remote_root https://www.ilamb.org/DATA -y
 #
 # Remote layout:  $REMOTE_ROOT/SHA1SUM_<collection> lists every file as <collection>/<variable>/<product>/<file>.nc
-# Local layout:   $OUTPUT_ROOT/<collection>/<variable>/<product>/... (= etunc.config.ILAMB_ROOT/ILAMB-Data)
+# Local layout:   $OUTPUT_ROOT/<collection>/<variable>/<product>/...
+# OUTPUT_ROOT is SCRATCH_ROOT/ilamb, with scratch_root read from config/paths.yml (or the file named by
+# ETUNC_PATHS); move it to etunc.config.ILAMB_ROOT (OBS_ROOT/ilamb, read as ILAMB_ROOT/ILAMB-Data) by hand
+# once complete.
 #
 # ilamb-fetch downloads the remote checksum file, hashes every local file and downloads only the
 # files that are missing or whose SHA1 differs, so re-running is safe (but hashing the existing
@@ -18,15 +21,21 @@
 #
 # Override the settings with env vars, e.g.
 #   ILAMB_FETCH=/glade/work/bbuchovecky/miniforge3/envs/data-sci-py312/bin/ilamb-fetch ./download_ilamb.sh
-#   OUTPUT_ROOT=/glade/derecho/scratch/$USER/ilamb ./download_ilamb.sh
+#   OUTPUT_ROOT=<folder> ./download_ilamb.sh
 # Long runs:
 #   tmux new -s ilamb
 #   ./download_ilamb.sh > download_ilamb.log 2>&1 &
 
 set -uo pipefail
 
+# scratch_root of the paths file (a top-level "scratch_root: <path>" line), as etunc.config reads it
+REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+PATHS_FILE=${ETUNC_PATHS:-$REPO_ROOT/config/paths.yml}
+SCRATCH_ROOT=$(sed -n 's/^scratch_root:[[:space:]]*\([^#[:space:]]*\).*/\1/p' "$PATHS_FILE")
+[[ -n $SCRATCH_ROOT ]] || { echo "No scratch_root in $PATHS_FILE" >&2; exit 1; }
+
 REMOTE_ROOT=${REMOTE_ROOT:-https://www.ilamb.org/DATA}
-OUTPUT_ROOT=${OUTPUT_ROOT:-/glade/campaign/univ/uwas0155/obs/ilamb}
+OUTPUT_ROOT=${OUTPUT_ROOT:-$SCRATCH_ROOT/ilamb}
 COLLECTION=${COLLECTION:-ILAMB-Data}  # or ABoVE-Data, NGEEA-Data
 ILAMB_FETCH=${ILAMB_FETCH:-ilamb-fetch}
 
