@@ -8,24 +8,15 @@ is one source. make_edges.py and bin_all.py then use the saved inputs.
 
 Products
 --------
-ET_PRODUCTS (prep.lsmobs.et_products of config/pipeline.yml), by dataset:
-- era5-land: ERA5-Land (`le.load_era5_land`, 0.1 deg monthly means of daily
-  accumulations), an offline land model run forced by ERA5.
-- gldas: GLDAS (`lo.load_obs`, 0.25 deg monthly means).
-- era5: ERA5 (`le.load_native`, GDEX monthly mean rates).
+ET_PRODUCTS (prep.lsmobs.et_products of config/pipeline.yml)
+
 LAI, P and Rn: SHARED_PRODUCTS (prep.lsmobs.<v>_products), each set as the
 products of prep_obs.py (ILAMB or native files) and combined with every ET
-product, or None: each ET product's own field (OWN_FIELDS):
-- era5-land: LAI = cvh * lai_hv + cvl * lai_lv (the grid-box LAI of the high and
-  low vegetation; a fixed seasonal climatology, the same every year),
-  P = tp, Rn = ssr + str.
-- gldas: P = Rainf_f_tavg (total precipitation forcing), Rn = Swnet_tavg +
-  Lwnet_tavg. No LAI.
-- era5: P = mtpr, Rn = msnswrf + msnlwrf. No LAI.
-A null setting with an ET product that has no such field of its own raises an
-error before anything is loaded. Native land mask: Natural Earth land, as for
-obs, without Greenland and Iceland. A field without data in TIME_SLICE is
-skipped.
+product, or None. A null setting with an ET product that has no such field of
+its own raises an error before anything is loaded.
+
+Native land mask: Natural Earth land, as for obs, without Greenland and Iceland.
+A field without data in TIME_SLICE is skipped.
 
 Each combination uses the complete years shared by its four fields inside
 TIME_SLICE, and is skipped if there are fewer than MIN_YEARS.
@@ -90,9 +81,10 @@ SHARED_PRODUCTS = {
     "pr": cfg.LSMOBS_PR_PRODUCTS,
     "rn": cfg.LSMOBS_RN_PRODUCTS,
 }
-# Native variables of each dataset's own LAI, P and Rn (combined in `load_own`); GLDAS and ERA5 have no LAI
+# Native variables of each dataset's own P and Rn (combined in `load_own`)
+# Each product uses the same LAI product as obs
 OWN_FIELDS = {
-    "era5-land": {"lai": ("lai_hv", "lai_lv"), "pr": ("tp",), "rn": ("ssr", "str")},
+    "era5-land": {"pr": ("tp",), "rn": ("ssr", "str")},
     "gldas": {"pr": ("Rainf_f_tavg",), "rn": ("Swnet_tavg", "Lwnet_tavg")},
     "era5": {"pr": ("mtpr",), "rn": ("msnswrf", "msnlwrf")},
 }

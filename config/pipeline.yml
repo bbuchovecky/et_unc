@@ -101,8 +101,6 @@ binning:
 # Figures only; not part of the run IDs
 plotting:
   dpi: 120
-  # Fixed histogram bins of climatological LAI and AI, as numpy.linspace(start, stop, num), so every
-  # histogram figure has the same bin widths; values outside are counted in the end bins
   hist_bins:
-    lai: [0, 8, 81]    # 0.1 m2/m2
-    ai: [-1, 10, 111]  # 0.1
+    lai: [0, 8, 81]    # 0.1 [m2/m2]
+    ai: [-1, 10, 111]  # 0.1 [1]

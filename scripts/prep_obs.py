@@ -9,16 +9,10 @@ inputs.
 
 Products
 --------
-PRODUCTS, one mapping per variable (prep.obs.<v>_products of config/pipeline.yml):
-- `source: ilamb`: ILAMB products (`il.load_native`), the label being their key
-  in il.PRODUCTS[variable].
-- `source: null`: products read from their native files (`lo.load_obs`), e.g.
-  PML-V2.2, GLEAM v4.3, SiTHv2 (monthly or yearly totals), FLUXCOM-X-BASE (monthly
-  means in mm hr-1) and GPCP v3.3 P.
-The land-model and reanalysis ET products (ERA5-Land, GLDAS) are the family
-lsmobs (prep_lsmobs.py). Native land mask: Natural Earth land (the products
-have no land fraction), without Greenland and Iceland. A product without data
-in TIME_SLICE is skipped.
+PRODUCTS, one mapping per variable (prep.obs.<v>_products of config/pipeline.yml)
+
+Native land mask: Natural Earth land (the products have no land fraction), without
+Greenland and Iceland. A product without data in TIME_SLICE is skipped.
 
 Each combination uses the complete years shared by its four products inside
 TIME_SLICE, and is skipped if there are fewer than MIN_YEARS.
