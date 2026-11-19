@@ -1,0 +1,519 @@
+{
+  "access": {
+    "embargo": {
+      "active": false,
+      "reason": null
+    },
+    "files": "public",
+    "record": "public",
+    "status": "open"
+  },
+  "created": "2023-08-25T15:06:58.160248+00:00",
+  "custom_fields": {},
+  "deletion_status": {
+    "is_deleted": false,
+    "status": "P"
+  },
+  "files": {
+    "count": 9,
+    "enabled": true,
+    "entries": {
+      "GIMMS_LAI4g_AVHRR_MODIS_consolidated_1982_1990.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:fab87d6983c61023118b3d4cc9d905fc",
+        "ext": "zip",
+        "id": "c53d5247-dc93-4aa1-a03c-902d112280b1",
+        "key": "GIMMS_LAI4g_AVHRR_MODIS_consolidated_1982_1990.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_1982_1990.zip/container",
+          "content": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_1982_1990.zip/content",
+          "self": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_1982_1990.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 788845895,
+        "storage_class": "L"
+      },
+      "GIMMS_LAI4g_AVHRR_MODIS_consolidated_1991_2000.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:c9bd3f78b2ffe693110069e582cfa859",
+        "ext": "zip",
+        "id": "02f4c863-3154-49ee-9b69-52bd24453db9",
+        "key": "GIMMS_LAI4g_AVHRR_MODIS_consolidated_1991_2000.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_1991_2000.zip/container",
+          "content": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_1991_2000.zip/content",
+          "self": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_1991_2000.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 875333271,
+        "storage_class": "L"
+      },
+      "GIMMS_LAI4g_AVHRR_MODIS_consolidated_2001_2010.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:4a77a85db945af0ed9076f30761a816a",
+        "ext": "zip",
+        "id": "c9abfcf5-e6f4-4b08-99d5-951a6109b293",
+        "key": "GIMMS_LAI4g_AVHRR_MODIS_consolidated_2001_2010.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_2001_2010.zip/container",
+          "content": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_2001_2010.zip/content",
+          "self": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_2001_2010.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 881779203,
+        "storage_class": "L"
+      },
+      "GIMMS_LAI4g_AVHRR_MODIS_consolidated_2011_2020.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:f412c76bdb264b207db9a218c7da4b55",
+        "ext": "zip",
+        "id": "ffc2b6f2-170d-485f-b699-b8098d28380b",
+        "key": "GIMMS_LAI4g_AVHRR_MODIS_consolidated_2011_2020.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_2011_2020.zip/container",
+          "content": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_2011_2020.zip/content",
+          "self": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_MODIS_consolidated_2011_2020.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 889804657,
+        "storage_class": "L"
+      },
+      "GIMMS_LAI4g_AVHRR_solely_1982_1990.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:56d125a0b03e1c1dde4197ce726412e8",
+        "ext": "zip",
+        "id": "ffc54e94-4f63-4085-b005-1b564e56478e",
+        "key": "GIMMS_LAI4g_AVHRR_solely_1982_1990.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_1982_1990.zip/container",
+          "content": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_1982_1990.zip/content",
+          "self": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_1982_1990.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 693826957,
+        "storage_class": "L"
+      },
+      "GIMMS_LAI4g_AVHRR_solely_1991_2000.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:7f6459905610299b448106392851d422",
+        "ext": "zip",
+        "id": "45224d1c-6845-4449-8a32-4066fad5bae6",
+        "key": "GIMMS_LAI4g_AVHRR_solely_1991_2000.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_1991_2000.zip/container",
+          "content": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_1991_2000.zip/content",
+          "self": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_1991_2000.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 771835980,
+        "storage_class": "L"
+      },
+      "GIMMS_LAI4g_AVHRR_solely_2001_2010.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:f228501a8c7da4ae7751eeaa1b58be84",
+        "ext": "zip",
+        "id": "912b1369-f2a6-491a-b50f-b703104adef6",
+        "key": "GIMMS_LAI4g_AVHRR_solely_2001_2010.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_2001_2010.zip/container",
+          "content": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_2001_2010.zip/content",
+          "self": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_2001_2010.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 774753834,
+        "storage_class": "L"
+      },
+      "GIMMS_LAI4g_AVHRR_solely_2011_2015.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:1bf849eb3737616c031c0d8b51072250",
+        "ext": "zip",
+        "id": "dd492ed1-b7c3-4f13-a564-c8c8adc09db5",
+        "key": "GIMMS_LAI4g_AVHRR_solely_2011_2015.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_2011_2015.zip/container",
+          "content": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_2011_2015.zip/content",
+          "self": "https://zenodo.org/api/records/8281930/files/GIMMS_LAI4g_AVHRR_solely_2011_2015.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 392418274,
+        "storage_class": "L"
+      },
+      "Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:b0d517af157728324e34e6a78c5c61b5",
+        "ext": "pdf",
+        "id": "29266d55-0bfe-4609-8719-f5ddd1049fe2",
+        "key": "Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf",
+        "links": {
+          "content": "https://zenodo.org/api/records/8281930/files/Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/content",
+          "iiif_api": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/full/full/0/default.png",
+          "iiif_base": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf",
+          "iiif_canvas": "https://zenodo.org/api/iiif/record:8281930/canvas/Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf",
+          "iiif_info": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/info.json",
+          "self": "https://zenodo.org/api/records/8281930/files/Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf"
+        },
+        "metadata": null,
+        "mimetype": "application/pdf",
+        "size": 188831,
+        "storage_class": "L"
+      }
+    },
+    "order": [],
+    "total_bytes": 6068786902
+  },
+  "id": "8281930",
+  "is_draft": false,
+  "is_published": true,
+  "links": {
+    "access": "https://zenodo.org/api/records/8281930/access",
+    "access_grants": "https://zenodo.org/api/records/8281930/access/grants",
+    "access_links": "https://zenodo.org/api/records/8281930/access/links",
+    "access_request": "https://zenodo.org/api/records/8281930/access/request",
+    "access_users": "https://zenodo.org/api/records/8281930/access/users",
+    "communities": "https://zenodo.org/api/records/8281930/communities",
+    "communities-suggestions": "https://zenodo.org/api/records/8281930/communities-suggestions",
+    "doi": "https://doi.org/10.5281/zenodo.8281930",
+    "draft": "https://zenodo.org/api/records/8281930/draft",
+    "file_modification": "https://zenodo.org/api/records/8281930/file-modification",
+    "files": "https://zenodo.org/api/records/8281930/files",
+    "latest": "https://zenodo.org/api/records/8281930/versions/latest",
+    "latest_html": "https://zenodo.org/records/8281930/latest",
+    "media_files": "https://zenodo.org/api/records/8281930/media-files",
+    "parent": "https://zenodo.org/api/records/7649107",
+    "parent_doi": "https://doi.org/10.5281/zenodo.7649107",
+    "parent_doi_html": "https://zenodo.org/doi/10.5281/zenodo.7649107",
+    "parent_html": "https://zenodo.org/records/7649107",
+    "preview_html": "https://zenodo.org/records/8281930?preview=1",
+    "quota_increase": "https://zenodo.org/api/records/8281930/quota-increase",
+    "request_deletion": "https://zenodo.org/api/records/8281930/request-deletion",
+    "requests": "https://zenodo.org/api/records/8281930/requests",
+    "reserve_doi": "https://zenodo.org/api/records/8281930/draft/pids/doi",
+    "self": "https://zenodo.org/api/records/8281930",
+    "self_doi": "https://doi.org/10.5281/zenodo.8281930",
+    "self_doi_html": "https://zenodo.org/doi/10.5281/zenodo.8281930",
+    "self_html": "https://zenodo.org/records/8281930",
+    "self_iiif_manifest": "https://zenodo.org/api/iiif/record:8281930/manifest",
+    "self_iiif_sequence": "https://zenodo.org/api/iiif/record:8281930/sequence/default",
+    "thumbnails": {
+      "10": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/full/%5E10,/0/default.jpg",
+      "100": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/full/%5E100,/0/default.jpg",
+      "1200": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/full/%5E1200,/0/default.jpg",
+      "250": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/full/%5E250,/0/default.jpg",
+      "50": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/full/%5E50,/0/default.jpg",
+      "750": "https://zenodo.org/api/iiif/record:8281930:Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf/full/%5E750,/0/default.jpg"
+    },
+    "versions": "https://zenodo.org/api/records/8281930/versions"
+  },
+  "media_files": {
+    "count": 1,
+    "enabled": true,
+    "entries": {
+      "Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf.ptif": {
+        "access": {
+          "hidden": true
+        },
+        "ext": "ptif",
+        "id": "e598ec39-3765-4828-984f-587db3b76d97",
+        "key": "Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf.ptif",
+        "links": {
+          "content": "https://zenodo.org/api/records/8281930/files/Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf.ptif/content",
+          "self": "https://zenodo.org/api/records/8281930/files/Readme_for_GIMMS_LAI4g_Product_updated_0825.pdf.ptif"
+        },
+        "metadata": null,
+        "mimetype": "application/octet-stream",
+        "processor": {
+          "source_file_id": "29266d55-0bfe-4609-8719-f5ddd1049fe2",
+          "status": "finished",
+          "type": "image-tiles"
+        },
+        "size": 0,
+        "storage_class": "L"
+      }
+    },
+    "order": [],
+    "total_bytes": 0
+  },
+  "metadata": {
+    "creators": [
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Sen Cao",
+          "name": "Sen Cao",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Muyi Li",
+          "name": "Muyi Li",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Zaichun Zhu",
+          "name": "Zaichun Zhu",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Zhe Wang",
+          "name": "Zhe Wang",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Junjun Zha",
+          "name": "Junjun Zha",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Weiqing Zhao",
+          "name": "Weiqing Zhao",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Zeyu Duanmu",
+          "name": "Zeyu Duanmu",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Jiana Chen",
+          "name": "Jiana Chen",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Yaoyao Zheng",
+          "name": "Yaoyao Zheng",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Yue Chen",
+          "name": "Yue Chen",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Boston University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Ranga B. Myneni",
+          "name": "Ranga B. Myneni",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Peking University"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Shilong Piao",
+          "name": "Shilong Piao",
+          "type": "personal"
+        }
+      }
+    ],
+    "description": "<p><strong>Brief Introduction:</strong></p>\n\n<p>&nbsp;</p>\n\n<p>The fourth generation GIMMS Leaf Area Index product (GIMMS LAI4g, version 1.2) provides spatiotemporally consistent global LAI data in half-month and 1/12&deg; from 1982 to 2020. It is created to address two major uncertainties presented in current global long-term LAI products, i.e., (1) the effects of NOAA satellite orbital drift and AVHRR sensor degradation and (2) insufficient LAI reference data to build robust LAI model particularly before the late 1990s.</p>\n\n<p>&nbsp;</p>\n\n<p>The GIMMS LAI4g was generated based on biome-specific BPNN models that employed the latest PKU GIMMS NDVI product and 3.6 million high-quality global Landsat LAI samples. It was then consolidated with the Reprocess MODIS LAI to extend the temporal coverage to 2020 via a pixel-wise Random Forests fusion method.</p>\n\n<p>&nbsp;</p>\n\n<p>The GIMMS LAI4g exhibits overall high accuracy and low underestimation evaluated by field LAI measurements and Landsat LAI samples. It efficiently eliminated the effects of satellite orbital drift and sensor degradation and presents a good temporal consistency before and after the year 2000 and a more reasonable global vegetation trend. It could potentially facilitate mitigating the disagreements between studies of the long-term global vegetation changes and benefit the model development in Earth and environmental sciences.</p>\n\n<p>&nbsp;</p>\n\n<p>Here we provide two versions of GIMMS LAI4g for download, one solely based on AVHRR data (1982&minus;2015) and the other consolidated with the Reprocess MODIS LAI (1982&minus;2020). We strongly recommend an adequate use of the quality control (QC) layer in the product. Please refer to the Readme file for more details.</p>\n\n<p>&nbsp;</p>\n\n<p><strong>Major updates:</strong></p>\n\n<p>Version 1.0 (February 17, 2023):</p>\n\n<p>&middot; The original version of the product.</p>\n\n<p>&nbsp;</p>\n\n<p>Version 1.1 (June 14, 2023):</p>\n\n<p>&middot; The GIMMS LAI4g is now validated by ground LAI measurements.</p>\n\n<p>&middot; A pixel-wise Random Forests consolidation method is used to replace the linear one.</p>\n\n<p>&middot; Two versions of GIMMS LAI4g are now available, one solely based on AVHRR data and one consolidated with MODIS LAI.</p>\n\n<p>&nbsp;</p>\n\n<p>Version 1.2 (August 25, 2023):</p>\n\n<p>&middot; The BPNN model without explanatory variables of NOAA satellite number and years since launch is used to generate LAI values during 1982&minus;1984 for all biomes, October&minus;April for EBF, and winters for ENF, when the Landsat NDVI samples were absent or relatively scarce.</p>\n\n<p>&nbsp;</p>\n\n<p><strong>Dataset Characteristics:</strong></p>\n\n<p>Spatial Coverage:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 180&ordm;W~180&ordm;E, 63&ordm;S~90&ordm;N</p>\n\n<p>Projection:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Geographic</p>\n\n<p>Spatial Resolution:&nbsp;&nbsp;&nbsp;&nbsp; 1/12 degree</p>\n\n<p>Temporal Resolution: Half month</p>\n\n<p>Temporal Coverage:&nbsp;&nbsp; January 1982 to December 2020</p>\n\n<p>Image Dimension:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Rows-2160; Columns-4320</p>\n\n<p>Units:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; m<sup>2</sup>/m<sup>2</sup></p>\n\n<p>Fill Value:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 65535</p>\n\n<p>Data Type:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; uint16</p>\n\n<p>Valid Range:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0-7000</p>\n\n<p>Scale Factor:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0.001</p>\n\n<p>File Format:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; TIFF(.tif)</p>\n\n<p>File Size:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ~8Mb each file</p>\n\n<p>&nbsp;</p>\n\n<p><strong>References:</strong></p>\n\n<p>Cao, S., Li, M., Zhu, Z., Wang, Z., Zha, J., Zhao, W., Duanmu, Z., Chen, J., Zheng, Y., Chen, Y., Myneni, R. B., and Piao, S.: Spatiotemporally consistent global dataset of the GIMMS Leaf Area Index (GIMMS LAI4g) from 1982 to 2020, Earth Syst. Sci. Data Discuss. [preprint], https://doi.org/10.5194/essd-2023-68, in review, 2023.</p>",
+    "languages": [
+      {
+        "id": "eng",
+        "title": {
+          "en": "English"
+        }
+      }
+    ],
+    "publication_date": "2023-08-25",
+    "publisher": "Zenodo",
+    "references": [
+      {
+        "reference": "Cao, S., Li, M., Zhu, Z., Wang, Z., Zha, J., Zhao, W., Duanmu, Z., Chen, J., Zheng, Y., Chen, Y., Myneni, R. B., and Piao, S.: Spatiotemporally consistent global dataset of the GIMMS Leaf Area Index (GIMMS LAI4g) from 1982 to 2020, Earth Syst. Sci. Data Discuss. [preprint], https://doi.org/10.5194/essd-2023-68, in review, 2023."
+      }
+    ],
+    "resource_type": {
+      "id": "dataset",
+      "title": {
+        "de": "Datensatz",
+        "en": "Dataset"
+      }
+    },
+    "rights": [
+      {
+        "description": {
+          "en": "The Creative Commons Attribution license allows re-distribution and re-use of a licensed work on the condition that the creator is appropriately credited."
+        },
+        "icon": "cc-by-icon",
+        "id": "cc-by-4.0",
+        "props": {
+          "scheme": "spdx",
+          "url": "https://creativecommons.org/licenses/by/4.0/legalcode"
+        },
+        "title": {
+          "en": "Creative Commons Attribution 4.0 International"
+        }
+      }
+    ],
+    "subjects": [
+      {
+        "subject": "GIMMS LAI4g"
+      },
+      {
+        "subject": "PKU GIMMS NDVI"
+      },
+      {
+        "subject": "Landsat LAI samples"
+      },
+      {
+        "subject": "MODIS LAI"
+      },
+      {
+        "subject": "BPNN"
+      }
+    ],
+    "title": "Spatiotemporally consistent global dataset of the GIMMS Leaf Area Index (GIMMS LAI4g) from 1982 to 2020 (V1.2)",
+    "version": "V1.2"
+  },
+  "parent": {
+    "access": {
+      "owned_by": {
+        "user": "497984"
+      }
+    },
+    "communities": {},
+    "id": "7649107",
+    "pids": {
+      "doi": {
+        "client": "datacite",
+        "identifier": "10.5281/zenodo.7649107",
+        "provider": "datacite"
+      }
+    }
+  },
+  "pids": {
+    "doi": {
+      "client": "datacite",
+      "identifier": "10.5281/zenodo.8281930",
+      "provider": "datacite"
+    },
+    "oai": {
+      "identifier": "oai:zenodo.org:8281930",
+      "provider": "oai"
+    }
+  },
+  "revision_id": 5,
+  "stats": {
+    "all_versions": {
+      "data_volume": 29192825744758.0,
+      "downloads": 40219,
+      "unique_downloads": 17607,
+      "unique_views": 11833,
+      "views": 13146
+    },
+    "this_version": {
+      "data_volume": 26960485230183.0,
+      "downloads": 35643,
+      "unique_downloads": 15136,
+      "unique_views": 9501,
+      "views": 10637
+    }
+  },
+  "status": "published",
+  "swh": {},
+  "updated": "2024-07-11T11:26:58.951148+00:00",
+  "versions": {
+    "index": 3,
+    "is_latest": true
+  }
+}

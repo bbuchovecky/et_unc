@@ -1,0 +1,314 @@
+{
+  "access": {
+    "embargo": {
+      "active": false,
+      "reason": null
+    },
+    "files": "public",
+    "record": "public",
+    "status": "open"
+  },
+  "created": "2023-09-16T14:31:45.951420+00:00",
+  "custom_fields": {},
+  "deletion_status": {
+    "is_deleted": false,
+    "status": "P"
+  },
+  "files": {
+    "count": 5,
+    "enabled": true,
+    "entries": {
+      "HiQ_LAI_WGS84_5km_8day_2000-2005.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:601e94e3223e40d6acb9f83adfaf044b",
+        "ext": "zip",
+        "id": "456a8e57-c953-4266-af04-9b2763234ab0",
+        "key": "HiQ_LAI_WGS84_5km_8day_2000-2005.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2000-2005.zip/container",
+          "content": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2000-2005.zip/content",
+          "self": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2000-2005.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 9534578548,
+        "storage_class": "L"
+      },
+      "HiQ_LAI_WGS84_5km_8day_2006-2010.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:c52dbe295cdafcc09cd1d15b6e11ca08",
+        "ext": "zip",
+        "id": "ea127d5e-5464-48f9-b4e4-5c9da73b3e26",
+        "key": "HiQ_LAI_WGS84_5km_8day_2006-2010.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2006-2010.zip/container",
+          "content": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2006-2010.zip/content",
+          "self": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2006-2010.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 8348490674,
+        "storage_class": "L"
+      },
+      "HiQ_LAI_WGS84_5km_8day_2011-2015.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:8b7afdf2154d823f1c9c27bf0081074b",
+        "ext": "zip",
+        "id": "2ef09a0c-9052-4278-bedf-462046e35283",
+        "key": "HiQ_LAI_WGS84_5km_8day_2011-2015.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2011-2015.zip/container",
+          "content": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2011-2015.zip/content",
+          "self": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2011-2015.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 8411720765,
+        "storage_class": "L"
+      },
+      "HiQ_LAI_WGS84_5km_8day_2016-2020.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:aa2497f389e6ba25c89d93c540fd5630",
+        "ext": "zip",
+        "id": "79602f32-1a37-473c-8eef-4a45094b824a",
+        "key": "HiQ_LAI_WGS84_5km_8day_2016-2020.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2016-2020.zip/container",
+          "content": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2016-2020.zip/content",
+          "self": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2016-2020.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 8407482071,
+        "storage_class": "L"
+      },
+      "HiQ_LAI_WGS84_5km_8day_2021-2022.zip": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:ecb282c81f5867b02736ae57ab4409c3",
+        "ext": "zip",
+        "id": "0cc84359-8095-4db0-804c-b35161b718a8",
+        "key": "HiQ_LAI_WGS84_5km_8day_2021-2022.zip",
+        "links": {
+          "container": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2021-2022.zip/container",
+          "content": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2021-2022.zip/content",
+          "self": "https://zenodo.org/api/records/8296768/files/HiQ_LAI_WGS84_5km_8day_2021-2022.zip"
+        },
+        "metadata": null,
+        "mimetype": "application/zip",
+        "size": 3328652936,
+        "storage_class": "L"
+      }
+    },
+    "order": [],
+    "total_bytes": 38030924994
+  },
+  "id": "8296768",
+  "is_draft": false,
+  "is_published": true,
+  "links": {
+    "access": "https://zenodo.org/api/records/8296768/access",
+    "access_grants": "https://zenodo.org/api/records/8296768/access/grants",
+    "access_links": "https://zenodo.org/api/records/8296768/access/links",
+    "access_request": "https://zenodo.org/api/records/8296768/access/request",
+    "access_users": "https://zenodo.org/api/records/8296768/access/users",
+    "communities": "https://zenodo.org/api/records/8296768/communities",
+    "communities-suggestions": "https://zenodo.org/api/records/8296768/communities-suggestions",
+    "doi": "https://doi.org/10.5281/zenodo.8296768",
+    "draft": "https://zenodo.org/api/records/8296768/draft",
+    "file_modification": "https://zenodo.org/api/records/8296768/file-modification",
+    "files": "https://zenodo.org/api/records/8296768/files",
+    "latest": "https://zenodo.org/api/records/8296768/versions/latest",
+    "latest_html": "https://zenodo.org/records/8296768/latest",
+    "media_files": "https://zenodo.org/api/records/8296768/media-files",
+    "parent": "https://zenodo.org/api/records/8296767",
+    "parent_doi": "https://doi.org/10.5281/zenodo.8296767",
+    "parent_doi_html": "https://zenodo.org/doi/10.5281/zenodo.8296767",
+    "parent_html": "https://zenodo.org/records/8296767",
+    "preview_html": "https://zenodo.org/records/8296768?preview=1",
+    "quota_increase": "https://zenodo.org/api/records/8296768/quota-increase",
+    "request_deletion": "https://zenodo.org/api/records/8296768/request-deletion",
+    "requests": "https://zenodo.org/api/records/8296768/requests",
+    "reserve_doi": "https://zenodo.org/api/records/8296768/draft/pids/doi",
+    "self": "https://zenodo.org/api/records/8296768",
+    "self_doi": "https://doi.org/10.5281/zenodo.8296768",
+    "self_doi_html": "https://zenodo.org/doi/10.5281/zenodo.8296768",
+    "self_html": "https://zenodo.org/records/8296768",
+    "self_iiif_manifest": "https://zenodo.org/api/iiif/record:8296768/manifest",
+    "self_iiif_sequence": "https://zenodo.org/api/iiif/record:8296768/sequence/default",
+    "versions": "https://zenodo.org/api/records/8296768/versions"
+  },
+  "media_files": {
+    "count": 0,
+    "enabled": false,
+    "entries": {},
+    "order": [],
+    "total_bytes": 0
+  },
+  "metadata": {
+    "creators": [
+      {
+        "affiliations": [
+          {
+            "name": "Faculty of Geographical Science, Beijing Normal University, Beijing 100875, China"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Kai Yan",
+          "name": "Kai Yan",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "School of Land Science and Techniques, China University of Geosciences, Beijing 100083, China"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Jingrui Wang",
+          "identifiers": [
+            {
+              "identifier": "0000-0002-2806-7261",
+              "scheme": "orcid"
+            }
+          ],
+          "name": "Jingrui Wang",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Institut National de la Recherche Agronomique\u2014Universit \u0301e d'Avignon et des Pays du Vaucluse (INRA-UAPV), 228 Route de l'A \u0301erodrome, 84914 Avignon, France"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Marie Weiss",
+          "identifiers": [
+            {
+              "identifier": "0000-0002-2341-667X",
+              "scheme": "orcid"
+            }
+          ],
+          "name": "Marie Weiss",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Department of Earth and Environment, Boston University, Boston, MA 02215, USA"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Ranga B. Myneni",
+          "name": "Ranga B. Myneni",
+          "type": "personal"
+        }
+      }
+    ],
+    "description": "<p>The High-Quality Leaf Area Index (HiQ-LAI) is derived from reprocessed MODIS LAI C6.1&nbsp;product by SpatioTemporal Information Compositing Algorithm (STICA). This method integrates information from multiple dimensions, including pixel quality information, spatiotemporal correlation, and original observations, to improve the raw MODIS LAI retrievals with poor quality.&nbsp;The HiQ-LAI&nbsp;covers the period from 2000 to 2022, with spatial resolutions of 500m/5km for global vegetation area and temporal resolutions of 8 days.</p>\n\n<p>&nbsp;</p>\n\n<p>Ground-based verification results show that HiQ-LAI performs better than the original MODIS product (MOD15A2H C6.1). Time series curves of the HiQ-LAI exhibit reduced abnormal fluctuations and better alignment with expected phenological patterns. Additionally, the agreement with ground measurements increases gradually as raw data quality decreases. HiQ-LAI was found to be more continuous and consistent than MODIS LAI on a global scale from both spatial and temporal perspectives, especially in the equatorial regions where optical remote sensing usually cannot achieve good performance. Thus, We anticipate that HiQ-LAI with better spatio-temporal continuity&nbsp;will better support varying global LAI time series applications.</p>\n\n<p>&nbsp;</p>\n\n<p>Here, we offer a product version with a spatial resolution of 5km and a temporal resolution of 8 days. Another version has a spatial resolution of 500 meters and is available through Google Earth Engine (https://code.earthengine.google.com/?asset=projects/verselab-398313/assets/HiQ_LAI/wgs_500m_8d).</p>\n\n<p>More details about&nbsp;HiQ-LAI can&nbsp;be found at https://github.com/tiramisu18/HiQ-LAI</p>",
+    "publication_date": "2023-09-16",
+    "publisher": "Zenodo",
+    "resource_type": {
+      "id": "dataset",
+      "title": {
+        "de": "Datensatz",
+        "en": "Dataset"
+      }
+    },
+    "rights": [
+      {
+        "description": {
+          "en": "The Creative Commons Attribution license allows re-distribution and re-use of a licensed work on the condition that the creator is appropriately credited."
+        },
+        "icon": "cc-by-icon",
+        "id": "cc-by-4.0",
+        "props": {
+          "scheme": "spdx",
+          "url": "https://creativecommons.org/licenses/by/4.0/legalcode"
+        },
+        "title": {
+          "en": "Creative Commons Attribution 4.0 International"
+        }
+      }
+    ],
+    "subjects": [
+      {
+        "subject": "Leaf Area Index (LAI)"
+      },
+      {
+        "subject": "SpatioTemporal Information Compositing Algorithm (STICA)"
+      },
+      {
+        "subject": "A High-Quality Reprocessed MODIS LAI Dataset (HiQ-LAI)"
+      },
+      {
+        "subject": "Spatio-temporal consistency"
+      }
+    ],
+    "title": "A High-Quality Reprocessed MODIS Leaf Area Index Dataset (HiQ-LAI)",
+    "version": "Version 1"
+  },
+  "parent": {
+    "access": {
+      "owned_by": {
+        "user": "593511"
+      }
+    },
+    "communities": {},
+    "id": "8296767",
+    "pids": {
+      "doi": {
+        "client": "datacite",
+        "identifier": "10.5281/zenodo.8296767",
+        "provider": "datacite"
+      }
+    }
+  },
+  "pids": {
+    "doi": {
+      "client": "datacite",
+      "identifier": "10.5281/zenodo.8296768",
+      "provider": "datacite"
+    },
+    "oai": {
+      "identifier": "oai:zenodo.org:8296768",
+      "provider": "oai"
+    }
+  },
+  "revision_id": 2,
+  "stats": {
+    "all_versions": {
+      "data_volume": 163248188317958.0,
+      "downloads": 19621,
+      "unique_downloads": 3808,
+      "unique_views": 3527,
+      "views": 3931
+    },
+    "this_version": {
+      "data_volume": 163248188317958.0,
+      "downloads": 19621,
+      "unique_downloads": 3808,
+      "unique_views": 3513,
+      "views": 3911
+    }
+  },
+  "status": "published",
+  "swh": {},
+  "updated": "2023-09-17T02:26:53.839536+00:00",
+  "versions": {
+    "index": 1,
+    "is_latest": true
+  }
+}
