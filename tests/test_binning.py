@@ -179,12 +179,18 @@ def test_latent_heat_to_wm2(unit, factor):
 @pytest.mark.parametrize("unit, factor", [
     ("mm/day", config.LATENT_HEAT_VAPORIZATION / 86400),
     ("mm d-1", config.LATENT_HEAT_VAPORIZATION / 86400),
+    ("mm hr-1", config.LATENT_HEAT_VAPORIZATION / 3600),
+    ("mm month-1", config.LATENT_HEAT_VAPORIZATION / (31 * 86400)),  # January
     ("kg m-2 s-1", config.LATENT_HEAT_VAPORIZATION),
     ("W m-2", 1.0),
 ])
 def test_flux_to_wm2(unit, factor):
-    """flux_to_wm2 adds mm/day (1 mm of water = 1 kg/m2 per 86400 s) to the units of latent_heat_to_wm2."""
-    da = xr.DataArray([1.0, 2.0], attrs={"units": unit, "long_name": "x"})
+    """
+    flux_to_wm2 adds water depths per hour, day or month (1 mm of water = 1 kg/m2, per the period's seconds)
+    to the units of latent_heat_to_wm2.
+    """
+    time = pd.to_datetime(["2001-01-16", "2003-01-16"])
+    da = xr.DataArray([1.0, 2.0], dims="time", coords={"time": time}, attrs={"units": unit, "long_name": "x"})
     out = units.flux_to_wm2(da)
     np.testing.assert_allclose(out, da * factor, rtol=1e-12)
     assert out.attrs == {"units": "W/m2", "long_name": "x"}
@@ -209,6 +215,19 @@ def test_era5_land_evaporation_to_flux():
     np.testing.assert_allclose(units.latent_heat_to_wm2(out)[0], config.LATENT_HEAT_VAPORIZATION / 86400)
     with pytest.raises(ValueError, match="mm/day"):
         units.era5_land_evaporation_to_flux(e.assign_attrs(units="mm/day"))
+
+
+def test_era5_land_precipitation_to_flux():
+    """
+    ERA5-Land precipitation, m of water per day and positive downward, becomes a mass flux:
+    1e-3 m/day (1 mm/day) = 1/86400 kg m-2 s-1; any other units raise.
+    """
+    tp = xr.DataArray([1e-3, 0.0], attrs={"units": "m", "long_name": "Total precipitation"})
+    out = units.era5_land_precipitation_to_flux(tp)
+    np.testing.assert_allclose(out, [1 / 86400, 0.0], rtol=1e-12)
+    assert out.attrs == {"units": "kg m-2 s-1", "long_name": "Total precipitation"}
+    with pytest.raises(ValueError, match="mm/day"):
+        units.era5_land_precipitation_to_flux(tp.assign_attrs(units="mm/day"))
 
 
 def test_landfrac_and_greenland_masks():
@@ -240,6 +259,13 @@ def test_net_radiation_sign_conventions():
     assert float(units.net_radiation_cesm(one * 250, one * 50)) == 200  # FLNS is net LW up
     assert float(units.net_radiation_clm(one * 250, one * 50)) == 200  # FIRA is net LW up
     assert float(units.net_radiation_era5(one * 250, one * -50)) == 200  # both positive down
+    assert float(units.net_radiation_gldas(one * 250, one * -50)) == 200  # both positive down
+    # ERA5-Land: daily accumulations [J m-2 per day], both positive down
+    day = xr.DataArray(86400.0, attrs={"units": "J m**-2"})
+    rn = units.net_radiation_era5_land(day * 250, day * -50)
+    assert float(rn) == 200 and rn.attrs["units"] == "W/m2"
+    with pytest.raises(ValueError, match="W m-2"):
+        units.net_radiation_era5_land(day.assign_attrs(units="W m-2"), day)
 
 
 def test_compute_aridity_index():

@@ -4,12 +4,13 @@ etunc.units
 Unit conversions and net radiation. Water fluxes become their energy
 equivalent [W/m2] with L = LATENT_HEAT_VAPORIZATION. There are two conversion
 paths: `convert_units` keys on the variable name (CMIP, CESM, CLM, ERA5) and
-`latent_heat_to_wm2` on the `units` attr (ILAMB; `flux_to_wm2` also takes
-mm/day). `accumulation_to_flux` turns water depths per hour, day, month or year
-(the gridded obs products) into kg m-2 s-1, and
-`era5_land_evaporation_to_flux` does the same for ERA5-Land evaporation
-(m of water per day, positive downward). Net radiation sign
-conventions differ by source, so each has its own `net_radiation_*`.
+`latent_heat_to_wm2` on the `units` attr (ILAMB and gridded obs;
+`flux_to_wm2` also takes water depths per period). `accumulation_to_flux`
+turns water depths per hour, day, month or year (the gridded obs products)
+into kg m-2 s-1, and `era5_land_evaporation_to_flux` and
+`era5_land_precipitation_to_flux` do the same for ERA5-Land (m of water per
+day, positive downward). Net radiation sign conventions differ by source, so
+each has its own `net_radiation_*`.
 """
 
 from __future__ import annotations
@@ -84,16 +85,23 @@ def latent_heat_to_wm2(da: xr.DataArray) -> xr.DataArray:
 def flux_to_wm2(da: xr.DataArray) -> xr.DataArray:
     """
     Convert an ET, precipitation or net radiation flux to W/m2: like
-    `latent_heat_to_wm2`, plus water fluxes in mm/day (mm d-1).
+    `latent_heat_to_wm2`, plus water depths per hour, day, month or year
+    (mm/day of GPCCv2018 and GPCP, monthly totals of PML, ...), converted by
+    `accumulation_to_flux` first.
     """
-    key = " ".join(str(da.attrs.get("units", "")).lower().split())
-    if key in ("mm d-1", "mm/day"):  # GPCCv2018; 1 mm of water = 1 kg/m2
-        da = (da / 86400).assign_attrs({**da.attrs, "units": "kg m-2 s-1"})
+    if _accumulation_period(str(da.attrs.get("units", ""))) is not None:
+        da = accumulation_to_flux(da)
     return latent_heat_to_wm2(da)
 
 
 _ACCUMULATION_PERIODS = {"h": "hour", "hr": "hour", "hour": "hour", "d": "day", "day": "day",
                          "month": "month", "mon": "month", "year": "year", "yr": "year"}
+
+
+def _accumulation_period(units: str) -> str | None:
+    """The period of a water depth unit ("mm/day" -> "day", "mm month-1" -> "month"), or None."""
+    m = re.fullmatch(r"mm\s*[./ ]\s*([a-z]+)(?:-1)?", units.strip().lower())
+    return _ACCUMULATION_PERIODS.get(m.group(1)) if m else None
 
 
 def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
@@ -103,8 +111,7 @@ def accumulation_to_flux(da: xr.DataArray) -> xr.DataArray:
     The result can go straight into ``latent_heat_to_wm2``.
     """
     units = str(da.attrs.get("units", ""))
-    m = re.fullmatch(r"mm\s*[./ ]\s*([a-z]+)(?:-1)?", units.strip().lower())
-    period = _ACCUMULATION_PERIODS.get(m.group(1)) if m else None
+    period = _accumulation_period(units)
     if period is None:
         raise ValueError(f"Cannot convert units {units!r} of {da.name!r} to kg m-2 s-1")
 
@@ -135,6 +142,20 @@ def era5_land_evaporation_to_flux(da: xr.DataArray) -> xr.DataArray:
     if units != "m of water equivalent":
         raise ValueError(f"Cannot convert units {units!r} of {da.name!r}: expected 'm of water equivalent' per day")
     out = -da * LIQ_WATER_DENSITY / 86400  # m/day -> kg m-2 s-1, sign flipped to positive upward
+    out.attrs = {**da.attrs, "units": "kg m-2 s-1"}
+    return out
+
+
+def era5_land_precipitation_to_flux(da: xr.DataArray) -> xr.DataArray:
+    """
+    Convert ERA5-Land monthly mean total precipitation "tp" (a mean of daily
+    accumulations, so m of water per day, positive downward) to a mass flux
+    [kg m-2 s-1]. The result can go straight into ``latent_heat_to_wm2``.
+    """
+    units = str(da.attrs.get("units", ""))
+    if units != "m":
+        raise ValueError(f"Cannot convert units {units!r} of {da.name!r}: expected 'm' (of water) per day")
+    out = da * LIQ_WATER_DENSITY / 86400  # m/day -> kg m-2 s-1
     out.attrs = {**da.attrs, "units": "kg m-2 s-1"}
     return out
 
@@ -172,5 +193,25 @@ def net_radiation_clm(fsa: xr.DataArray, fira: xr.DataArray) -> xr.DataArray:
 def net_radiation_era5(msnswrf: xr.DataArray, msnlwrf: xr.DataArray) -> xr.DataArray:
     """ERA5 net surface radiation [W/m2]; both net fluxes are positive downward."""
     rn = msnswrf + msnlwrf
+    rn.attrs = {"units": "W/m2", "long_name": "net surface radiation"}
+    return rn.rename("rn")
+
+
+def net_radiation_era5_land(ssr: xr.DataArray, str_: xr.DataArray) -> xr.DataArray:
+    """
+    ERA5-Land net surface radiation [W/m2] from the monthly means of ssr (net SW) and str (net LW):
+    means of daily accumulations [J m-2 per day], both positive downward.
+    """
+    for da in (ssr, str_):
+        if da.attrs.get("units") != "J m**-2":
+            raise ValueError(f"Cannot convert units {da.attrs.get('units')!r} of {da.name!r}: expected 'J m**-2' per day")
+    rn = (ssr + str_) / 86400
+    rn.attrs = {"units": "W/m2", "long_name": "net surface radiation"}
+    return rn.rename("rn")
+
+
+def net_radiation_gldas(swnet: xr.DataArray, lwnet: xr.DataArray) -> xr.DataArray:
+    """GLDAS net surface radiation [W/m2]; Swnet_tavg and Lwnet_tavg are both positive downward."""
+    rn = swnet + lwnet
     rn.attrs = {"units": "W/m2", "long_name": "net surface radiation"}
     return rn.rename("rn")

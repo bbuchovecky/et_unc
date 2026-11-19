@@ -8,11 +8,13 @@ the Copernicus Climate Data Store.
 - `load_era5`: one monthly-mean parameter on the native 0.25 deg grid.
 - `load_native`: several "meanflux" parameters over a time slice, with lon in
   [-180, 180] and lat ascending, in native units (step 1 of the binning
-  pipeline, scripts/prep_era5.py).
+  pipeline, scripts/prep_lsmobs.py with dataset era5).
 - `load_land_fraction`: LANDFRAC and the native grid with cell edges.
 - `load_era5_land`: one ERA5-Land variable on its native 0.1 deg grid, with lon
   in [-180, 180] and lat ascending, in native units (step 1 of
-  scripts/prep_obs.py, where ERA5-Land evaporation is an obs ET product).
+  scripts/prep_lsmobs.py, where ERA5-Land is an lsmobs ET product with its own
+  LAI, P and Rn).
+- `load_era5_land_invariant`: a constant ERA5-Land field (vegetation cover, ...).
 
 Example
 -------
@@ -22,6 +24,7 @@ Example
 >>> raw = le.load_native(("mer", "mtpr"), slice("1995-01", "2014-12"))
 >>> landfrac, src_grid = le.load_land_fraction()
 >>> e = le.load_era5_land("e", slice("2001-01", "2014-12"))  # m of water per day, positive downward
+>>> cvh = le.load_era5_land_invariant("cvh")  # high vegetation cover [0-1]
 """
 
 from __future__ import annotations
@@ -153,7 +156,7 @@ def load_native(codes: Sequence[str], time_slice: slice) -> dict[str, xr.DataArr
     `codes` (e.g. "mer", "mtpr", "msnswrf", "msnlwrf") over `time_slice` on
     the native 0.25 deg grid, with lon in [-180, 180] and lat ascending, in
     native units and sign (fluxes positive downward, so evaporation "mer" is
-    negative). Step 1 of the binning pipeline (scripts/prep_era5.py).
+    negative). Step 1 of the binning pipeline (scripts/prep_lsmobs.py, dataset era5).
     """
     # Whole years are read (load_era5 takes years); the months are cut by `.sel(time=time_slice)`
     first, last = str(time_slice.start)[:4], str(time_slice.stop)[:4]
@@ -199,10 +202,33 @@ def load_era5_land(variable: str, time_slice: slice) -> xr.DataArray:
     # chunks={}: the on-disk chunks, so each is read once. by_coords also merges the files of one year if
     # the CDS split a request by step type (accumulated vs instantaneous fields)
     ds = xr.open_mfdataset(files, combine="by_coords", chunks={})
-    # expver (experiment version) and number (ensemble member) are labels of the CDS GRIB conversion
-    ds = ds.rename({"valid_time": "time", "latitude": "lat", "longitude": "lon"})
-    ds = ds.drop_vars(["expver", "number"], errors="ignore")
-    # The 0.1 deg coords carry float noise (lon 180 is stored as 179.99999999999), so round them, as
-    # etunc.load.obs does, to get one exact grid with lon 180 wrapped to -180
-    ds = ds.assign_coords(lat=ds.lat.round(4), lon=ds.lon.round(4))
+    ds = _era5_land_coords(ds.rename({"valid_time": "time"}))
     return format_grid(ds[variable]).sel(time=time_slice)
+
+
+def load_era5_land_invariant(variable: str) -> xr.DataArray:
+    """
+    The constant ERA5-Land field `variable` (lat, lon) from ERA5_LAND_ROOT/invariant/<variable>.nc
+    (e.g. "cvh", "cvl": high and low vegetation cover [0-1]; "lsm": land-sea mask) on the grid of
+    `load_era5_land`: lon in [-180, 180], lat ascending.
+    """
+    path = ERA5_LAND_ROOT / "invariant" / f"{variable}.nc"
+    if not path.exists():
+        raise FileNotFoundError(f"No ERA5-Land invariant file {path}")
+    ds = xr.open_dataset(path)
+    # One time step (the field is constant in time); its time coord, if any, is dropped
+    time_dim = "valid_time" if "valid_time" in ds.dims else "time"
+    if time_dim in ds.dims:
+        ds = ds.isel({time_dim: 0}, drop=True)
+    ds = _era5_land_coords(ds.drop_vars(["time", "valid_time"], errors="ignore"))
+    return format_grid(ds[variable])
+
+
+def _era5_land_coords(ds: xr.Dataset) -> xr.Dataset:
+    """ERA5-Land coords renamed to lat/lon and rounded, without the labels of the CDS GRIB conversion."""
+    # expver (experiment version) and number (ensemble member) are labels of the CDS GRIB conversion
+    ds = ds.rename({"latitude": "lat", "longitude": "lon"}).drop_vars(["expver", "number"], errors="ignore")
+    # The 0.1 deg coords carry float noise (lon 180 is stored as 179.99999999999), so round them, as
+    # etunc.load.obs does, to get one exact grid with lon 180 wrapped to -180 (float64 first: some files
+    # store float32 coords)
+    return ds.assign_coords(lat=ds.lat.astype("float64").round(4), lon=ds.lon.astype("float64").round(4))

@@ -149,6 +149,27 @@ def test_load_era5_land_raw_months_on_formatted_grid(era5_land):
     assert e.where(e.lon >= 0, drop=True).isnull().all()
 
 
+def test_load_era5_land_invariant_on_the_monthly_grid(era5_land):
+    """
+    load_era5_land_invariant returns the constant field (lat, lon), without its time step, on exactly the grid
+    of load_era5_land, also from float32 coords as in the ECMWF invariant files; a missing file raises.
+    """
+    cvh = np.zeros((1, LAT.size, LON.size))
+    cvh[:, :, LON >= 180] = 0.4
+    ds = xr.Dataset({"cvh": (("time", "latitude", "longitude"), cvh, {"units": "(0 - 1)"})},
+                    coords={"time": [0], "latitude": LAT.astype("f4"), "longitude": LON.astype("f4")})
+    (era5_land / "invariant").mkdir()
+    ds.to_netcdf(era5_land / "invariant" / "cvh.nc")
+    out = le.load_era5_land_invariant("cvh")
+    e = le.load_era5_land("e", slice("2000-01", "2000-01"))
+    assert out.dims == ("lat", "lon") and "time" not in out.coords
+    np.testing.assert_array_equal(out.lat, e.lat)
+    np.testing.assert_array_equal(out.lon, e.lon)
+    np.testing.assert_allclose(out.where(out.lon < 0, drop=True), 0.4)
+    with pytest.raises(FileNotFoundError, match="cvl"):
+        le.load_era5_land_invariant("cvl")
+
+
 def test_load_era5_land_open_slice_and_missing_year(era5_land):
     """An open-ended slice reads every year on disk; a requested year without a file raises."""
     assert le.load_era5_land("e", slice(None, None)).sizes["time"] == 24
