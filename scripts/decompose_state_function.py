@@ -38,8 +38,11 @@ and the terms (every difference m minus r):
     FUNCTION + STATE + INTERACTION = E_mm - E_rr
 
 with the full-domain means E_m and E_r and the occupancy outside S,
-OFF_SUPPORT_m/_r (the off-support ET is E_m - E_mm and E_r - E_rr). The bins
-only condition the sums; no per-bin contribution is saved.
+OFF_SUPPORT_m/_r (the off-support ET is E_m - E_mm and E_r - E_rr). Each bin's
+contribution to the terms, before the sum over the bins (`decompose_binned`,
+NaN off S), is saved too, with dp = p_m - p_r and df = f_m - f_r:
+
+    FUNCTION(b) = p_r df     STATE(b) = dp f_r     INTERACTION(b) = dp df
 
 Comparisons
 1. Every member of every evaluated family, and each family pooled
@@ -113,6 +116,9 @@ PROC_ROOT/<run_id>/all/decomp/<stem: vs_obs>.<run_id>.nc
     (quantity) and within_obs_spread (dataset, term) of comparison 2
 PROC_ROOT/<run_id>/all/decomp/<stem: vs_obs>.<run_id>.csv
     the quantities, one row per dataset x obs_reference, with the coords
+PROC_ROOT/<run_id>/all/decomp/<stem: binned>.<family>.<run_id>.nc
+    FUNCTION, STATE, INTERACTION per bin (dataset, obs_reference, y_bin, x_bin), float32, the coords
+    of vs_obs and the bin edges (y/x_bin_lower/upper/center); summed over the bins, the terms of vs_obs
 PROC_ROOT/<run_id>/all/decomp/<stem: obs_axis_range>.<run_id>.nc
     range (dataset, quantity, axis), axis = "all" and each product axis with > 1 product
 PROC_ROOT/<run_id>/all/decomp/<stem: variance>.<run_id>.nc
@@ -538,6 +544,34 @@ def main():
     fout = fout.with_suffix(".csv")
     vs_obs[list(dc.QUANTITIES)].to_dataframe().to_csv(fout)
     print(fout)
+
+    # Each bin's contribution to FUNCTION, STATE and INTERACTION (before the sum over the bins),
+    # one file per family, every dataset against every obs reference
+    print("\n=== 1. binned terms ===")
+    bin_coords = {c: obs_bs[c] for c in obs_bs.coords if obs_bs[c].dims in (("y_bin",), ("x_bin",))}
+    for family in binned:
+        idx = np.flatnonzero((vs_obs["family"] == family).values)
+        terms_b = dc.decompose_binned(p_ds.isel(dataset=idx), f_ds.isel(dataset=idx), p_ref, f_ref)
+        terms_b = terms_b.transpose("dataset", "obs_reference", *dc.BIN_DIMS)
+        # Summed over the bins, they must be the terms of vs_obs
+        for t in dc.BINNED_TERMS:
+            diff = terms_b[t].sum(dc.BIN_DIMS) - vs_obs[t].isel(dataset=idx).reset_coords(drop=True)
+            if not np.allclose(diff.values, 0, rtol=0, atol=1e-8):
+                raise ValueError(f"{family}: binned {t} summed over the bins differs from {t} by up to "
+                                 f"{float(abs(diff).max()):.2e} W m-2")
+        terms_b = terms_b.assign_coords({c: p_ds[c].isel(dataset=idx) for c in ds_coords})
+        terms_b = terms_b.assign_coords(ref_coords).assign_coords(bin_coords)
+        for t in dc.BINNED_TERMS:
+            terms_b[t].attrs["units"] = "W m-2"
+        terms_b.attrs = {
+            **attrs, "comparison": "1. each bin's contribution to the terms, the family's datasets vs every obs reference",
+            "definitions": ("with dp = p_m - p_r and df = f_m - f_r: FUNCTION(b) = p_r df, STATE(b) = dp f_r, "
+                            "INTERACTION(b) = dp df; NaN off the common support; summed over the bins, the terms of vs_obs"),
+        }
+        fout = out_dir / f"{stem('binned')}.{family}.{run}.nc"
+        encoding = {t: {"dtype": "float32", "zlib": True, "complevel": 4} for t in terms_b.data_vars}
+        terms_b.to_netcdf(fout, encoding=encoding)
+        print(fout)
 
     # ------------------------------------------------------------------
     # 3. Sensitivity to the obs reference, by product axis

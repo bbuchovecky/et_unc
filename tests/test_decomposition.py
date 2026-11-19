@@ -109,6 +109,19 @@ def test_equal_f_or_equal_p(pair):
     assert float(d["FUNCTION"]) != 0
 
 
+def test_binned_terms_sum_to_terms(pair):
+    p_m, f_m, p_r, f_r = pair
+    # A bin of m left empty: off the support, NaN in every binned term
+    f_m = f_m.copy()
+    f_m[0, 0] = np.nan
+    d, b = dc.decompose(p_m, f_m, p_r, f_r), dc.decompose_binned(p_m, f_m, p_r, f_r)
+    assert set(b.data_vars) == set(dc.BINNED_TERMS)
+    for t in dc.BINNED_TERMS:
+        assert b[t].dims == ("y_bin", "x_bin")
+        assert bool(b[t].isel(y_bin=0, x_bin=0).isnull()) and int(b[t].isnull().sum()) == 1
+        assert rel(b[t].sum(), d[t]) < RTOL
+
+
 def test_state_shift(pair):
     p_m, f_m, p_r, f_r = pair
     sh, d = dc.state_shift(*pair), dc.decompose(*pair)

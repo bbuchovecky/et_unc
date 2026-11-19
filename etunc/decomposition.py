@@ -54,6 +54,7 @@ the two axes (soil moisture, seasonality, VPD, rooting depth, ...).
   each obs product of each product axis.
 - `counterfactual_mean`: sum_S p f for one state and one function.
 - `decompose`: the scalar quantities above (QUANTITIES).
+- `decompose_binned`: the terms bin by bin, before the sum over the bins (BINNED_TERMS).
 - `lookup`, `decompose_gridded`: the same quantities as maps (GRIDDED_QUANTITIES).
 - `state_shift`: the land in other bins than r, and STATE split into the bins m gains and loses land in.
 - `product_axis_range`: range of a quantity across obs references, overall and by product axis.
@@ -73,6 +74,10 @@ BIN_DIMS = ("y_bin", "x_bin")
 # Variables of `decompose`
 QUANTITIES = ("E_rr", "E_rm", "E_mr", "E_mm", "FUNCTION", "STATE", "INTERACTION", "E_m", "E_r",
               "OFF_SUPPORT_m", "OFF_SUPPORT_r")
+
+# Variables of `decompose_binned` (y_bin, x_bin): the contribution of each bin to the term of
+# the same name in QUANTITIES
+BINNED_TERMS = ("FUNCTION", "STATE", "INTERACTION")
 
 # Variables of `decompose_gridded` (maps); each one's land-area mean is the quantity of the same
 # name in QUANTITIES (DIFF: E_m - E_r; WITHIN: E_m - E_mm - E_r + E_rr, the off-support ET)
@@ -214,6 +219,27 @@ def decompose(p_m: xr.DataArray, f_m: xr.DataArray, p_r: xr.DataArray, f_r: xr.D
         "OFF_SUPPORT_r": p_r.where(~support).sum(BIN_DIMS),
     })
     # Every variable on the dims of m and r alike, e.g. (dataset, obs_reference)
+    return xr.broadcast(out)[0]
+
+
+def decompose_binned(p_m: xr.DataArray, f_m: xr.DataArray, p_r: xr.DataArray, f_r: xr.DataArray) -> xr.Dataset:
+    """
+    The contribution of each bin b of the common support S to the terms of `decompose`
+    (BINNED_TERMS), with dp = p_m - p_r and df = f_m - f_r:
+
+        FUNCTION(b)    = p_r df      STATE(b) = dp f_r      INTERACTION(b) = dp df
+
+    NaN off S. Their sum over the bins is the term of `decompose`; other dims broadcast,
+    and non-index coords are dropped, as in `decompose`.
+    """
+    p_m, f_m, p_r, f_r = (da.reset_coords(drop=True) for da in (p_m, f_m, p_r, f_r))
+    support = f_m.notnull() & f_r.notnull()
+    dp, df = p_m - p_r, f_m - f_r
+    out = xr.Dataset({
+        "FUNCTION": p_r * df,
+        "STATE": dp * f_r,
+        "INTERACTION": dp * df,
+    }).where(support)
     return xr.broadcast(out)[0]
 
 
