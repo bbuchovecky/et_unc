@@ -105,7 +105,7 @@ test = "pytest"
 kernel = "python -m ipykernel install --user --name etunc --display-name etunc"
 # Pipelines, logged to WORK_ROOT/logs (see scripts/run_logged.sh)
 prep-obs = "scripts/run_logged.sh scripts/prep_obs.py"
-prep-era5 = "scripts/run_logged.sh scripts/prep_era5.py"
+prep-lsmobs = "scripts/run_logged.sh scripts/prep_lsmobs.py"
 prep-cmip = "scripts/run_logged.sh scripts/prep_cmip.py"
 prep-lens = "scripts/run_logged.sh scripts/prep_lens.py"
 prep-fppe = "scripts/run_logged.sh scripts/prep_fppe.py"

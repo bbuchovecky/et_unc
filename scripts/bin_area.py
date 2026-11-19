@@ -20,7 +20,7 @@ bin_all.py:
 
 Outputs
 -------
-<family> : obs, era5, cmip, fppe, ippe or lens
+<family> : obs, lsmobs, cmip, fppe, ippe or lens
 <edges>  : pooled_all or pooled_<family>
 <run_id> : RUN_ID of the run's settings (period, grid, bins, weighting; etunc.config, config/runs.csv)
 

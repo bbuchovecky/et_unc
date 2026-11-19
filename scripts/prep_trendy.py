@@ -16,10 +16,10 @@ used. The native land mask is Natural Earth land (as for the obs), since few
 models provide a land fraction and some fill the ocean with 0, without
 Greenland and Iceland; annual LAI missing on land is set to 0.
 
-Rn is the ERA5 net surface radiation (msnswrf + msnlwrf, as in prep_era5.py),
+Rn is the ERA5 net surface radiation (msnswrf + msnlwrf, `units.net_radiation_era5`),
 the same field for every model: the models output at most the downward
 shortwave (rsds), not the upward terms of the net radiation. Its native land
-mask is ERA5 LANDFRAC > LF_THRESH, as in prep_era5.py. So the AI is the same
+mask is ERA5 LANDFRAC > LF_THRESH (`grid.landfrac_mask`). So the AI is the same
 for every model and the models differ only in ET and LAI. P and Rn run once,
 shared by every experiment. A family is binned only if it is in cfg.FAMILIES
 (trendy_s3 by default).
@@ -120,7 +120,7 @@ def main():
     rn = units.net_radiation_era5(era5["msnswrf"], era5["msnlwrf"])
     # 4. Annual means over complete years (all 12 months needed)
     rn = temporal.aggregate(rn, "year", label="era5/rn")
-    # 5. Native land mask: ERA5 LANDFRAC > LF_THRESH (as in prep_era5.py), without Greenland/Iceland
+    # 5. Native land mask: ERA5 LANDFRAC > LF_THRESH, without Greenland/Iceland
     rn = rg.mask_to_land(rn, rg.landfrac_mask(landfrac, cfg.LF_THRESH), "era5/rn")
     # 7. Conservative regridding onto the target grid (NaN where more than NA_THRESH is missing)
     regridder = rg.bounded_conservative_regridder(era5_grid, TARGET_RES)

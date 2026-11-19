@@ -90,6 +90,7 @@ import etunc.temporal as temporal
 import etunc.units as units
 import etunc.load.era5 as le
 import etunc.load.ilamb as il
+import etunc.load.obs as lo
 
 warnings.filterwarnings("ignore", message="Input array is not C_CONTIGUOUS. Will affect performance.", category=UserWarning)
 
@@ -113,6 +114,9 @@ MIN_CONSECUTIVE_YEARS = 3
 
 # Products of the obs inputs left out of the binned (lai, pr, rn) product sets, by variable
 EXCLUDE_PRODUCTS: dict[str, list[str]] = {}
+
+# Obs LAI, P and Rn products (prep.obs of config/pipeline.yml), to read each product set's P as prep_obs.py does
+OBS_PRODUCTS = {"lai": cfg.OBS_LAI_PRODUCTS, "pr": cfg.OBS_PR_PRODUCTS, "rn": cfg.OBS_RN_PRODUCTS}
 
 # Products of the scatter's LAI/AI climatology: ILAMB product names (il.PRODUCTS), or "ERA5" for rn.
 # They cover the longest tower record (1992-2012), which MODIS LAI and CERES Rn do not
@@ -207,17 +211,22 @@ def nearest_to_towers(da: xr.Dataset | xr.DataArray, lat: xr.DataArray, lon: xr.
 
 def obs_annual(v: str, product: str, time_slice: slice) -> xr.DataArray:
     """
-    Steps 1-8 of prep_obs.py for one LAI, P or Rn product: annual means on the target grid. `product` is an
-    ILAMB product or "ERA5" (Rn only).
+    Steps 1-8 of prep_obs.py for one LAI, P or Rn product: annual means on the target grid. `product` is a
+    product of prep.obs.<v>_products (ILAMB or native files, as in prep_obs.py), another ILAMB product, or
+    "ERA5" (Rn only).
     """
     label = f"{v}/{product}"
     print(f"\n=== {label} ===")
     # 1-3. Monthly native field over time_slice; P and Rn in W/m2
+    spec = OBS_PRODUCTS[v].get(product, {"source": "ilamb"})  # not in the config: an ILAMB product
     if product == "ERA5":
         raw = le.load_native(["msnswrf", "msnlwrf"], time_slice)
         da = units.net_radiation_era5(raw["msnswrf"], raw["msnlwrf"])
     else:
-        da = il.load_native(v, product, time_slice)
+        if spec["source"] == "ilamb":
+            da = il.load_native(v, product, time_slice)
+        else:
+            da = lo.load_obs(spec["dataset"], spec["variable"], time_slice, version=spec["version"], freq=spec["freq"])
         da = da.assign_attrs(units="m2/m2") if v == "lai" else units.flux_to_wm2(da)
 
     # 4. Annual means over complete years: P and Rn need all 12 months, a missing LAI month counts as 0

@@ -19,26 +19,41 @@ prep:
   lf_thresh: 0.5                      # gridcell land fraction threshold (land where strictly greater)
 
   # For prep_<family>.py: products, models and members of each family
+  #
+  # Products of obs and lsmobs, one mapping per variable: {label: {dataset, version, variable, freq, source}}
+  #   source: ilamb  an ILAMB product, read by il.load_native: the label is its key in il.PRODUCTS[variable],
+  #                  and dataset/version/variable/freq only describe it
+  #   source: null   read from its native files: lo.load_obs(dataset, variable, version=, freq=), except the
+  #                  datasets era5-land (le.load_era5_land, variable only) and era5 (le.load_native, GDEX code)
+  # Every combination of one product per variable (et, lai, pr, rn) is one source.
   obs:
-    # ILAMB products by variable (keys of il.PRODUCTS[variable]); null = every product of the variable.
-    # Every variable (et, lai, pr, rn) must be given
-    ilamb_products:
-      et: null
-      lai: [GIMMS_LAI4g]
-      pr: [GPCPv2.3]
-      rn: [CERESed4.2]
-    # Gridded ET products read from their native files: {label: lo.load_obs arguments}. dataset era5-land
-    # is read by le.load_era5_land (variable only; version is a label)
-    gridded_et_products:
-      PMLv2.2a_MODIS: {dataset: pml, version: V2.2a-MODIS, variable: ET, freq: monthly}
-      # PMLv2.2b:     {dataset: pml, version: V2.2b, variable: ET, freq: monthly}
-      PMLv2.2c:       {dataset: pml, version: V2.2c, variable: ET, freq: monthly}
-      GLEAMv4.3a:     {dataset: gleam, version: v4.3a, variable: E, freq: monthly}
-      GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly}
-      SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly}
-      ERA5-Land:      {dataset: era5-land, version: monthly-means, variable: e, freq: monthly}
-  era5:
-    lai_product: GIMMS_LAI4g  # ILAMB LAI product (ERA5 has no LAI); GIMMS_LAI4g covers all of time_slice
+    et_products:
+      PMLv2.2a_MODIS: {dataset: pml, version: V2.2a-MODIS, variable: ET, freq: monthly, source: null}
+      # PMLv2.2b:     {dataset: pml, version: V2.2b, variable: ET, freq: monthly, source: null}
+      PMLv2.2c:       {dataset: pml, version: V2.2c, variable: ET, freq: monthly, source: null}
+      # GLEAMv4.3a:   {dataset: gleam, version: v4.3a, variable: E, freq: monthly, source: null}
+      GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly, source: null}
+      SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly, source: null}
+    lai_products:
+      GIMMS_LAI4g: {dataset: gimms, version: 4g, variable: lai, freq: monthly, source: ilamb}
+    pr_products:
+      GPCPv3.3: {dataset: gpcp, version: "3.3", variable: sat_gauge_precip, freq: monthly, source: null}
+    rn_products:
+      CERESed4.2: {dataset: ceres, version: ed4.2, variable: rns, freq: monthly, source: ilamb}
+  # Land-model and reanalysis ET products (prep_lsmobs.py). lai/pr/rn_products: null = each ET product's
+  # own field (prep_lsmobs.OWN_FIELDS), or products as in obs, combined with every ET product
+  lsmobs:
+    et_products:
+      # ERA5:            {dataset: era5, version: null, variable: mer, freq: monthly, source: null}
+      ERA5-Land:         {dataset: era5-land, version: monthly-means, variable: e, freq: monthly, source: null}
+      # GLDAS has no LAI (needs lai_products), and only Evap_tavg is downloaded so far: run
+      # scripts/download/download_gldas.py for Rainf_f_tavg, Swnet_tavg and Lwnet_tavg first
+      # GLDAS2.0-Noah:     {dataset: gldas, version: "2.0", variable: Evap_tavg, freq: monthly, source: null}
+      # GLDAS2.1-Noah:     {dataset: gldas, version: "2.1", variable: Evap_tavg, freq: monthly, source: null}
+      # GLDAS2.2-GRACE-DA: {dataset: gldas, version: 2.2-grace-da, variable: Evap_tavg, freq: monthly, source: null}
+    lai_products: null
+    pr_products: null
+    rn_products: null
   cmip:
     source_ids: null          # null = every model with all variables and an sftlf file, or a list
     omit_source_ids:
@@ -74,7 +89,7 @@ prep:
 
 # Steps 12-14 (make_edges.py, bin_*.py) and the analyses
 binning:
-  families: [obs, era5, cmip, fppe, ippe, lens, trendy_s3]
+  families: [obs, lsmobs, cmip, fppe, ippe, lens, trendy_s3]
   bin_variable: et      # et: annual mean ET; et_pr: annual evaporation ratio ET/P (with the P of the AI)
   area_weighted: false  # true: bin statistics weighted by each gridcell's land area (grid.land_area)
   n_xbins: 15           # aridity index

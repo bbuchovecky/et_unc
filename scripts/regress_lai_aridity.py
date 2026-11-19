@@ -27,7 +27,7 @@ member of every family in FAMILIES, separately:
 
 Outputs
 -------
-<family> : obs, era5, cmip, fppe, ippe or lens
+<family> : obs, lsmobs, cmip, fppe, ippe or lens
 <run_id> : RUN_ID of the run's settings (period, grid, bins, weighting; etunc.config, config/runs.csv)
 
 PROC_ROOT/<run_id>/<family>/regress/<family>.et.regress_lai_ai.<run_id>.nc

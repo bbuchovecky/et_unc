@@ -21,7 +21,7 @@ the land-area weighted mean ET of its gridcell-years. The edges stay the same.
 
 Outputs
 -------
-<family>    : obs, era5, cmip, fppe, ippe or lens
+<family>    : obs, lsmobs, cmip, fppe, ippe or lens
 <var>       : BIN_VARIABLE, et or et_pr
 <edges>     : pooled_all or pooled_<family>
 <run_id>    : RUN_ID of the run's settings (period, grid, bins, weighting; etunc.config, config/runs.csv)

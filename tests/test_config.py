@@ -16,6 +16,10 @@ import yaml
 import etunc.config as cfg
 
 
+# A valid product entry
+SITH = {"dataset": "sith", "version": "v2", "variable": "ET", "freq": "monthly", "source": None}
+
+
 def write_yaml(tmp_path, name, data):
     path = tmp_path / name
     path.write_text(yaml.safe_dump(data))
@@ -46,9 +50,12 @@ def test_defaults():
         d["binning"][k] for k in ("bin_variable", "area_weighted", "n_xbins", "n_ybins"))
     assert len(cfg.HIST_BINS["lai"]) == d["plotting"]["hist_bins"]["lai"][2]
     # Products, models and members of each family
-    assert cfg.OBS_ILAMB_PRODUCTS == d["prep"]["obs"]["ilamb_products"]
-    assert cfg.OBS_GRIDDED_ET_PRODUCTS == d["prep"]["obs"]["gridded_et_products"]
-    assert cfg.ERA5_LAI_PRODUCT == d["prep"]["era5"]["lai_product"]
+    assert (cfg.OBS_ET_PRODUCTS, cfg.OBS_LAI_PRODUCTS, cfg.OBS_PR_PRODUCTS, cfg.OBS_RN_PRODUCTS) == tuple(
+        cfg.SETTINGS["prep"]["obs"][f"{v}_products"] for v in ("et", "lai", "pr", "rn"))
+    assert (cfg.LSMOBS_ET_PRODUCTS, cfg.LSMOBS_LAI_PRODUCTS, cfg.LSMOBS_PR_PRODUCTS, cfg.LSMOBS_RN_PRODUCTS) == tuple(
+        cfg.SETTINGS["prep"]["lsmobs"][f"{v}_products"] for v in ("et", "lai", "pr", "rn"))
+    assert set(cfg.OBS_ET_PRODUCTS) == set(d["prep"]["obs"]["et_products"])
+    assert set(cfg.LSMOBS_ET_PRODUCTS) == set(d["prep"]["lsmobs"]["et_products"])
     assert (cfg.CMIP_SOURCE_IDS, cfg.CMIP_OMIT_SOURCE_IDS, cfg.CMIP_DEFAULT_MEMBERS, cfg.CMIP_MEMBER_IDS) == tuple(
         d["prep"]["cmip"][k] for k in ("source_ids", "omit_source_ids", "default_members", "member_ids"))
     assert cfg.LENS_MEMBERS == d["prep"]["lens"]["members"]
@@ -103,9 +110,14 @@ def test_unknown_settings_raise(tmp_path, changes):
     {"prep": {"time_slice": ["2001-01"]}},
     {"prep": {"target_res": True}},
     {"binning": {"families": []}},
-    {"prep": {"obs": {"ilamb_products": {"et": None, "lai": ["GIMMS_LAI4g"]}}}},  # pr and rn missing
-    {"prep": {"obs": {"gridded_et_products": {"SiTHv2": {"dataset": "sith", "version": "v2"}}}}},
-    {"prep": {"era5": {"lai_product": None}}},
+    {"prep": {"obs": {"pr_products": None}}},  # obs needs products of every variable
+    {"prep": {"obs": {"et_products": {}}}},
+    {"prep": {"obs": {"et_products": {"SiTHv2": {"dataset": "sith", "version": "v2"}}}}},  # keys missing
+    {"prep": {"obs": {"et_products": {"SiTHv2": {**SITH, "source": "gleam"}}}}},  # source: null or ilamb
+    {"prep": {"obs": {"et_products": {"SiTHv2": {**SITH, "version": 2}}}}},  # version: a string or null
+    {"prep": {"obs": {"lai_products": ["GIMMS_LAI4g"]}}},  # a mapping, not a list
+    {"prep": {"lsmobs": {"et_products": None}}},  # lsmobs ET products are required
+    {"prep": {"lsmobs": {"rn_products": {"CERESed4.2": {**SITH, "variable": None}}}}},
     {"prep": {"cmip": {"default_members": "first"}}},
     {"prep": {"cmip": {"member_ids": {"CESM2": 3}}}},
     {"prep": {"fppe": {"members": ["0", "1"]}}},
@@ -117,6 +129,24 @@ def test_unknown_settings_raise(tmp_path, changes):
 def test_invalid_values_raise(tmp_path, changes):
     with pytest.raises(ValueError):
         cfg.load_settings(write_yaml(tmp_path, "run.yml", changes))
+
+
+def test_product_settings(tmp_path):
+    """
+    A run file replaces a family's <v>_products whole; lsmobs LAI, P and Rn may be null (own fields) or
+    products; version null is kept, and source ilamb marks an ILAMB product.
+    """
+    ceres = {"dataset": "ceres", "version": None, "variable": "rns", "freq": "monthly", "source": "ilamb"}
+    run = write_yaml(tmp_path, "run.yml", {"prep": {
+        "obs": {"et_products": {"SiTHv2": SITH}},
+        "lsmobs": {"rn_products": {"CERESed4.2": ceres}},
+    }})
+    s, d = cfg.load_settings(run), cfg.load_settings()
+    assert s["prep"]["obs"]["et_products"] == {"SiTHv2": SITH}
+    assert s["prep"]["obs"]["lai_products"] == d["prep"]["obs"]["lai_products"]
+    assert s["prep"]["lsmobs"]["rn_products"] == {"CERESed4.2": ceres}
+    assert s["prep"]["lsmobs"]["lai_products"] is None
+    assert ids(s)[0] != ids(d)[0]
 
 
 def test_ids_follow_the_hashed_settings(tmp_path):

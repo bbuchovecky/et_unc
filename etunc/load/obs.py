@@ -319,7 +319,8 @@ def _mask_incomplete_gldas_months(ds: xr.Dataset, var: str, version: str, freq: 
         return ds.assign({var: ds[var].where(ds["n_steps"] >= ds["n_steps_full"])})
 
 
-# GLDAS (0.25 deg, 60S-90N), monthly means of Evap_tavg (kg m-2 s-1) computed on Earth Engine by
+# GLDAS (0.25 deg, 60S-90N), monthly means of Evap_tavg, Rainf_f_tavg (kg m-2 s-1), Swnet_tavg and Lwnet_tavg
+# (W m-2, positive downward) computed on Earth Engine by
 # scripts/download/download_gldas.py: one folder per product version, one file per year.
 # 2.1: Noah (2000 on), 2.0: Noah (to 2014), 2.2-grace-da: Catchment with GRACE data assimilation (2003-02 on)
 register_dataset(ObsDataset(

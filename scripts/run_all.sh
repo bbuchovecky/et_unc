@@ -41,7 +41,7 @@ read -r -a runs <<< "${RUNS:-default}"
 # Steps 1-11: inputs of each family
 prep_steps=(
     scripts/prep_obs.py
-    scripts/prep_era5.py
+    scripts/prep_lsmobs.py
     scripts/prep_cmip.py
     scripts/prep_lens.py
     scripts/prep_fppe.py

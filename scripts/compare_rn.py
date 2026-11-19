@@ -11,7 +11,7 @@ Sources
   RSDS_MODELS (crujra3/ holds no shortwave file; each model's rsds is the
   shortwave forcing it received)
 - LW down: ERA5 msdwlwrf, CERES rlds, CRU-JRA dlwrf (`lt.load_forcing`)
-- Rn:      ERA5 msnswrf + msnlwrf (as in prep_era5.py), CERES rns (as in
+- Rn:      ERA5 msnswrf + msnlwrf (as in prep_trendy.py), CERES rns (as in
   prep_obs.py). CRU-JRA has no net radiation.
 CERES is EBAF ed4.2 from the ILAMB data (`il.load_native`).
 

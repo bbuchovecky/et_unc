@@ -148,36 +148,56 @@ def _ppe_member(value, name: str) -> int:
     return value
 
 
-ILAMB_VARIABLES = ("et", "lai", "pr", "rn")
-GRIDDED_PRODUCT_KEYS = ("dataset", "version", "variable", "freq")  # lo.load_obs arguments (or le.load_era5_land)
+PRODUCT_VARIABLES = ("et", "lai", "pr", "rn")  # the <v>_products of prep.obs and prep.lsmobs
+PRODUCT_KEYS = ("dataset", "version", "variable", "freq", "source")  # each product's entry
+PRODUCT_SOURCES = (None, "ilamb")  # source: null = native files (lo.load_obs, ...), ilamb = il.load_native
 CMIP_MEMBER_CHOICES = ("top", "max_r", "all")  # cmip.select_members
 N_PPE_MEMBERS = 28
 TRENDY_EXPERIMENTS_ALL = ("S2", "S3")  # as etunc.load.trendy.EXPERIMENTS (which imports this module)
 
 
+def _products(value, name: str, allow_none: bool = False) -> dict | None:
+    """
+    Products of one variable, {label: {dataset, version, variable, freq, source}}, non-empty (or None,
+    if `allow_none`). version may be null; source is null or "ilamb".
+    """
+    if value is None and allow_none:
+        return None
+    products = _mapping(value, name)
+    if not products:
+        raise ValueError(f"setting {name!r} must have at least one product")
+    out = {}
+    for label, p in products.items():
+        where = f"{name}.{label}"
+        p = _mapping(p, where, PRODUCT_KEYS)
+        if p["source"] not in PRODUCT_SOURCES:
+            raise ValueError(f"setting '{where}.source' must be null or 'ilamb', not {p['source']!r}")
+        out[label] = {
+            "dataset": _string(p["dataset"], f"{where}.dataset"),
+            "version": None if p["version"] is None else _string(p["version"], f"{where}.version"),
+            "variable": _string(p["variable"], f"{where}.variable"),
+            "freq": _string(p["freq"], f"{where}.freq"),
+            "source": p["source"],
+        }
+    return out
+
+
 def validate_products(prep: dict) -> dict:
-    """The product, model and member settings of each family (prep.obs, prep.era5, ...), checked."""
-    obs, cmip, trendy = prep["obs"], prep["cmip"], prep["trendy"]
-    ilamb = _mapping(obs["ilamb_products"], "prep.obs.ilamb_products", ILAMB_VARIABLES)
-    gridded = _mapping(obs["gridded_et_products"], "prep.obs.gridded_et_products")
+    """The product, model and member settings of each family (prep.obs, prep.lsmobs, ...), checked."""
+    obs, lsmobs, cmip, trendy = prep["obs"], prep["lsmobs"], prep["cmip"], prep["trendy"]
     member_ids = _mapping(cmip["member_ids"], "prep.cmip.member_ids")
     omit_models = _mapping(trendy["omit_models"], "prep.trendy.omit_models")
     experiments = _list(trendy["experiments"], "prep.trendy.experiments", _string)
     if not experiments or not set(experiments) <= set(TRENDY_EXPERIMENTS_ALL):
         raise ValueError(f"setting 'prep.trendy.experiments' must be a non-empty list of {TRENDY_EXPERIMENTS_ALL}, "
                          f"not {experiments!r}")
-    gridded_out = {}
-    for label, g in gridded.items():
-        name = f"prep.obs.gridded_et_products.{label}"
-        g = _mapping(g, name, GRIDDED_PRODUCT_KEYS)
-        gridded_out[label] = {k: _string(g[k], f"{name}.{k}") for k in GRIDDED_PRODUCT_KEYS}
     out = {
-        "obs": {
-            "ilamb_products": {v: _list(ilamb[v], f"prep.obs.ilamb_products.{v}", _string, allow_none=True)
-                               for v in ILAMB_VARIABLES},
-            "gridded_et_products": gridded_out,
-        },
-        "era5": {"lai_product": _string(prep["era5"]["lai_product"], "prep.era5.lai_product")},
+        # obs: products of every variable; lsmobs: ET products, and null LAI/P/Rn = each ET product's own
+        "obs": {f"{v}_products": _products(obs[f"{v}_products"], f"prep.obs.{v}_products")
+                for v in PRODUCT_VARIABLES},
+        "lsmobs": {f"{v}_products": _products(lsmobs[f"{v}_products"], f"prep.lsmobs.{v}_products",
+                                              allow_none=(v != "et"))
+                   for v in PRODUCT_VARIABLES},
         "cmip": {
             "source_ids": _list(cmip["source_ids"], "prep.cmip.source_ids", _string, allow_none=True),
             "omit_source_ids": _list(cmip["omit_source_ids"], "prep.cmip.omit_source_ids", _string),
@@ -290,9 +310,15 @@ NA_THRESH = SETTINGS["prep"]["na_thresh"]
 LF_THRESH = SETTINGS["prep"]["lf_thresh"]
 
 # Products, models and members of each family (prep.<family>), read by prep_<family>.py
-OBS_ILAMB_PRODUCTS = SETTINGS["prep"]["obs"]["ilamb_products"]            # {variable: products or None (all)}
-OBS_GRIDDED_ET_PRODUCTS = SETTINGS["prep"]["obs"]["gridded_et_products"]  # {label: lo.load_obs arguments; era5-land: le.load_era5_land}
-ERA5_LAI_PRODUCT = SETTINGS["prep"]["era5"]["lai_product"]
+# obs and lsmobs: {label: {dataset, version, variable, freq, source}}; lsmobs LAI/P/Rn None = own fields
+OBS_ET_PRODUCTS = SETTINGS["prep"]["obs"]["et_products"]
+OBS_LAI_PRODUCTS = SETTINGS["prep"]["obs"]["lai_products"]
+OBS_PR_PRODUCTS = SETTINGS["prep"]["obs"]["pr_products"]
+OBS_RN_PRODUCTS = SETTINGS["prep"]["obs"]["rn_products"]
+LSMOBS_ET_PRODUCTS = SETTINGS["prep"]["lsmobs"]["et_products"]
+LSMOBS_LAI_PRODUCTS = SETTINGS["prep"]["lsmobs"]["lai_products"]
+LSMOBS_PR_PRODUCTS = SETTINGS["prep"]["lsmobs"]["pr_products"]
+LSMOBS_RN_PRODUCTS = SETTINGS["prep"]["lsmobs"]["rn_products"]
 CMIP_SOURCE_IDS = SETTINGS["prep"]["cmip"]["source_ids"]
 CMIP_OMIT_SOURCE_IDS = SETTINGS["prep"]["cmip"]["omit_source_ids"]
 CMIP_DEFAULT_MEMBERS = SETTINGS["prep"]["cmip"]["default_members"]
