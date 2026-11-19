@@ -35,13 +35,14 @@ prep:
       GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly, source: null}
       SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly, source: null}
       FLUXCOM-X-BASE: {dataset: fluxcom-x, version: X-BASE, variable: ET, freq: monthly, source: null}
+      FLUXCOM:        {dataset: fluxcom, version: null, variable: et, freq: monthly, source: ilamb}
     lai_products:
       GIMMS_LAI4g: {dataset: gimms, version: 4g, variable: lai, freq: monthly, source: ilamb}
     pr_products:
       GPCPv3.3: {dataset: gpcp, version: "3.3", variable: sat_gauge_precip, freq: monthly, source: null}
     rn_products:
       CERESed4.2: {dataset: ceres, version: ed4.2, variable: rns, freq: monthly, source: ilamb}
-  # Land-model and reanalysis ET products (prep_lsmobs.py). lai/pr/rn_products: null = each ET product's
+  # Land-model / reanalysis ET products (prep_lsmobs.py). lai/pr/rn_products: null = each ET product's
   # own field (prep_lsmobs.OWN_FIELDS), or products as in obs, combined with every ET product
   lsmobs:
     et_products:

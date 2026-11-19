@@ -89,6 +89,7 @@ pyyaml = "==6.0.3"          # etunc.config reads config/*.yml
 
 # --- Downloads ---
 cdsapi = "==0.7.7"          # scripts/download/download_clara_a3.py (Copernicus CDS)
+pooch = "==1.9.0"           # scripts/download/download_{gimms_4g,hiq_lai}.py (Zenodo)
 
 # --- Tests / notebooks ---
 pytest = "==9.1.1"
