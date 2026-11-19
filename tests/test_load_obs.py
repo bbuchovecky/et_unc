@@ -317,26 +317,27 @@ def test_load_obs_fluxcom_x(tmp_path):
     assert da.attrs["units"] == "mm hr-1" and da.attrs["dataset"] == "fluxcom-x"
 
 
-def write_gldas(root, version, year, n_steps_full=8):
-    """One year of a download_gldas.py file: Evap_tavg, and n_steps = n_steps_full except one cell-month."""
+def write_gldas(root, version, year, n_steps_full=8, band="Evap_tavg", units="kg m-2 s-1", value=1e-5):
+    """One year of a download_gldas.py file: `band`, and n_steps = n_steps_full except one cell-month."""
     time = pd.date_range(f"{year}-01", periods=12, freq="MS")
     n_steps = np.full((12, 2, 2), n_steps_full, dtype="int16")
     n_steps[0, 0, 0] = n_steps_full - 1  # an incomplete month
     n_steps[:, 1, 1] = 0                  # ocean: no time step, NaN
-    evap = np.where(n_steps > 0, 1e-5, np.nan).astype("float32")
-    ds = xr.Dataset({"Evap_tavg": (("time", "lat", "lon"), evap, {"units": "kg m-2 s-1"}),
+    values = np.where(n_steps > 0, value, np.nan).astype("float32")
+    ds = xr.Dataset({band: (("time", "lat", "lon"), values, {"units": units}),
                      "n_steps": (("time", "lat", "lon"), n_steps),
                      "n_steps_full": ("time", np.full(12, n_steps_full, dtype="int16"))},
                     coords={"time": time, "lat": [-0.125, 0.125], "lon": [-0.125, 0.125]})
-    path = root / f"{version}/GLDAS_{version}_Evap_tavg_monthly_{year}.nc"
+    path = root / f"{version}/GLDAS_{version}_{band}_monthly_{year}.nc"
     path.parent.mkdir(parents=True, exist_ok=True)
     ds.to_netcdf(path)
 
 
 def test_load_obs_gldas(tmp_path):
     """
-    GLDAS layout: one folder per version; a month with fewer valid time steps than the full month is NaN,
-    and the n_steps variables are not returned.
+    GLDAS layout: one folder per version and one file per band; a month with fewer valid time steps than
+    the full month is NaN, and the n_steps variables are not returned. The P and Rn bands of prep_lsmobs.py
+    (OWN_FIELDS) load the same way, each from its own file with its own units.
     """
     s = replace(lo.get_dataset("gldas"), root=tmp_path)
     write_gldas(tmp_path, "2.1", 2001)
@@ -349,6 +350,18 @@ def test_load_obs_gldas(tmp_path):
     assert int(da.isnull().sum()) == 1 + 12  # the incomplete month and the ocean cell
     with pytest.raises(FileNotFoundError):
         lo.load_obs(s, "Evap_tavg", version="2.0")
+
+    # Precipitation (kg m-2 s-1) and net shortwave and longwave radiation (W m-2, positive downward)
+    for band, units, value in (("Rainf_f_tavg", "kg m-2 s-1", 3e-5), ("Swnet_tavg", "W m-2", 150.0),
+                               ("Lwnet_tavg", "W m-2", -60.0)):
+        write_gldas(tmp_path, "2.1", 2001, band=band, units=units, value=value)
+    assert lo.list_variables(s) == ["Evap_tavg", "Lwnet_tavg", "Rainf_f_tavg", "Swnet_tavg"]
+    pr = lo.load_obs(s, "Rainf_f_tavg").load()
+    assert pr.name == "Rainf_f_tavg" and pr.attrs["units"] == "kg m-2 s-1" and int(pr.isnull().sum()) == 1 + 12
+    assert float(pr.isel(time=1, lat=0, lon=0)) == pytest.approx(3e-5)
+    sw, lw = (lo.load_obs(s, b).load() for b in ("Swnet_tavg", "Lwnet_tavg"))
+    assert sw.attrs["units"] == lw.attrs["units"] == "W m-2"
+    assert float((sw + lw).isel(time=1, lat=0, lon=0)) == pytest.approx(90.0)
 
 
 def test_load_obs_gpcp(tmp_path):

@@ -84,8 +84,9 @@ Notes
   rate (mm hr-1), NaN over the ocean; the files' static ``land_fraction`` is
   not read.
 - GLDAS files are those of scripts/download/download_gldas.py: monthly means of
-  Evap_tavg (kg m-2 s-1, already a flux) on the native 0.25 deg grid (60S-90N),
-  from Earth Engine, for GLDAS-2.0 Noah (to 2014), 2.1 Noah and 2.2 Catchment
+  Evap_tavg and Rainf_f_tavg (kg m-2 s-1, already fluxes) and Swnet_tavg and
+  Lwnet_tavg (W m-2, positive downward), one file per band and year, on the
+  native 0.25 deg grid (60S-90N), from Earth Engine, for GLDAS-2.0 Noah (to 2014), 2.1 Noah and 2.2 Catchment
   with GRACE data assimilation (from 2003-02; 2003-01 is NaN). The loader sets
   a month to NaN where it has fewer valid time steps than the full month
   (``n_steps`` < ``n_steps_full``), so every value is a complete-month mean.
