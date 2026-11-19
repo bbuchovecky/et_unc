@@ -13,7 +13,7 @@ prep:
   target_res: 1                       # deg, target grid of the conservative regridding
   min_years: 3                        # minimum complete years shared by the four products of an obs combination
   min_annual_et: -2.0                 # W/m2; gridcell-years with lower annual mean ET are NaN (step 6)
-  lat_bnds: [-58, 90]                 # excludes Antarctica (Tierra del Fuego ends near -56)
+  lat_bnds: [-58, 90]                 # excludes Antarctica
   na_thresh: 0.5                      # conservative regridding: target cells with more than this fraction
                                       # of missing source area are NaN
   lf_thresh: 0.5                      # gridcell land fraction threshold (land where strictly greater)
@@ -29,11 +29,12 @@ prep:
   obs:
     et_products:
       PMLv2.2a_MODIS: {dataset: pml, version: V2.2a-MODIS, variable: ET, freq: monthly, source: null}
-      # PMLv2.2b:     {dataset: pml, version: V2.2b, variable: ET, freq: monthly, source: null}
+      PMLv2.2b:       {dataset: pml, version: V2.2b, variable: ET, freq: monthly, source: null}
       PMLv2.2c:       {dataset: pml, version: V2.2c, variable: ET, freq: monthly, source: null}
-      # GLEAMv4.3a:   {dataset: gleam, version: v4.3a, variable: E, freq: monthly, source: null}
+      GLEAMv4.3a:     {dataset: gleam, version: v4.3a, variable: E, freq: monthly, source: null}
       GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly, source: null}
       SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly, source: null}
+      FLUXCOM-X-BASE: {dataset: fluxcom-x, version: X-BASE, variable: ET, freq: monthly, source: null}
     lai_products:
       GIMMS_LAI4g: {dataset: gimms, version: 4g, variable: lai, freq: monthly, source: ilamb}
     pr_products:
@@ -44,14 +45,13 @@ prep:
   # own field (prep_lsmobs.OWN_FIELDS), or products as in obs, combined with every ET product
   lsmobs:
     et_products:
-      # ERA5:            {dataset: era5, version: null, variable: mer, freq: monthly, source: null}
+      ERA5:              {dataset: era5, version: null, variable: mer, freq: monthly, source: null}
       ERA5-Land:         {dataset: era5-land, version: monthly-means, variable: e, freq: monthly, source: null}
-      # GLDAS has no LAI (needs lai_products), and only Evap_tavg is downloaded so far: run
-      # scripts/download/download_gldas.py for Rainf_f_tavg, Swnet_tavg and Lwnet_tavg first
-      # GLDAS2.0-Noah:     {dataset: gldas, version: "2.0", variable: Evap_tavg, freq: monthly, source: null}
-      # GLDAS2.1-Noah:     {dataset: gldas, version: "2.1", variable: Evap_tavg, freq: monthly, source: null}
-      # GLDAS2.2-GRACE-DA: {dataset: gldas, version: 2.2-grace-da, variable: Evap_tavg, freq: monthly, source: null}
-    lai_products: null
+      GLDAS2.0-Noah:     {dataset: gldas, version: "2.0", variable: Evap_tavg, freq: monthly, source: null}
+      GLDAS2.1-Noah:     {dataset: gldas, version: "2.1", variable: Evap_tavg, freq: monthly, source: null}
+      GLDAS2.2-GRACE-DA: {dataset: gldas, version: 2.2-grace-da, variable: Evap_tavg, freq: monthly, source: null}
+    lai_products:
+      GIMMS_LAI4g: {dataset: gimms, version: 4g, variable: lai, freq: monthly, source: ilamb}
     pr_products: null
     rn_products: null
   cmip:
@@ -68,7 +68,7 @@ prep:
   lens:
     members: null             # null = all 50, or a list of ens_name ("<branch year>-<member>", e.g. "1001-001")
   fppe:
-    members: null             # members 0-28: null = every member not in drop_outliers, or a list
+    members: null             # members 0-28: null = every member, or a list
     drop_outliers: [13, 28]   # unreasonable LAI and ET
   ippe:
     members: null             # as fppe (the same parameter perturbations)
@@ -87,7 +87,7 @@ prep:
       VISIT: implausible LAI
       ED: ET=0 in high northern latitudes
 
-# Steps 12-14 (make_edges.py, bin_*.py) and the analyses
+# For make_edges.py: bin_*.py and the analyses
 binning:
   families: [obs, lsmobs, cmip, fppe, ippe, lens, trendy_s3]
   bin_variable: et      # et: annual mean ET; et_pr: annual evaporation ratio ET/P (with the P of the AI)

@@ -139,7 +139,7 @@ def test_product_settings(tmp_path):
     ceres = {"dataset": "ceres", "version": None, "variable": "rns", "freq": "monthly", "source": "ilamb"}
     run = write_yaml(tmp_path, "run.yml", {"prep": {
         "obs": {"et_products": {"SiTHv2": SITH}},
-        "lsmobs": {"rn_products": {"CERESed4.2": ceres}},
+        "lsmobs": {"lai_products": None, "rn_products": {"CERESed4.2": ceres}},
     }})
     s, d = cfg.load_settings(run), cfg.load_settings()
     assert s["prep"]["obs"]["et_products"] == {"SiTHv2": SITH}
