@@ -74,6 +74,7 @@ esmpy = "==8.9.1"
 esmf = { version = "==8.9.1", build = "nompi_*" }
 regionmask = "==0.13.0"
 affine = "==2.4.0"          # used by regionmask to rasterize masks
+rasterio = "==1.5.0"        # GeoTIFF obs (GIMMS LAI4g, HiQ-LAI)
 shapely = "==2.1.2"
 geopandas = "==1.1.2"
 pyproj = "==3.7.2"

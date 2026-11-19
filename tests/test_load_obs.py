@@ -10,6 +10,8 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 import pytest
+import rasterio
+import rasterio.transform
 import xarray as xr
 
 import etunc.load.obs as lo
@@ -432,6 +434,107 @@ def test_gleam_v43b_needs_v43a_file(gleam, tmp_path):
     (tmp_path / "v4.3a/monthly/E/E_2004_GLEAM_v4.3a_MO.nc").unlink()
     with pytest.raises(FileNotFoundError, match="ocean mask"):
         lo.load_obs(gleam, "E", slice("2004", "2004"), version="v4.3b").load()
+
+
+# ------------------------------------------------------------------
+# GeoTIFF LAI products (GIMMS LAI4g, HiQ-LAI)
+# ------------------------------------------------------------------
+
+def write_geotiff(path, bands, west=-180.0, north=90.0, res=60.0):
+    """North-up EPSG:4326 GeoTIFF of `bands` (list of 2-D arrays, row 0 the northernmost)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    height, width = bands[0].shape
+    with rasterio.open(path, "w", driver="GTiff", height=height, width=width, count=len(bands),
+                       dtype=bands[0].dtype, crs="EPSG:4326",
+                       transform=rasterio.transform.from_origin(west, north, res, res)) as dst:
+        for i, band in enumerate(bands, start=1):
+            dst.write(band, i)
+
+
+# 3 x 6 grid of 60 deg cells; row 0 (north) holds the fill, row 2 (south) the valid values
+GIMMS_RAW = np.array([[65535] * 6, [0, 7000, 1, 2, 3, 4], [1000, 1500, 2000, 2500, 3000, 3500]], dtype="uint16")
+
+
+@pytest.fixture
+def gimms(tmp_path, monkeypatch):
+    """GIMMS LAI4g layout: both records, two zips of each, half-monthly files."""
+    monkeypatch.setattr(lo, "GIMMS_LAI4G_ROOT", tmp_path)
+    for record, (folder, prefix) in lo.GIMMS_LAI4G_RECORDS.items():
+        for years in ("2001_2002", "2003_2003"):
+            for year in range(int(years[:4]), int(years[-4:]) + 1):
+                for month, half in ((1, "01"), (1, "02"), (2, "01")):
+                    zdir = f"{folder}_{years}"
+                    write_geotiff(tmp_path / zdir / zdir / f"{prefix}{year}{month:02d}{half}.tif",
+                                  [GIMMS_RAW, np.zeros_like(GIMMS_RAW)])
+    return tmp_path
+
+
+def test_gimms_lai4g_files(gimms):
+    """Files of each record are found across zips, dated at the start of their half month."""
+    files = lo.gimms_lai4g_files()
+    assert list(files)[:3] == [pd.Timestamp("2001-01-01"), pd.Timestamp("2001-01-16"), pd.Timestamp("2001-02-01")]
+    assert len(files) == 9
+    assert not any("(AVHRR)" in p.name for p in files.values())
+    assert all("(AVHRR)" in p.name for p in lo.gimms_lai4g_files("AVHRR").values())
+    with pytest.raises(ValueError, match="Unknown GIMMS"):
+        lo.gimms_lai4g_files("MODIS")
+
+
+def test_load_gimms_lai4g(gimms):
+    """LAI is band 1 times 0.001, fill NaN, lat ascending, lazy, only the files in the time slice."""
+    da = lo.load_gimms_lai4g(slice("2002", "2003-01"))
+    assert da.chunks is not None
+    assert da.dims == ("time", "lat", "lon")
+    assert list(da.time.dt.strftime("%Y-%m-%d").values) == [
+        "2002-01-01", "2002-01-16", "2002-02-01", "2003-01-01", "2003-01-16"]
+    np.testing.assert_allclose(da.lat, [-60, 0, 60])
+    np.testing.assert_allclose(da.lon, [-150, -90, -30, 30, 90, 150])
+    first = da.isel(time=0).values
+    np.testing.assert_allclose(first[0], [1.0, 1.5, 2.0, 2.5, 3.0, 3.5])   # south row first
+    np.testing.assert_allclose(first[1], [0.0, 7.0, 0.001, 0.002, 0.003, 0.004], rtol=1e-6)
+    assert np.isnan(first[2]).all()                                       # 65535 fill
+    assert da.dtype == "float32"
+    assert da.attrs["units"] == "m2 m-2" and da.attrs["frequency"] == "half-month"
+    assert lo.load_gimms_lai4g(lat_bnds=slice(-90, 0)).sizes["lat"] == 2
+
+
+def test_load_gimms_lai4g_other_grid_raises(gimms):
+    """A file on another grid raises when read, instead of being put on the first file's grid."""
+    folder, prefix = lo.GIMMS_LAI4G_RECORDS["AVHRR-MODIS"]
+    zdir = f"{folder}_2003_2003"
+    write_geotiff(gimms / zdir / zdir / f"{prefix}20030201.tif", [GIMMS_RAW], west=-179.0)
+    da = lo.load_gimms_lai4g(slice("2003", "2003"))
+    with pytest.raises(ValueError, match="not on the grid"):
+        da.load()
+    with pytest.raises(FileNotFoundError):
+        lo.load_gimms_lai4g(slice("1990", "1995"))
+
+
+@pytest.fixture
+def hiq(tmp_path, monkeypatch):
+    """HiQ-LAI layout: 8-day files named by day of year, with a __MACOSX folder as in the zips."""
+    monkeypatch.setattr(lo, "HIQ_LAI_ROOT", tmp_path)
+    raw = np.array([[255, 249, 101, 0, 0, 0], [0, 100, 55, 1, 2, 3], [10, 20, 30, 40, 50, 60]], dtype="uint8")
+    for years, doys in (("2000-2001", ("2000049", "2000361", "2001001")), ("2002-2002", ("2002009",))):
+        zdir = tmp_path / f"{lo.HIQ_LAI_PREFIX}{years}"
+        for doy in doys:
+            write_geotiff(zdir / zdir.name / f"{lo.HIQ_LAI_PREFIX}{doy}.tif", [raw, raw])
+            (zdir / "__MACOSX" / zdir.name).mkdir(parents=True, exist_ok=True)
+            (zdir / "__MACOSX" / zdir.name / f"._{lo.HIQ_LAI_PREFIX}{doy}.tif").write_bytes(b"apple")
+    return tmp_path
+
+
+def test_load_hiq_lai(hiq):
+    """Dated at the composite's first day; band 1 times 0.1, NaN above 100; macOS metadata files ignored."""
+    assert list(lo.hiq_lai_files()) == [pd.Timestamp(t) for t in
+                                        ("2000-02-18", "2000-12-26", "2001-01-01", "2002-01-09")]
+    da = lo.load_hiq_lai(slice("2000-12", "2001"))
+    assert list(da.time.dt.strftime("%Y-%m-%d").values) == ["2000-12-26", "2001-01-01"]
+    v = da.isel(time=0).values
+    np.testing.assert_allclose(v[0], [1, 2, 3, 4, 5, 6], rtol=1e-6)
+    np.testing.assert_allclose(v[1], [0, 10, 5.5, 0.1, 0.2, 0.3], rtol=1e-6)
+    assert np.isnan(v[2, :3]).all() and (v[2, 3:] == 0).all()  # 255, 249 (fill) and 101 (out of range)
+    assert da.attrs["frequency"] == "8-day" and da.attrs["dataset"] == "hiq_lai"
 
 
 # ------------------------------------------------------------------
