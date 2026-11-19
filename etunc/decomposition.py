@@ -32,10 +32,10 @@ Gridded (`decompose_gridded`): with b_x(i) the bin of gridcell i in dataset x (f
 own LAI and AI, `binning.bin_index`) and e_x(i) its ET, the counterfactual means at
 each gridcell are lookups of the bin means, E_xy(i) = f_y(b_x(i)) (0 off S), so
 
-    STATE(i)       = f_r(b_m) - f_r(b_r)          FUNCTION(i) = f_m(b_r) - f_r(b_r)
-    INTERACTION(i) = f_m(b_m) - f_m(b_r) - f_r(b_m) + f_r(b_r)
-    WITHIN(i)      = (e_m - E_mm(i)) - (e_r - E_rr(i))     within-bin anomaly
-    DIFF(i)        = e_m - e_r = STATE + FUNCTION + INTERACTION + WITHIN
+    STATE(i)       = f_r(b_m(i)) - f_r(b_r(i))          FUNCTION(i) = f_m(b_r(i)) - f_r(b_r(i))
+    INTERACTION(i) = f_m(b_m(i)) - f_m(b_r(i)) - f_r(b_m(i)) + f_r(b_r(i))
+    WITHIN(i)      = (e_m(i) - E_mm(i)) - (e_r(i) - E_rr(i))     within-bin anomaly
+    DIFF(i)        = e_m(i) - e_r(i) = STATE + FUNCTION + INTERACTION + WITHIN
 
 and each map's land-area mean is its scalar of `decompose` (WITHIN: 0 on a complete
 support). A pooled dataset (`pool`) is a mixture of states: the lookups and e are
@@ -109,7 +109,9 @@ def pool(p: xr.DataArray, f: xr.DataArray, weights: xr.DataArray, dim: str) -> t
     E_pool = sum_s w_s E_s exactly. Not `binning.pool_members`, which weights each
     dataset by its sum of weights. f_pool is NaN where no dataset occupies the bin.
     """
+    # Plain weighted mean for p
     p_pool = (weights * p).sum(dim)
+    # Weight f by source weights AND bin land area:
     # Empty bins have p = 0 and f = NaN; they add nothing to the sum
     pf = (weights * p * f.fillna(0)).sum(dim)
     f_pool = (pf / p_pool).where(p_pool > 0)

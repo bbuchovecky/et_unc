@@ -1,16 +1,12 @@
 # Default settings of the binning pipeline (docs/binning-workflow.md).
 #
-# A run changes some of them in its own file in config/runs/ (only the keys that differ), selected with
-# the environment variable ETUNC_RUN=config/runs/<name>.yml; without it, a run uses these defaults.
-# etunc/config.py reads both and exposes every setting as a module constant (prep.time_slice -> TIME_SLICE).
-#
 # Run IDs (etunc.config.RUN_ID, PREP_ID) are hashes of the settings:
 #   PREP_ID = "p" + hash of `prep`             names the folder and tags the files of steps 1-11
 #   RUN_ID  = "r" + hash of `prep` + `binning` names the folder and tags the files of steps 12-14 and the analyses
 # so runs that differ only in `binning` share their prep inputs. `plotting` is not hashed. Each ID is
 # registered in config/runs.csv when a script runs. Changing a default here changes the ID of every run.
 
-# Steps 1-11 (prep_<family>.py): what each family's binning inputs are, including each family's
+# For prep_<family>.py: what each family's binning inputs are, including each family's
 # products, models and members
 prep:
   time_slice: ["2001-01", "2014-12"]  # one period for every family (first and last month)
@@ -22,10 +18,7 @@ prep:
                                       # of missing source area are NaN
   lf_thresh: 0.5                      # gridcell land fraction threshold (land where strictly greater)
 
-  # Products, models and members of each family (steps 1-2 of prep_<family>.py). They are part of
-  # `prep`, so of PREP_ID. A run file changes single keys of a family (e.g. prep.cmip.default_members),
-  # but replaces a mapping inside a family (ilamb_products, gridded_et_products, member_ids,
-  # omit_models) whole, so it must give every entry of it
+  # For prep_<family>.py: products, models and members of each family
   obs:
     # ILAMB products by variable (keys of il.PRODUCTS[variable]); null = every product of the variable.
     # Every variable (et, lai, pr, rn) must be given
@@ -81,8 +74,6 @@ prep:
 
 # Steps 12-14 (make_edges.py, bin_*.py) and the analyses
 binning:
-  # Families pooled by make_edges.py and binned by bin_all.py. fppe (coupled) and ippe (offline CLM)
-  # share the parameter perturbations but are separate families
   families: [obs, era5, cmip, fppe, ippe, lens, trendy_s3]
   bin_variable: et      # et: annual mean ET; et_pr: annual evaporation ratio ET/P (with the P of the AI)
   area_weighted: false  # true: bin statistics weighted by each gridcell's land area (grid.land_area)
