@@ -1,10 +1,10 @@
 ## Binning Workflow
-Every data family (obs, ERA5, CMIP6, LENS2, FHIST PPE, IHIST PPE) runs the same numbered steps.
+Every data family (obs, lsmobs, CMIP6, LENS2, FHIST PPE, IHIST PPE) runs the same numbered steps.
 They are written out in `main()` of each script. The scripts differ only in
 step 1 (which loader), step 3 (which unit conversion) and step 5 (which land mask).
 
 ```
-prep_{obs,era5,cmip,lens,fppe,ippe}.py                 steps 1-11   -> PROC_ROOT/<prep_id>/<family>/inputs/<family>.inputs.<prep_id>.nc
+prep_{obs,lsmobs,cmip,lens,fppe,ippe}.py               steps 1-11   -> PROC_ROOT/<prep_id>/<family>/inputs/<family>.inputs.<prep_id>.nc
 make_edges.py                                           steps 12-13  -> common area mask, pooled LAI/AI edges
 bin_all.py                                              step 14      -> binned ET of every family
 bin_all_clim.py                                         step 14      -> binned climatological ET of every family
@@ -16,7 +16,7 @@ bin_plumber_clim.py                                     step 14      -> binned c
 Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scripts/run_all.pbs` as one Casper job) runs all of them, for each run of `RUNS` (below).
 `regress_lai_aridity.py`, `decompose_state_function.py` and `gridded_state_function_decomp.py` are analyses of the step 14 outputs, not part of the pipeline (see [analyses outside the pipeline](#analyses-outside-the-pipeline)).
 
-**Settings and runs.** Every setting shared by the scripts is in `config/pipeline.yml`, in three sections: `prep` (steps 1-11: `time_slice`, `target_res`, `min_years`, `min_annual_et`, `lat_bnds`, `na_thresh`, `lf_thresh`, and each family's products, models and members in `prep.obs`, `prep.era5`, `prep.cmip`, `prep.lens`, `prep.fppe`, `prep.ippe` and `prep.trendy`), `binning` (steps 12-14 and the analyses: `families`, `bin_variable`, `area_weighted`, `n_xbins`, `n_ybins`, `signif_alpha`, `signif_n_min`) and `plotting` (`dpi`, `hist_bins`). `etunc/config.py` reads it and exposes each setting as a constant (`prep.time_slice` -> `cfg.TIME_SLICE`, `binning.n_xbins` -> `cfg.N_XBINS`, ...). A run changes some of them in its own file, `config/runs/<name>.yml`, holding only the keys that differ (a misspelt key is an error; a mapping inside a family, such as `prep.cmip.member_ids` or `prep.trendy.omit_models`, is replaced whole), selected with the environment variable `ETUNC_RUN=config/runs/<name>.yml`; without it, a run has the defaults. The paths are in `config/paths.yml` (not in git; a copy of `config/paths.example.yml`, or the file named by `ETUNC_PATHS`). The product, model and member choices are part of `prep`, so of the PREP_ID: changing one family's gives every family a new PREP_ID. Each prep script assigns them to its own constants at its top (`ILAMB_PRODUCTS = cfg.OBS_ILAMB_PRODUCTS`, ...), next to the settings particular to it (variables, file streams, ...).
+**Settings and runs.** Every setting shared by the scripts is in `config/pipeline.yml`, in three sections: `prep` (steps 1-11: `time_slice`, `target_res`, `min_years`, `min_annual_et`, `lat_bnds`, `na_thresh`, `lf_thresh`, and each family's products, models and members in `prep.obs`, `prep.lsmobs`, `prep.cmip`, `prep.lens`, `prep.fppe`, `prep.ippe` and `prep.trendy`), `binning` (steps 12-14 and the analyses: `families`, `bin_variable`, `area_weighted`, `n_xbins`, `n_ybins`, `signif_alpha`, `signif_n_min`) and `plotting` (`dpi`, `hist_bins`). `etunc/config.py` reads it and exposes each setting as a constant (`prep.time_slice` -> `cfg.TIME_SLICE`, `binning.n_xbins` -> `cfg.N_XBINS`, ...). A run changes some of them in its own file, `config/runs/<name>.yml`, holding only the keys that differ (a misspelt key is an error; a mapping inside a family, such as `prep.cmip.member_ids` or `prep.trendy.omit_models`, is replaced whole), selected with the environment variable `ETUNC_RUN=config/runs/<name>.yml`; without it, a run has the defaults. The paths are in `config/paths.yml` (not in git; a copy of `config/paths.example.yml`, or the file named by `ETUNC_PATHS`). The product, model and member choices are part of `prep`, so of the PREP_ID: changing one family's gives every family a new PREP_ID. Each prep script assigns them to its own constants at its top (`ET_PRODUCTS = cfg.LSMOBS_ET_PRODUCTS`, ...), next to the settings particular to it (variables, file streams, ...).
 - Each run has two IDs, hashes of its settings (`etunc.config`): `PREP_ID` = "p" + 7 hex digits of the `prep` settings, and `RUN_ID` = "r" + 7 hex digits of the `prep` and `binning` settings. `plotting` and the paths are not hashed. The same settings always give the same IDs, so rerunning a run overwrites its own outputs, and runs that differ only in `binning` share their prep inputs.
 - Every script registers its run in `config/runs.csv` (`cfg.register_run`, next to `cfg.summarize`): run and prep IDs, run file, time, git commit and branch, the key settings and the full hashed settings as JSON. Every script prints the IDs, paths and settings, and its own settings, into its log (`scripts/run_logged.sh`, whose log names carry the run ID).
 - `run_all.sh` takes `RUNS` = run files separated by spaces (`default` for the defaults; e.g. `qsub -v RUNS=config/runs/aw_bins20.yml scripts/run_all.pbs`), runs the prep scripts once per `PREP_ID` (none with `SKIP_PREP=1`) and the bin scripts for every run. `pixi run run-all-sweep` runs the defaults and every file of `config/runs/` (10, 15 and 20 bins, unweighted and area-weighted).
@@ -34,13 +34,13 @@ Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scrip
 
 ## domain
 - `prep.time_slice` (`cfg.TIME_SLICE`, default 2001-01 to 2014-12) for every family (`config/pipeline.yml`)
-- Land: `LANDFRAC > LF_THRESH = 0.5` (models, ERA5) or Natural Earth land (obs products without a land fraction)
+- Land: `LANDFRAC > LF_THRESH = 0.5` (models) or Natural Earth land (obs and lsmobs products)
 - Exclude Antarctica, Greenland, and Iceland
 	- Trim `LAT_BNDS = slice(-58, 90)`
 	- Exclude AR6 region 0 (`grid.greenland_mask`)
 
 ## pipeline
-`prep_<family>.py`, once per product (obs, ERA5) or model (CMIP6) or ensemble (LENS2, FHIST PPE, IHIST PPE):
+`prep_<family>.py`, once per product (obs, lsmobs) or model (CMIP6) or ensemble (LENS2, FHIST PPE, IHIST PPE):
 1. Load monthly native-resolution variables (`load/*.load_native`, `lo.load_obs`) [native grid]
 2. The time period is selected by the loader (`TIME_SLICE`) [native grid]
 3. Convert units of ET, P, Rn to W/m2 (`units.*`, written out in the script) [native grid]
@@ -52,9 +52,8 @@ Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scrip
 	- Missing LAI months count as zero
 	- The number of gridcell-years affected is printed
 5. Mask to land and remove AR6 region 0 (`grid.mask_to_land`) [native grid]
-	- Use Natural Earth for observational products (ILAMB, PML, GLEAM, SiTH, ERA5-Land): `grid.landne_mask`
-	- Use land fraction > `LF_THRESH` for model output and ERA5, since they have a land fraction variable: `grid.landfrac_mask`
-	- ERA5 family: ERA5 ET, P and Rn use the ERA5 land fraction, and its obs LAI (GIMMS_LAI4g) uses Natural Earth
+	- Use Natural Earth for observational products (ILAMB, PML, GLEAM, SiTH, GPCP) and the lsmobs products (ERA5-Land, GLDAS, with their own LAI, P and Rn): `grid.landne_mask`
+	- Use land fraction > `LF_THRESH` for model output, since it has a land fraction variable: `grid.landfrac_mask`
 	- CMIP6 only: annual LAI missing on land is set to 0 (some models leave LAI undefined where there is no vegetation)
 6. ET outlier filter: annual ET < `MIN_ANNUAL_ET = -1 W/m2` is NaN (`binning.drop_et_outliers`) [native grid]
 	- On land, before regridding, so an outlier does not enter its target cell
@@ -63,7 +62,7 @@ Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scrip
 	- A target cell is the mean of its valid (land) source cells, and NaN where more than `NA_THRESH` of its area is missing
 8. Exclude Antarctica by reducing domain to `LAT_BNDS` [target grid]
 
-`prep_<family>.py`, once per obs combination, ERA5 source or model (all members of a model or ensemble share their years):
+`prep_<family>.py`, once per obs or lsmobs combination or model (all members of a model or ensemble share their years):
 
 9. Select only shared complete years from all four products, at least `MIN_YEARS = 3` (`temporal.shared_years`) [target grid]
 10. Compute the climatological LAI, Rn, and P over those years (`temporal.aggregate(da, "clim")`) [target grid]
@@ -118,7 +117,7 @@ Run by hand after step 14; `scripts/run_all.sh` does not run them.
 - Step 1 (`load/trendy.py`): the files are not consistent with each other, so every time axis is rebuilt as a monthly series ending in Dec 2024 (the end of every GCB2025 run), checked against the decoded time where it can be decoded; lat/lon names, orders and lon ranges are normalized.
 - P is the CRU-JRA v3 precipitation forcing of every model (6-hourly totals summed to months), not the models' own pr (missing in some models, 12x too small in ED). It runs steps 1-8 once on its own grid and is shared by every model.
 - Step 3: ET is `evapotrans` (kg m-2 s-1).
-- Rn is the ERA5 net surface radiation (`msnswrf + msnlwrf`, native land mask ERA5 LANDFRAC > `LF_THRESH`, as in `prep_era5.py`), since the models output at most the downward shortwave (`rsds`), not the upward terms of the net radiation. Like P, it runs steps 1-8 once and is shared by every model and experiment, so the AI is the same for every model. A `trendy_*` family in `FAMILIES` must have its experiment in `prep.trendy.experiments` (checked by `etunc.config`).
+- Rn is the ERA5 net surface radiation (`msnswrf + msnlwrf`, native land mask ERA5 LANDFRAC > `LF_THRESH`, `units.net_radiation_era5`), since the models output at most the downward shortwave (`rsds`), not the upward terms of the net radiation. Like P, it runs steps 1-8 once and is shared by every model and experiment, so the AI is the same for every model. A `trendy_*` family in `FAMILIES` must have its experiment in `prep.trendy.experiments` (checked by `etunc.config`).
   `compare_rn.py` (`qsub scripts/compare_rn.pbs`) compares the surface radiation of ERA5, CERES and the CRU-JRA forcing (downward shortwave, downward longwave, Rn) on which this choice rests; its required `PREP_ID` fixes the inputs (the prep settings registered under it in `config/runs.csv`, `cfg.prep_settings`); outputs in `PROC_ROOT/<prep_id>/trendy_<experiment>/radiation/` and `FIG_ROOT/<prep_id>/trendy_<experiment>/radiation/`.
 - Step 5: Natural Earth land (`grid.landne_mask`), since few models provide a land fraction and some fill the ocean with 0; annual LAI missing on land is set to 0, as for CMIP6.
 - Models: every model with `evapotrans` and `lai` (ISAM has no lai), minus `prep.trendy.omit_models`: CARDAMOM (2003-2024 only) and LPJml, LPJwsl, LPX-Bern and VISIT (implausible LAI, 90th percentile 8-11 m2/m2), and ED (ET = 0 in high northern latitudes). CLASSIC S2 is read from its `correctedS2/` upload.
@@ -129,15 +128,17 @@ Core modules and their respective functions.
 load/*.py:
 load_native(...)                         # step 1: raw monthly fields in native units
 obs.load_obs(dataset, var, time_slice)   # step 1 for the gridded obs products
-era5.load_era5_land(variable, time_slice)  # step 1 for ERA5-Land (obs ET product, dataset "era5-land")
+era5.load_era5_land(variable, time_slice)  # step 1 for ERA5-Land (lsmobs, dataset "era5-land")
+era5.load_era5_land_invariant(variable)  # ERA5-Land vegetation cover (cvh, cvl) of its own LAI
 trendy.load_forcing(variable, time_slice)  # step 1 for the TRENDY forcing ("pre": P in mm/month, "dlwrf", "fd")
 load_land_fraction()                     # land fraction and native grid (era5, cmip, cesm)
 
 units.py:
 convert_units()                          # keyed on the variable name (CMIP, CESM, ERA5)
-flux_to_wm2() / latent_heat_to_wm2()     # keyed on the units attr (ILAMB)
+flux_to_wm2() / latent_heat_to_wm2()     # keyed on the units attr (ILAMB, gridded obs; flux_to_wm2 also water depths per period)
 accumulation_to_flux()                   # totals per month/year (gridded obs)
 era5_land_evaporation_to_flux()          # ERA5-Land evaporation, m/day positive downward
+era5_land_precipitation_to_flux()        # ERA5-Land precipitation, m/day positive downward
 net_radiation_*()
 
 temporal.py:

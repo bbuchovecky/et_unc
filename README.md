@@ -13,8 +13,8 @@ Each data family is prepared separately and then binned on the same edges:
 
 | Family | Data | Source |
 | --- | --- | --- |
-| `obs` | ET: ILAMB products, PML-V2.2, GLEAM v4.3, SiTHv2, ERA5-Land. LAI: GIMMS_LAI4g. P: GPCPv2.3. Rn: CERESed4.2 | `scripts/download/` (ERA5-Land: Copernicus CDS) |
-| `era5` | ERA5 ET, P, Rn with obs LAI | NCAR GDEX |
+| `obs` | ET: PML-V2.2, GLEAM v4.3b, SiTHv2. LAI: GIMMS_LAI4g (ILAMB). P: GPCP v3.3. Rn: CERESed4.2 (ILAMB) | `scripts/download/` |
+| `lsmobs` | Land-model ET products with their own LAI, P and Rn: ERA5-Land (GLDAS optional) | `scripts/download/` (ERA5-Land: Copernicus CDS; GLDAS: Earth Engine) |
 | `cmip` | CMIP6 historical, one member per model | external `cmip-intake-esgf-fetch` catalogs |
 | `lens` | CESM2 Large Ensemble | NCAR GDEX |
 | `fppe` / `ippe` | CESM2 perturbed-parameter ensemble, coupled / offline CLM5 | campaign storage |
@@ -77,7 +77,7 @@ makes `run_all.pbs` start at `make-edges`. Each task's log, with the git commit 
   `ETUNC_RUN=config/runs/<name>.yml`.
 - Every run is identified by hashes of its settings. `PREP_ID` (`p…`) hashes `prep`, and `RUN_ID` (`r…`)
   hashes `prep` + `binning`. Each script records its run in `config/runs.csv`. The defaults are
-  `p22665b4` / `r42915ba`.
+  `p4f3b715` / `r62a7af9`.
 - Outputs go to `<work_root>/{proc,fig}/<id>/<family>/<kind>/`, with file names ending in `.<id>.nc`.
   Prep inputs are stored under the `PREP_ID`; everything from `make-edges` on is under the `RUN_ID`.
 
