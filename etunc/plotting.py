@@ -321,11 +321,11 @@ def save_clim_diagnostics(
 ):
     """
     Diagnostics of the binning inputs of one family (written by the prep
-    scripts): maps of the climatological ET, LAI, P, Rn and AI (mean and
-    standard deviation across the family's groups of variants, range over
-    members; one map for one member),
-    maps of the climatological LAI, P and Rn of every member (with more than
-    one member), and histograms of climatological LAI and AI on
+    scripts): maps of the climatological ET, LAI, P, Rn, AI and, if the inputs
+    have it, ET/P (mean and standard deviation across the family's groups of
+    variants, range over members; one map for one member), the same
+    climatologies of every member (with more than one member), and
+    histograms of climatological LAI and AI on
     `config.HIST_BINS`, one line per source. Saved as
     fig_dir/<family>.<var>.{map,map_members,hist}.<run_id>.png (run_id: the prep ID of the inputs).
     """
@@ -336,9 +336,8 @@ def save_clim_diagnostics(
         clim["et_pr"] = inputs["et_pr"].mean("year", keep_attrs=True)
     for var, da in clim.items():
         save_ensemble_map(da, var, fig_dir / f"{family}.{var}.map.{run_id}.png", title=title, family=family)
-    if inputs.sizes["member"] > 1:
-        for var in ("lai", "pr", "rn"):
-            save_member_maps(inputs[var], var, fig_dir / f"{family}.{var}.map_members.{run_id}.png", title=title)
+        if da.sizes["member"] > 1:
+            save_member_maps(da, var, fig_dir / f"{family}.{var}.map_members.{run_id}.png", title=title)
     sources = list(dict.fromkeys(inputs["source"].values.tolist()))
     for var in ("lai", "ai"):
         fields = {s: inputs[var].where(inputs["source"] == s) for s in sources}

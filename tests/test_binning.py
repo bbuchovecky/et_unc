@@ -985,20 +985,25 @@ def test_save_member_maps_one_panel_per_member(tmp_path, inputs, capsys):
 
 def test_save_clim_diagnostics_writes_maps_and_hists(tmp_path, inputs, capsys):
     """
-    Five climatology maps, three per-member maps and two histograms per family, named
-    <family>.<var>.{map,map_members,hist}.<prep_id>.png.
+    A climatology map and a per-member map of ET, ET/P, LAI, P, Rn and AI, and two histograms per
+    family, named <family>.<var>.{map,map_members,hist}.<prep_id>.png.
     """
     members = [f"m{i}" for i in range(3)]
-    ds = xr.concat([xr.Dataset({**inputs, "pr": inputs["lai"], "rn": inputs["lai"]})] * 3, dim="member")
+    variables = ("et", "et_pr", "lai", "pr", "rn", "ai")
+    ds = xr.Dataset({**inputs, "pr": inputs["lai"], "rn": inputs["lai"], "et_pr": inputs["et"] / 100})
+    ds = xr.concat([ds] * 3, dim="member")
     ds = ds.assign_coords(member=members, source=("member", ["s1", "s1", "s2"]))
     plotting.save_clim_diagnostics(ds, tmp_path, "fam", "p0000000", title="Fam")
     names = sorted(p.name for p in tmp_path.iterdir())
     assert names == sorted(
-        [f"fam.{v}.map.p0000000.png" for v in ("et", "lai", "pr", "rn", "ai")]
-        + [f"fam.{v}.map_members.p0000000.png" for v in ("lai", "pr", "rn")]
+        [f"fam.{v}.map.p0000000.png" for v in variables]
+        + [f"fam.{v}.map_members.p0000000.png" for v in variables]
         + [f"fam.{v}_clim.hist.p0000000.png" for v in ("lai", "ai")]
     )
     plotting.save_clim_diagnostics(ds.isel(member=[0]), tmp_path / "one", "fam", "p0000000")
-    assert len(list((tmp_path / "one").iterdir())) == 7  # one member: single maps, no member maps
+    assert len(list((tmp_path / "one").iterdir())) == 8  # one member: single maps, no member maps
+    # Without ET/P (inputs of older preps): no et_pr maps
+    plotting.save_clim_diagnostics(ds.drop_vars("et_pr"), tmp_path / "no_et_pr", "fam", "p0000000")
+    assert not any("et_pr" in p.name for p in (tmp_path / "no_et_pr").iterdir())
     plt.close("all")
 
