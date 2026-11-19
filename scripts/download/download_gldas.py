@@ -1,4 +1,5 @@
-"""Download GLDAS evapotranspiration (Evap_tavg, kg m-2 s-1) as monthly means from Google Earth Engine:
+"""Download GLDAS evapotranspiration, precipitation and net radiation (BANDS) as monthly means from Google
+Earth Engine:
     GLDAS-2.0 Noah, 3-hourly    NASA/GLDAS/V20/NOAH/G025/T3H    (1948-2014; Rodell et al. 2004)
     GLDAS-2.1 Noah, 3-hourly    NASA/GLDAS/V021/NOAH/G025/T3H   (2000-present)
     GLDAS-2.2 Catchment, daily, GRACE data assimilation
@@ -13,10 +14,11 @@ without images (GLDAS-2.2 before Feb 2003) is NaN.
 Every product is on the same native 0.25 deg grid (1440 x 600, lon -180 to 180, lat -60 to 90),
 which is requested exactly, so nothing is resampled. Years are YEARS clipped to each product's record.
 
-Local layout:  OUTPUT_ROOT/<product>/GLDAS_<product>_Evap_tavg_monthly_<year>.nc   (~25 MB per year)
+Local layout:  OUTPUT_ROOT/<product>/GLDAS_<product>_<band>_monthly_<year>.nc   (~25 MB per band and year)
 OUTPUT_ROOT is SCRATCH_ROOT/gldas (scratch_root in config/paths.yml); move it to OBS_ROOT by hand once
 complete.
-A year whose file exists is skipped, so re-running is safe and retries only the failed years.
+A band-year whose file exists is skipped, so re-running is safe and retries only the failed ones
+(and downloads only the bands added since).
 
 Needs the openet conda env (envs/openet.yml, earthengine-api) and Earth Engine credentials
 (`earthengine authenticate`). The Google Cloud project is EE_PROJECT if set, otherwise the default
@@ -42,7 +44,13 @@ with open(PATHS_FILE) as f:
     SCRATCH_ROOT = Path(yaml.safe_load(f)["scratch_root"])
 OUTPUT_ROOT = SCRATCH_ROOT / "gldas"
 YEARS = range(2001, 2022)
-BAND = "Evap_tavg"
+# band: (units, long_name). ET, and the precipitation and net radiation of prep_lsmobs.py (OWN_FIELDS)
+BANDS = {
+    "Evap_tavg": ("kg m-2 s-1", "evapotranspiration"),
+    "Rainf_f_tavg": ("kg m-2 s-1", "total precipitation rate (forcing)"),
+    "Swnet_tavg": ("W m-2", "net shortwave radiation, positive downward"),
+    "Lwnet_tavg": ("W m-2", "net longwave radiation, positive downward"),
+}
 
 # product: (collection, first year, last year, time steps per day)
 PRODUCTS = {
@@ -64,11 +72,11 @@ GRID = {
 FILL = -9999.0  # stands for masked pixels in the transfer, NaN in the files
 
 
-def monthly_mean(collection, year, month):
-    """Mean Evap_tavg and number of valid time steps per gridcell for one month, as numpy arrays
+def monthly_mean(collection, band, year, month):
+    """Mean of `band` and number of valid time steps per gridcell for one month, as numpy arrays
     (rows north to south). A month without images (before a product starts) is NaN and 0."""
     start = ee.Date.fromYMD(year, month, 1)
-    images = ee.ImageCollection(collection).filterDate(start, start.advance(1, "month")).select(BAND)
+    images = ee.ImageCollection(collection).filterDate(start, start.advance(1, "month")).select(band)
     if images.size().getInfo() == 0:
         return np.full((NY, NX), np.nan, dtype="float32"), np.zeros((NY, NX), dtype="int16")
 
@@ -80,16 +88,17 @@ def monthly_mean(collection, year, month):
     return np.where(pixels["mean"] == FILL, np.nan, pixels["mean"]), pixels["n_steps"]
 
 
-def download_year(product, year):
-    """Write one year of monthly means to OUTPUT_ROOT/<product>/ (skipped if the file exists)."""
+def download_year(product, band, year):
+    """Write one year of monthly means of `band` to OUTPUT_ROOT/<product>/ (skipped if the file exists)."""
     collection, _, _, steps_per_day = PRODUCTS[product]
-    path = OUTPUT_ROOT / product / f"GLDAS_{product}_{BAND}_monthly_{year}.nc"
+    units, long_name = BANDS[band]
+    path = OUTPUT_ROOT / product / f"GLDAS_{product}_{band}_monthly_{year}.nc"
     if path.exists():
         return
 
     means, counts = [], []
     for month in range(1, 13):
-        mean, n_steps = monthly_mean(collection, year, month)
+        mean, n_steps = monthly_mean(collection, band, year, month)
         means.append(mean)
         counts.append(n_steps)
 
@@ -100,8 +109,8 @@ def download_year(product, year):
     days = [calendar.monthrange(year, m)[1] for m in range(1, 13)]
     ds = xr.Dataset(
         {
-            BAND: (("time", "lat", "lon"), np.stack(means)[:, ::-1, :].astype("float32"),
-                   {"units": "kg m-2 s-1", "long_name": "evapotranspiration, monthly mean"}),
+            band: (("time", "lat", "lon"), np.stack(means)[:, ::-1, :].astype("float32"),
+                   {"units": units, "long_name": f"{long_name}, monthly mean"}),
             "n_steps": (("time", "lat", "lon"), np.stack(counts)[:, ::-1, :].astype("int16"),
                         {"long_name": "number of valid time steps in the monthly mean"}),
             "n_steps_full": (("time",), np.array(days, dtype="int16") * steps_per_day,
@@ -109,7 +118,7 @@ def download_year(product, year):
         },
         coords=coords,
         attrs={
-            "source": f"Google Earth Engine collection {collection}, band {BAND}",
+            "source": f"Google Earth Engine collection {collection}, band {band}",
             "processing": "monthly mean of the images whose time_start is in the month, on the native grid",
             "created": time.strftime("%F %T"),
         },
@@ -119,7 +128,7 @@ def download_year(product, year):
 
     # Write to a temporary name and rename, so the file only exists once complete
     tmp = path.with_suffix(".nc.part")
-    encoding = {v: {"zlib": True, "complevel": 4} for v in (BAND, "n_steps")}
+    encoding = {v: {"zlib": True, "complevel": 4} for v in (band, "n_steps")}
     ds.to_netcdf(tmp, encoding=encoding)
     tmp.rename(path)
 
@@ -130,18 +139,18 @@ def main():
     tasks = []
     for product, (_, first, last, _) in PRODUCTS.items():
         (OUTPUT_ROOT / product).mkdir(parents=True, exist_ok=True)
-        tasks += [(product, y) for y in YEARS if first <= y <= last]
-    print(f"{time.strftime('%F %T')}  {len(tasks)} product-years to {OUTPUT_ROOT}")
+        tasks += [(product, band, y) for band in BANDS for y in YEARS if first <= y <= last]
+    print(f"{time.strftime('%F %T')}  {len(tasks)} product-band-years to {OUTPUT_ROOT}")
 
     # One request per month, sent one at a time to stay within the Earth Engine request quota
     failed = []
-    for product, year in tasks:
+    for product, band, year in tasks:
         try:
-            download_year(product, year)
-            print(f"{time.strftime('%F %T')}  done GLDAS-{product} {year}")
+            download_year(product, band, year)
+            print(f"{time.strftime('%F %T')}  done GLDAS-{product} {band} {year}")
         except Exception as err:
-            print(f"{time.strftime('%F %T')}  FAILED GLDAS-{product} {year}: {err}")
-            failed.append((product, year))
+            print(f"{time.strftime('%F %T')}  FAILED GLDAS-{product} {band} {year}: {err}")
+            failed.append((product, band, year))
 
     if failed:
         raise SystemExit(f"FAILED: {failed}; re-run to retry.")
