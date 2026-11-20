@@ -150,6 +150,15 @@ def test_convert_units():
     assert units.convert_units("et", da).attrs["units"] == "W/m2"
     assert units.convert_units("mer", da).attrs["units"] == "W/m2"  # kept through the sign flip
     xr.testing.assert_identical(units.convert_units("lai", da), da)
+    # ERA5-Land: m of water per day, positive downward; evaporation flipped to positive upward
+    e = da.assign_attrs(units="m of water equivalent")
+    tp = da.assign_attrs(units="m")
+    per_day = config.LIQ_WATER_DENSITY / 86400 * config.LATENT_HEAT_VAPORIZATION
+    np.testing.assert_allclose(units.convert_units("e", e), -da * per_day)
+    np.testing.assert_allclose(units.convert_units("tp", tp), da * per_day)
+    assert units.convert_units("e", e).attrs["units"] == "W/m2"
+    with pytest.raises(ValueError, match="expected 'm of water equivalent'"):
+        units.convert_units("e", da.assign_attrs(units="kg m-2 s-1"))  # another source's "e" is not converted
 
 
 @pytest.mark.parametrize(

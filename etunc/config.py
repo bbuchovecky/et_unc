@@ -150,7 +150,7 @@ def _ppe_member(value, name: str) -> int:
 
 PRODUCT_VARIABLES = ("et", "lai", "pr", "rn")  # the <v>_products of prep.obs and prep.lsmobs
 PRODUCT_KEYS = ("dataset", "version", "variable", "freq", "source")  # each product's entry
-PRODUCT_SOURCES = (None, "ilamb")  # source: null = native files (lo.load_obs, ...), ilamb = il.load_native
+PRODUCT_SOURCES = ("native", "ilamb")  # source: native = native files (lo.load_obs, ...), ilamb = il.load_native
 CMIP_MEMBER_CHOICES = ("top", "max_r", "all")  # cmip.select_members
 N_PPE_MEMBERS = 28
 TRENDY_EXPERIMENTS_ALL = ("S2", "S3")  # as etunc.load.trendy.EXPERIMENTS (which imports this module)
@@ -159,7 +159,7 @@ TRENDY_EXPERIMENTS_ALL = ("S2", "S3")  # as etunc.load.trendy.EXPERIMENTS (which
 def _products(value, name: str, allow_none: bool = False) -> dict | None:
     """
     Products of one variable, {label: {dataset, version, variable, freq, source}}, non-empty (or None,
-    if `allow_none`). version may be null; source is null or "ilamb".
+    if `allow_none`). version may be null; source is "native" or "ilamb".
     """
     if value is None and allow_none:
         return None
@@ -171,7 +171,7 @@ def _products(value, name: str, allow_none: bool = False) -> dict | None:
         where = f"{name}.{label}"
         p = _mapping(p, where, PRODUCT_KEYS)
         if p["source"] not in PRODUCT_SOURCES:
-            raise ValueError(f"setting '{where}.source' must be null or 'ilamb', not {p['source']!r}")
+            raise ValueError(f"setting '{where}.source' must be 'native' or 'ilamb', not {p['source']!r}")
         out[label] = {
             "dataset": _string(p["dataset"], f"{where}.dataset"),
             "version": None if p["version"] is None else _string(p["version"], f"{where}.version"),

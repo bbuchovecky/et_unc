@@ -3,7 +3,8 @@ etunc.units
 ===========
 Unit conversions and net radiation. Water fluxes become their energy
 equivalent [W/m2] with L = LATENT_HEAT_VAPORIZATION. There are two conversion
-paths: `convert_units` keys on the variable name (CMIP, CESM, CLM, ERA5) and
+paths: `convert_units` keys on the variable name (CMIP, CESM, CLM, ERA5,
+ERA5-Land "e" and "tp") and
 `latent_heat_to_wm2` on the `units` attr (ILAMB and gridded obs;
 `flux_to_wm2` also takes water depths per period). `accumulation_to_flux`
 turns water depths per hour, day, month or year (the gridded obs products)
@@ -53,6 +54,18 @@ def convert_units(v: str, da: xr.DataArray, verbose: bool = False) -> xr.DataArr
     if v == "mer":
         with xr.set_options(keep_attrs=True):  # keep the "W/m2" set above
             da = -1 * da
+
+    # ERA5-Land: evaporation "e" and precipitation "tp" from m of water per day (positive downward) -> W/m2,
+    # evaporation positive upward. These generic names are safe to key on because both conversions check the
+    # ERA5-Land units attr and raise otherwise
+    if v == "e":
+        if verbose:
+            print("Converting units from m/day (positive downward) -> W/m2 (positive upward)")
+        da = latent_heat_to_wm2(era5_land_evaporation_to_flux(da))
+    if v == "tp":
+        if verbose:
+            print("Converting units from m/day -> W/m2")
+        da = latent_heat_to_wm2(era5_land_precipitation_to_flux(da))
 
     return da
 

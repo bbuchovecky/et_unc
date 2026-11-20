@@ -21,38 +21,44 @@ prep:
   # For prep_<family>.py: products, models and members of each family
   #
   # Products of obs and lsmobs, one mapping per variable: {label: {dataset, version, variable, freq, source}}
-  #   source: ilamb  an ILAMB product, read by il.load_native: the label is its key in il.PRODUCTS[variable],
-  #                  and dataset/version/variable/freq only describe it
-  #   source: null   read from its native files: lo.load_obs(dataset, variable, version=, freq=), except the
-  #                  datasets era5-land (le.load_era5_land, variable only) and era5 (le.load_native, GDEX code)
+  #   source: ilamb   an ILAMB product, read by il.load_native: the label is its key in il.PRODUCTS[variable],
+  #                   and dataset/version/variable/freq only describe it
+  #   source: native  read from its native files: lo.load_obs(dataset, variable, version=, freq=), except the
+  #                   datasets era5-land (le.load_era5_land, variable only) and era5 (le.load_native, GDEX code)
   # Every combination of one product per variable (et, lai, pr, rn) is one source.
   obs:
     et_products:
-      PMLv2.2a_MODIS: {dataset: pml, version: V2.2a-MODIS, variable: ET, freq: monthly, source: null}
-      PMLv2.2b:       {dataset: pml, version: V2.2b, variable: ET, freq: monthly, source: null}
-      PMLv2.2c:       {dataset: pml, version: V2.2c, variable: ET, freq: monthly, source: null}
-      GLEAMv4.3a:     {dataset: gleam, version: v4.3a, variable: E, freq: monthly, source: null}
-      GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly, source: null}
-      SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly, source: null}
-      FLUXCOM-X-BASE: {dataset: fluxcom-x, version: X-BASE, variable: ET, freq: monthly, source: null}
+      # native products
+      PMLv2.2a_MODIS: {dataset: pml, version: V2.2a-MODIS, variable: ET, freq: monthly, source: native}
+      PMLv2.2b:       {dataset: pml, version: V2.2b, variable: ET, freq: monthly, source: native}
+      PMLv2.2c:       {dataset: pml, version: V2.2c, variable: ET, freq: monthly, source: native}
+      GLEAMv4.3a:     {dataset: gleam, version: v4.3a, variable: E, freq: monthly, source: native}
+      GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly, source: native}
+      SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly, source: native}
+      FLUXCOM-X-BASE: {dataset: fluxcom-x, version: X-BASE, variable: ET, freq: monthly, source: native}
+      # ILAMB products
       FLUXCOM:        {dataset: fluxcom, version: null, variable: et, freq: monthly, source: ilamb}
+      CLASS:          {dataset: class, version: null, variable: et, freq: monthly, source: ilamb}
+      DOLCE:          {dataset: dolce, version: null, variable: et, freq: monthly, source: ilamb}
+      MOD16A2:        {dataset: mod16a2, version: null, variable: et, freq: monthly, source: ilamb}
+      MODIS:          {dataset: modis, version: null, variable: et, freq: monthly, source: ilamb}
+      WECANN:         {dataset: wecann, version: null, variable: et, freq: monthly, source: ilamb}
     lai_products:
-      GIMMS_LAI4g: {dataset: gimms, version: 4g, variable: lai, freq: monthly, source: ilamb}
+      GIMMS_LAI4g: {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: monthly, source: ilamb}
     pr_products:
-      GPCPv3.3: {dataset: gpcp, version: "3.3", variable: sat_gauge_precip, freq: monthly, source: null}
+      GPCPv3.3: {dataset: gpcp, version: "3.3", variable: sat_gauge_precip, freq: monthly, source: native}
     rn_products:
       CERESed4.2: {dataset: ceres, version: ed4.2, variable: rns, freq: monthly, source: ilamb}
   # Land-model / reanalysis ET products (prep_lsmobs.py). lai/pr/rn_products: null = each ET product's
   # own field (prep_lsmobs.OWN_FIELDS), or products as in obs, combined with every ET product
   lsmobs:
     et_products:
-      ERA5:              {dataset: era5, version: null, variable: mer, freq: monthly, source: null}
-      ERA5-Land:         {dataset: era5-land, version: monthly-means, variable: e, freq: monthly, source: null}
-      GLDAS2.0-Noah:     {dataset: gldas, version: "2.0", variable: Evap_tavg, freq: monthly, source: null}
-      GLDAS2.1-Noah:     {dataset: gldas, version: "2.1", variable: Evap_tavg, freq: monthly, source: null}
-      GLDAS2.2-GRACE-DA: {dataset: gldas, version: 2.2-grace-da, variable: Evap_tavg, freq: monthly, source: null}
+      ERA5:              {dataset: era5, version: null, variable: mer, freq: monthly, source: native}
+      ERA5-Land:         {dataset: era5-land, version: null, variable: e, freq: monthly, source: native}
+      GLDAS2.0-Noah:     {dataset: gldas, version: "2.0", variable: Evap_tavg, freq: monthly, source: native}
+      GLDAS2.1-Noah:     {dataset: gldas, version: "2.1", variable: Evap_tavg, freq: monthly, source: native}
     lai_products:
-      GIMMS_LAI4g: {dataset: gimms, version: 4g, variable: lai, freq: monthly, source: ilamb}
+      GIMMS_LAI4g: {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: monthly, source: ilamb}
     pr_products: null
     rn_products: null
   cmip:

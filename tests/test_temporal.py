@@ -141,3 +141,23 @@ def test_half_monthly_to_monthly():
     assert out.attrs["units"] == "W/m2" and out.attrs["frequency"] == "monthly"
     with pytest.raises(ValueError, match="days 1 and 16"):
         temporal.half_monthly_to_monthly(monthly(pd.to_datetime(["2000-01-01", "2000-01-09"])))
+
+
+def test_eight_day_to_monthly():
+    """
+    Each month is the equal-weight mean of the valid 8-day composites that start in it (Jan 25 counts in January,
+    not February), stamped on the 1st; the last composite of the year (day 361) and a leap year's day 361 (Dec 26)
+    are accepted, and a month without any composite stays absent.
+    """
+    # 2000 is a leap year: days of year 1, 9, 17, 25, 33 (Feb 2), 361 (Dec 26); 2001: day 1
+    times = pd.to_datetime(["2000-01-01", "2000-01-09", "2000-01-17", "2000-01-25", "2000-02-02", "2000-12-26",
+                            "2001-01-01"])
+    da = monthly(times, [1.0, 2.0, np.nan, 6.0, 5.0, 7.0, 8.0]).assign_attrs(frequency="8-day")
+    out = temporal.eight_day_to_monthly(da)
+    np.testing.assert_array_equal(out.time.values, pd.to_datetime(["2000-01-01", "2000-02-01", "2000-12-01",
+                                                                   "2001-01-01"]).values)
+    np.testing.assert_array_equal(out.isel(lat=0, lon=0).values, [3.0, 5.0, 7.0, 8.0])
+    assert out.dims == ("time", "lat", "lon")
+    assert out.attrs["units"] == "W/m2" and out.attrs["frequency"] == "monthly"
+    with pytest.raises(ValueError, match="8-day time stamps"):
+        temporal.eight_day_to_monthly(monthly(pd.to_datetime(["2000-01-01", "2000-01-16"])))

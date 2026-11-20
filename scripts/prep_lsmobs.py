@@ -98,8 +98,8 @@ def load_et(spec: dict) -> xr.DataArray:
     """ET of an lsmobs ET product over TIME_SLICE, in W/m2 (positive upward)."""
     dataset, var = spec["dataset"], spec["variable"]
     if dataset == "era5-land":
-        # Mean daily evaporation [m of water/day, positive downward] -> kg m-2 s-1 (positive upward)
-        return units.latent_heat_to_wm2(units.era5_land_evaporation_to_flux(le.load_era5_land(var, TIME_SLICE)))
+        # Mean daily evaporation [m of water/day, positive downward] -> W/m2 (positive upward)
+        return units.convert_units(var, le.load_era5_land(var, TIME_SLICE))
     if dataset == "era5":
         # Mean rate [kg m-2 s-1, positive downward]; convert_units also flips the sign of mer
         return units.convert_units(var, le.load_native([var], TIME_SLICE)[var])
@@ -120,7 +120,7 @@ def load_own(v: str, spec: dict) -> xr.DataArray:
                 + f["lai_lv"] * cvl.assign_coords(lat=f["lai_lv"].lat, lon=f["lai_lv"].lon)
             return lai.rename("lai").assign_attrs(units="m2/m2")
         if v == "pr":
-            return units.latent_heat_to_wm2(units.era5_land_precipitation_to_flux(f["tp"]))
+            return units.convert_units("tp", f["tp"])  # m of water/day -> W/m2
         return units.net_radiation_era5_land(f["ssr"], f["str"])
     if dataset == "gldas":
         f = {n: lo.load_obs("gldas", n, TIME_SLICE, version=spec["version"], freq=spec["freq"]) for n in names}
@@ -202,7 +202,7 @@ def main():
 
         # 4. Annual means over complete years: ET, P and Rn need all 12 months, a missing LAI month
         # counts as 0. A yearly total (native files only) is already the annual mean
-        if kind == "shared" and spec["source"] is None and spec["freq"] == "yearly":
+        if kind == "shared" and spec["source"] == "native" and spec["freq"] == "yearly":
             a = temporal.yearly_to_annual(da).load()
         else:
             a = temporal.aggregate(da, "year", require_all_months=(v != "lai"), label=label)

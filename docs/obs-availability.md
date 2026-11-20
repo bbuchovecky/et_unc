@@ -8,7 +8,7 @@ Every observational product of each variable runs through the same spatial and t
 - Climatological maps and factorial differences between products
 - Histograms of valid data with vertical lines for specified quantiles
 
-The script's `PREP_ID` constant is required: the period, target grid, latitude bounds, `NA_THRESH` and `MIN_ANNUAL_ET` are the prep settings registered under it in `config/runs.csv`, and the outputs are saved under it (`<root>/<prep_id>/obs/coverage/`).
+The script's `PREP_ID` constant is required: the period, target grid, latitude bounds, `NA_THRESH` and `MIN_ANNUAL_ET` are the prep settings registered under it in `config/runs.csv`. The products are the script's own (`ILAMB_PRODUCTS`, `GRIDDED_PRODUCTS`), so the outputs are saved under `DIAG_ID` (`<root>/<diag_id>/obs/coverage/`), "d" + 7 hex of `DIAG_SETTINGS`: the five prep settings, the products, the records read and the diagnostic rules. The same settings always write to the same folder, and another product set to a new one. `DIAG_ID` is not registered in `config/runs.csv`; each folder holds `obs.coverage.settings.<diag_id>.json` with its settings and the `PREP_ID` they came from.
 
 These diagnostics were first made in `notebooks/check-et-obs.ipynb` (ET) and `notebooks/check-clara-a3.ipynb` (Rn).
 
@@ -35,11 +35,11 @@ Each product is read once and reduced as it is read (dask), so a full 0.1° reco
 
 ## Outputs
 
-`<prep_id>` is the `PREP_ID` of the prep settings (`TIME_SLICE`, `TARGET_RES`, ...; `etunc.config`, `config/runs.csv`), `<grid>` the target grid (e.g. `1deg`), `<var>` one of `et`, `lai`, `pr`, `rn`.
+`<diag_id>` is the `DIAG_ID` of the script's settings (in `obs.coverage.settings.<diag_id>.json` next to the outputs), `<grid>` the target grid (e.g. `1deg`), `<var>` one of `et`, `lai`, `pr`, `rn`.
 
-`PROC_ROOT/<prep_id>/obs/coverage/obs.<var>.coverage.<prep_id>.csv`: one row per product, with its record, native resolution, valid years, land area [10⁶ km²] covered on the native grid (land, any valid month, at least one valid year, every year valid) and on the target grid (globally and in each of `REGIONS`, in 10⁶ km² and as a percentage of the region's land), and the quantiles of the valid monthly values.
+`PROC_ROOT/<diag_id>/obs/coverage/obs.<var>.coverage.<diag_id>.csv`: one row per product, with its record, native resolution, valid years, land area [10⁶ km²] covered on the native grid (land, any valid month, at least one valid year, every year valid) and on the target grid (globally and in each of `REGIONS`, in 10⁶ km² and as a percentage of the region's land), and the quantiles of the valid monthly values.
 
-`FIG_ROOT/<prep_id>/obs/coverage/obs.<var>.<diag>.<prep_id>.png`:
+`FIG_ROOT/<diag_id>/obs/coverage/obs.<var>.<diag>.<diag_id>.png`:
 
 | Plot | `<diag>` | Content |
 |---|---|---|

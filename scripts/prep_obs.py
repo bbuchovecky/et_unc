@@ -97,7 +97,7 @@ def main():
         if spec["source"] == "ilamb" and p not in il.PRODUCTS[v]:
             raise ValueError(f"prep.obs.{v}_products: {p!r} has source ilamb but is not an ILAMB {v} product "
                              f"({list(il.PRODUCTS[v])})")
-        if spec["source"] is None and spec["freq"] not in NATIVE_FREQS:
+        if spec["source"] == "native" and spec["freq"] not in NATIVE_FREQS:
             raise ValueError(f"prep.obs.{v}_products: {p!r} has freq {spec['freq']!r}; native files must be "
                              f"one of {NATIVE_FREQS}")
 
@@ -121,7 +121,7 @@ def main():
         except FileNotFoundError as err:
             print(f"{err}; skipping {label}")
             continue
-        # Half-monthly composites (GIMMS LAI4g): monthly means, the equal-weight mean of each month's valid halves
+        # Half-monthly composites (native GIMMS LAI4g): monthly means, the equal-weight mean of each month's valid halves
         if not from_ilamb and spec["freq"] == "half-month":
             da = temporal.half_monthly_to_monthly(da)
 

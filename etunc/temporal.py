@@ -3,7 +3,7 @@ etunc.temporal
 ==============
 Time handling: annual means and climatologies of the binning pipeline
 (`aggregate`, steps 4 and 10 of docs/binning-workflow.md), monthly means of
-half-monthly fields (`half_monthly_to_monthly`, step 1), complete and shared
+half-monthly and 8-day fields (`half_monthly_to_monthly`, `eight_day_to_monthly`, step 1), complete and shared
 years, and the time-period strings used in file names.
 """
 
@@ -139,9 +139,28 @@ def half_monthly_to_monthly(da: xr.DataArray) -> xr.DataArray:
         raise ValueError(f"{da.name}: half-monthly time stamps must be on days 1 and 16; got days {sorted(days)}")
     # Equal weights: the halves differ by at most 3 days (15 vs 13-16), which changes 2001 GIMMS LAI4g
     # monthly means by ~0.004 m2/m2 on average
+    return _mean_by_month(da)
+
+
+def eight_day_to_monthly(da: xr.DataArray) -> xr.DataArray:
+    """
+    Monthly means of an 8-day field (composites stamped on their first day, days of year 1, 9, ..., 361 of each
+    year, e.g. HiQ-LAI), stamped on the first of the month: the equal-weight mean of the valid composites that
+    start in the month, so a composite that runs into the next month counts in the month it starts in. A
+    month without any time step stays absent, as a missing file of a monthly product.
+    """
+    doys = np.unique(da.time.dt.dayofyear.values)
+    if ((doys - 1) % 8 != 0).any():
+        raise ValueError(f"{da.name}: 8-day time stamps must be on days of year 1, 9, ..., 361; got "
+                         f"{sorted(doys[(doys - 1) % 8 != 0].tolist())}")
+    return _mean_by_month(da)
+
+
+def _mean_by_month(da: xr.DataArray) -> xr.DataArray:
+    """NaN-skipping equal-weight mean of the time steps of each calendar month, stamped on the first of the month."""
     month = xr.DataArray(da.time.values.astype("datetime64[M]").astype("datetime64[ns]"), dims="time", name="month")
     with xr.set_options(keep_attrs=True):
-        out = da.groupby(month).mean()  # NaN-skipping
+        out = da.groupby(month).mean()
     out = out.rename(month="time")
     if "frequency" in out.attrs:
         out.attrs["frequency"] = "monthly"

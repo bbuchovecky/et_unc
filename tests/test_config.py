@@ -17,7 +17,7 @@ import etunc.config as cfg
 
 
 # A valid product entry
-SITH = {"dataset": "sith", "version": "v2", "variable": "ET", "freq": "monthly", "source": None}
+SITH = {"dataset": "sith", "version": "v2", "variable": "ET", "freq": "monthly", "source": "native"}
 
 
 def write_yaml(tmp_path, name, data):

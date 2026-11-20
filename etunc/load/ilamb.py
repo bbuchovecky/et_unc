@@ -86,7 +86,7 @@ def load_native(variable: str, product: str, time_slice: slice) -> xr.DataArray:
         raise FileNotFoundError(f"{variable}/{product}: no data in {time_slice}")
     # Fill values must be NaN before averaging, or a single ~1e37 month swamps the year
     with xr.set_options(keep_attrs=True):
-        return da.where(np.abs(da) < FILL_THRESH)
+        return da.where(np.abs(da) < FILL_THRESH).assign_attrs({"source": "ilamb"})
 
 
 def load_ilamb(

@@ -8,21 +8,30 @@ notebooks/check-et-obs.ipynb and notebooks/check-clara-a3.ipynb).
 Products
 --------
 - ILAMB products in ILAMB_PRODUCTS (`il.load_native`), every variable.
-- Gridded products in GRIDDED_PRODUCTS (`lo.load_obs`, native monthly files):
-  ET of PML-V2.2, GLEAM v4.3, SiTHv2, ERA5-Land (`le.load_era5_land`),
-  FLUXCOM-X-BASE and GLDAS (2.0 and 2.1 Noah, 2.2 Catchment with GRACE data
-  assimilation), P of GPCP v3.3, Rn of CLARA-A3, and LAI of the NOAA NCEI
-  record (obs4MIPs, 0.05 deg), AVHRR v5 (to 2013; the CDR behind ILAMB's
-  AVH15C1) and VIIRS v1 (from 2014) as separate products.
+- Gridded products in GRIDDED_PRODUCTS (`lo.load_obs`, native files):
+  ET of PML-V2.2, GLEAM v4.3, SiTHv2, FLUXCOM-X-BASE, ERA5 (`le.load_native`,
+  GDEX, over ERA5_RECORD), ERA5-Land (`le.load_era5_land`) and GLDAS (2.0
+  and 2.1 Noah, 2.2 Catchment with GRACE data assimilation), P of GPCP v3.3,
+  Rn of CLARA-A3, and LAI of the NOAA NCEI record (obs4MIPs, 0.05 deg),
+  AVHRR v5 (to 2013; the CDR behind ILAMB's AVH15C1) and VIIRS v1 (from
+  2014) as separate products, GIMMS LAI4g V1.2 (half-monthly, 1/12 deg) and
+  HiQ-LAI v1 (8-day, 5 km), both averaged to monthly means.
 A product without files is skipped.
 
-Prep ID
--------
-PREP_ID (required) fixes the inputs: TIME_SLICE, TARGET_RES, LAT_BNDS,
-NA_THRESH and MIN_ANNUAL_ET are the prep settings registered under it in
+Prep ID and diagnostic ID
+-------------------------
+PREP_ID (required) gives the prep settings: TIME_SLICE, TARGET_RES,
+LAT_BNDS, NA_THRESH and MIN_ANNUAL_ET are those registered under it in
 config/runs.csv (`cfg.prep_settings`), not those of the current config
-(pipeline.yml, ETUNC_RUN), and the outputs are tagged with it. Set it to the
-PREP_ID of the prep_obs.py inputs the diagnostics are for.
+(pipeline.yml, ETUNC_RUN). Set it to the PREP_ID of the prep_obs.py inputs
+the diagnostics are for. The products are this script's own (ILAMB_PRODUCTS,
+GRIDDED_PRODUCTS), not those of the prep settings.
+
+The outputs are tagged with DIAG_ID = "d" + 7 hex of DIAG_SETTINGS: the five
+prep settings, the products, the records read and the diagnostic rules, so
+the same settings always write to the same folder and another product set to
+a new one. DIAG_ID is not registered in config/runs.csv; its settings (with
+the PREP_ID they came from) are saved next to the outputs instead.
 
 Processing
 ----------
@@ -44,14 +53,16 @@ read, so a 0.1 deg record is never held in memory:
 
 Outputs
 -------
-<var>    : et, lai, pr, rn
+<var>     : et, lai, pr, rn
 <grid>    : grid tag of TARGET_RES, e.g. "1deg"
-<prep_id> : PREP_ID below (its settings in config/runs.csv)
+<diag_id> : DIAG_ID below (its settings in obs.coverage.settings.<diag_id>.json)
 
-PROC_ROOT/<prep_id>/obs/coverage/obs.<var>.coverage.<prep_id>.csv
+{PROC_ROOT,FIG_ROOT}/<diag_id>/obs/coverage/obs.coverage.settings.<diag_id>.json
+    DIAG_SETTINGS, with DIAG_ID and the PREP_ID of the prep settings
+PROC_ROOT/<diag_id>/obs/coverage/obs.<var>.coverage.<diag_id>.csv
     per product: record, valid years, land area covered on the native and target grids (global and by
     region), and the QUANTILES of the valid monthly values
-FIG_ROOT/<prep_id>/obs/coverage/obs.<var>.<diag>.<prep_id>.png, with <diag>:
+FIG_ROOT/<diag_id>/obs/coverage/obs.<var>.<diag>.<diag_id>.png, with <diag>:
     1. Land covered on the native grids and on the target grid
        land_area              land area with any valid month, a valid year (native) and a climatology (target)
        map_n_products         number of products with a climatology at each target gridcell
@@ -74,6 +85,7 @@ FIG_ROOT/<prep_id>/obs/coverage/obs.<var>.<diag>.<prep_id>.png, with <diag>:
 
 from __future__ import annotations
 
+import json
 import warnings
 
 import dask
@@ -105,7 +117,8 @@ warnings.filterwarnings("ignore", message="invalid value encountered in divide",
 # Settings
 # ------------------------------------------------------------------
 
-# Required: the prep ID whose settings fix the inputs (must be registered in config/runs.csv)
+# Required: the prep ID whose prep settings are used (must be registered in config/runs.csv). The outputs are
+# tagged with DIAG_ID (end of the settings), not with it
 PREP_ID = "p2abea0a"
 _prep = cfg.prep_settings(PREP_ID)  # raises if PREP_ID is not registered
 
@@ -123,36 +136,50 @@ RECORD_SLICE = slice(None, None)    # zonal and regional timeseries: each produc
 # ILAMB products of each variable (keys of il.PRODUCTS[variable])
 ILAMB_PRODUCTS = {v: list(il.PRODUCTS[v]) for v in VARIABLES}
 
-# Gridded products, read from their native monthly files: {variable: {label: (load_obs dataset, version,
-# variable)}}. ET as GRIDDED_ET_PRODUCTS of prep_obs.py (monthly totals), plus FLUXCOM-X (mm hr-1) and GLDAS
-# (kg m-2 s-1); GPCP holds mm/day and CLARA-A3 W/m2, all monthly means
+# Gridded products, read from their native files: {variable: {label: (dataset, version, variable, freq)}},
+# as the products of config/pipeline.yml. dataset is a `lo.load_obs` dataset, except era5-land
+# (`le.load_era5_land`) and era5 (`le.load_native`, GDEX code), which have no versions. Half-monthly and 8-day
+# composites are averaged to months (`temporal.half_monthly_to_monthly`, `temporal.eight_day_to_monthly`).
+# ET files hold monthly totals (PML, GLEAM, SiTH), mm hr-1 (FLUXCOM-X) or kg m-2 s-1 (GLDAS, ERA5); GPCP holds
+# mm/day and CLARA-A3 W/m2, all monthly means
 GRIDDED_PRODUCTS = {
     "et": {
-        "PMLv2.2a_MODIS": ("pml", "V2.2a-MODIS", "ET"),
-        "PMLv2.2c":       ("pml", "V2.2c", "ET"),
-        "GLEAMv4.3a":     ("gleam", "v4.3a", "E"),
-        "GLEAMv4.3b":     ("gleam", "v4.3b", "E"),
-        "SiTHv2":         ("sith", "v2", "ET"),
-        "ERA5-Land":      ("era5-land", "monthly-means", "e"),  # le.load_era5_land (version is a label)
-        "FLUXCOM-X-BASE": ("fluxcom-x", "X-BASE", "ET"),
-        "GLDAS-2.0":      ("gldas", "2.0", "Evap_tavg"),  # Noah, to 2014
-        "GLDAS-2.1":      ("gldas", "2.1", "Evap_tavg"),  # Noah
-        "GLDAS-2.2_GRACE-DA": ("gldas", "2.2-grace-da", "Evap_tavg"),  # Catchment, GRACE assimilation, from 2003-02
+        # obs
+        "PMLv2.2a_MODIS": ("pml", "V2.2a-MODIS", "ET", "monthly"),
+        "PMLv2.2b":       ("pml", "V2.2b", "ET", "monthly"),
+        "PMLv2.2c":       ("pml", "V2.2c", "ET", "monthly"),
+        "GLEAMv4.3a":     ("gleam", "v4.3a", "E", "monthly"),
+        "GLEAMv4.3b":     ("gleam", "v4.3b", "E", "monthly"),
+        "SiTHv2":         ("sith", "v2", "ET", "monthly"),
+        "FLUXCOM-X-BASE": ("fluxcom-x", "X-BASE", "ET", "monthly"),
+        # lsmobs
+        "ERA5":           ("era5", None, "mer", "monthly"),
+        "ERA5-Land":      ("era5-land", None, "e", "monthly"),
+        "GLDAS-2.0":      ("gldas", "2.0", "Evap_tavg", "monthly"),
+        "GLDAS-2.1":      ("gldas", "2.1", "Evap_tavg", "monthly"),
+        "GLDAS-2.2_GRACE-DA": ("gldas", "2.2-grace-da", "Evap_tavg", "monthly"),
     },
     "pr": {
-        "GPCPv3.3": ("gpcp", "3.3", "sat_gauge_precip"),  # combined satellite-gauge (ILAMB's GPCP is v2.3)
+        "GPCPv3.3": ("gpcp", "3.3", "sat_gauge_precip", "monthly"),
     },
     "rn": {
-        "CLARA-A3": ("clara", "A3", "SRB"),
+        "CLARA-A3": ("clara", "A3", "SRB", "monthly"),
     },
-    # NOAA NCEI LAI record at its native 0.05 deg (obs4MIPs, monthly means), one product per sensor: AVHRR v5
-    # (1981-06 to 2013-12; the CDR of ILAMB's AVH15C1, which ILAMB averaged to 0.5 deg) and VIIRS v1
-    # (2014-01 to 2024-12, so only 2014 falls in a TIME_SLICE ending in 2014)
     "lai": {
-        "AVHRRv5_obs4MIPs": ("avhrr", "v20260110", "lai"),
-        "VIIRSv1_obs4MIPs": ("viirs", "v20260110", "lai"),
+        # NOAA NCEI record at its native 0.05 deg (obs4MIPs, monthly means), one product per sensor: AVHRR v5
+        # (1981-06 to 2013-12; the CDR of ILAMB's AVH15C1, which ILAMB averaged to 0.5 deg) and VIIRS v1
+        # (2014-01 to 2024-12, so only 2014 falls in a TIME_SLICE ending in 2014)
+        "AVHRRv5_obs4MIPs": ("avhrr", "v20260110", "lai", "monthly"),
+        "VIIRSv1_obs4MIPs": ("viirs", "v20260110", "lai", "monthly"),
+        # GIMMS LAI4g V1.2 at its native 1/12 deg, AVHRR consolidated with MODIS from 2004, 1982-2020 (labelled
+        # apart from ILAMB's GIMMS_LAI4g)
+        "GIMMS_LAI4g_V1.2": ("gimms-lai4g", "V1.2", "lai", "half-month"),
+        # HiQ-LAI v1, reprocessed MODIS C6.1 at 5 km (each cell one 500 m pixel), 2000-02 to 2022
+        "HiQ-LAIv1":        ("hiq-lai", "v1", "lai", "8-day"),
     },
 }
+# ERA5 is read from GDEX, whose loader needs a bounded period: its whole record of mer there
+ERA5_RECORD = slice("1979-01", "2022-12")
 
 # Valid year (step 4 of prep_obs.py): all 12 months valid (ET, P, Rn), or any valid month (LAI, whose
 # missing months count as 0)
@@ -193,6 +220,19 @@ PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6
 FRAC_KW = {"cmap": plt.get_cmap("Blues").with_extremes(under="0.6"), "vmin": 1e-6, "vmax": 1}
 FRAC_NOTE = "gray: land, none valid"
 
+# Everything that changes the outputs (not the figure styling), hashed into DIAG_ID, the tag of the outputs.
+# The prep settings are hashed by value, so two prep IDs with the same five settings give the same DIAG_ID
+DIAG_SETTINGS = {
+    "prep": {k: _prep[k] for k in ("time_slice", "target_res", "lat_bnds", "na_thresh", "min_annual_et")},
+    "products": {"ilamb": ILAMB_PRODUCTS, "gridded": GRIDDED_PRODUCTS},
+    "records": {"record_slice": [RECORD_SLICE.start, RECORD_SLICE.stop],
+                "era5_record": [ERA5_RECORD.start, ERA5_RECORD.stop]},
+    "rules": {"require_all_months": REQUIRE_ALL_MONTHS, "seasonal_gap_frac": SEASONAL_GAP_FRAC,
+              "regions": {r: [b.start, b.stop] for r, b in REGIONS.items()}, "hist_bins": HIST_BINS,
+              "quantiles": QUANTILES},
+}
+DIAG_ID = cfg.settings_id(DIAG_SETTINGS, tuple(DIAG_SETTINGS), "d")
+
 
 # ------------------------------------------------------------------
 # Loading and reduction
@@ -204,13 +244,20 @@ def load(v: str, p: str) -> xr.DataArray:
     in W/m2 (LAI m2/m2) as in step 3 of prep_obs.py, lazy with one year per chunk.
     """
     if p in GRIDDED_PRODUCTS.get(v, {}):
-        dataset, version, var = GRIDDED_PRODUCTS[v][p]
+        dataset, version, var, freq = GRIDDED_PRODUCTS[v][p]
         if dataset == "era5-land":
-            # Mean daily evaporation [m of water/day, positive downward] -> kg m-2 s-1 (positive upward) -> W/m2
-            da = le.load_era5_land(var, RECORD_SLICE)
-            da = units.latent_heat_to_wm2(units.era5_land_evaporation_to_flux(da))
+            # Mean daily evaporation [m of water/day, positive downward] -> W/m2 (positive upward)
+            da = units.convert_units(var, le.load_era5_land(var, RECORD_SLICE))
+        elif dataset == "era5":
+            # Mean rate [kg m-2 s-1, positive downward]; convert_units also flips the sign of mer (as prep_lsmobs.py)
+            da = units.convert_units(var, le.load_native([var], ERA5_RECORD)[var])
         else:
-            da = lo.load_obs(dataset, var, RECORD_SLICE, version=version, freq="monthly")
+            da = lo.load_obs(dataset, var, RECORD_SLICE, version=version, freq=freq)
+            # Composites -> monthly means: equal-weight mean of the valid composites stamped in each month
+            if freq == "half-month":
+                da = temporal.half_monthly_to_monthly(da)
+            elif freq == "8-day":
+                da = temporal.eight_day_to_monthly(da)
             if v in ("et", "pr"):
                 # Water depth per month (totals), day or hour (mean rates) -> kg m-2 s-1, unless already a flux
                 # (GLDAS); then -> W/m2
@@ -221,8 +268,8 @@ def load(v: str, p: str) -> xr.DataArray:
         da = il.load_native(v, p, RECORD_SLICE)
         # Keyed on the file's units attr (kg m-2 s-1, W m-2, MJ m-2 day-1, mm/day)
         da = da.assign_attrs(units="m2/m2") if v == "lai" else units.flux_to_wm2(da)
-    # Pipeline domain without Antarctica; LAT_BNDS (-58) is a cell edge of every product's grid but ERA5-Land's
-    # (centers on whole tenths), whose -58 row, half below -58, is kept
+    # Pipeline domain without Antarctica, by cell center; LAT_BNDS (-58) is a cell edge of most product grids,
+    # but ERA5 and ERA5-Land keep their -58 row (half below -58) and HiQ-LAI (0.0449 deg) its row nearest -58
     return da.sel(lat=LAT_BNDS).rename(v).chunk({"time": 12, "lat": -1, "lon": -1})
 
 
@@ -484,7 +531,7 @@ def product_colors(products: list[str], info: dict) -> tuple[dict, dict]:
 # Diagnostics of one variable
 # ------------------------------------------------------------------
 
-def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, grid: str, prep_id: str):
+def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, grid: str, diag_id: str):
     products = [*ILAMB_PRODUCTS[v], *GRIDDED_PRODUCTS.get(v, {})]
 
     # Load each product once and reduce it: native-grid coverage, histogram, and annual means on the target grid
@@ -552,7 +599,7 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
         row.update({f"q{100 * q:g}": x for q, x in zip(QUANTILES, hists[p]["quantiles"])})
         rows[p] = row
     table = pd.DataFrame(rows).T.infer_objects().rename_axis("product")
-    fout = proc_dir / f"{FAMILY}.{v}.coverage.{prep_id}.csv"
+    fout = proc_dir / f"{FAMILY}.{v}.coverage.{diag_id}.csv"
     table.to_csv(fout, float_format="%.4g")
     print(f"\nLand area in 10^6 km2, {period}\n{table.round(2).to_string()}\n{fout}")
 
@@ -622,7 +669,7 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
             f"({grid}, {span})", f)
 
     for diag, make in figs.items():
-        fout = fig_dir / f"{FAMILY}.{v}.{diag}.{prep_id}.png"
+        fout = fig_dir / f"{FAMILY}.{v}.{diag}.{diag_id}.png"
         make(fout)
         print(fout)
 
@@ -632,21 +679,26 @@ def diagnose(v: str, land_area1: xr.DataArray, fig_dir, proc_dir, period: str, g
 # ------------------------------------------------------------------
 
 def main():
-    # The prep settings come from PREP_ID (script settings below), not the current config.
-    # PREP_ID is registered already, so no cfg.register_run
+    # The prep settings come from PREP_ID (registered already), the rest from the script settings, not the
+    # current config. Outputs are tagged with DIAG_ID, which is not registered (no cfg.register_run): its
+    # settings are saved next to the outputs instead
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)
-    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "coverage", PREP_ID)
-    proc_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "coverage", PREP_ID)
-    proc_dir.mkdir(parents=True, exist_ok=True)
+    fig_dir = cfg.output_dir(cfg.FIG_ROOT, FAMILY, "coverage", DIAG_ID)
+    proc_dir = cfg.output_dir(cfg.PROC_ROOT, FAMILY, "coverage", DIAG_ID)
+    for d in (fig_dir, proc_dir):
+        d.mkdir(parents=True, exist_ok=True)
+        fout = d / f"{FAMILY}.coverage.settings.{DIAG_ID}.json"
+        fout.write_text(json.dumps({"diag_id": DIAG_ID, "prep_id": PREP_ID, **DIAG_SETTINGS}, indent=2) + "\n")
+        print(fout)
 
     # Land area [km2] of each target cell within LAT_BNDS, without Greenland/Iceland
     land_area1 = rg.land_area(rg.target_grid(TARGET_RES).sel(lat=LAT_BNDS))
     land_area1 = land_area1.where(rg.greenland_mask(land_area1), 0)
 
     for v in VARIABLES:
-        diagnose(v, land_area1, fig_dir, proc_dir, period, grid, PREP_ID)
+        diagnose(v, land_area1, fig_dir, proc_dir, period, grid, DIAG_ID)
 
 
 if __name__ == "__main__":
