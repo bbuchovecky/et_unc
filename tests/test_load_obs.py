@@ -106,10 +106,11 @@ def test_bad_names(spec):
 
 def test_registered_datasets():
     """
-    GLEAM, PML, SiTHv2, CLARA-A3, NCEI AVHRR/VIIRS LAI, FLUXCOM-X, GLDAS and GPCP are registered (GPCP v3.3 by
-    default); names are case-insensitive.
+    GLEAM, PML, SiTHv2, CLARA-A3, NCEI AVHRR/VIIRS LAI, FLUXCOM-X, GLDAS, GPCP, GIMMS LAI4g (both records) and
+    HiQ-LAI are registered (GPCP v3.3 by default); names are case-insensitive.
     """
-    assert {"gleam", "pml", "sith", "clara", "avhrr", "viirs", "fluxcom-x", "gldas", "gpcp"} <= set(lo.DATASETS)
+    assert {"gleam", "pml", "sith", "clara", "avhrr", "viirs", "fluxcom-x", "gldas", "gpcp",
+            "gimms-lai4g", "gimms-lai4g-avhrr", "hiq-lai"} <= set(lo.DATASETS)
     assert lo.get_dataset("gpcp").versions[0] == "3.3" and lo.get_dataset("gldas").versions[0] == "2.1"
     assert [d for _, d, _ in lo.NCEI_LAI_SENSORS] == ["avhrr", "viirs"]
     assert lo.get_dataset("PML") is lo.DATASETS["pml"]
@@ -453,36 +454,48 @@ def write_geotiff(path, bands, west=-180.0, north=90.0, res=60.0):
 
 # 3 x 6 grid of 60 deg cells; row 0 (north) holds the fill, row 2 (south) the valid values
 GIMMS_RAW = np.array([[65535] * 6, [0, 7000, 1, 2, 3, 4], [1000, 1500, 2000, 2500, 3000, 3500]], dtype="uint16")
+# The zip folder and file name prefix of each GIMMS LAI4g record, as on Zenodo
+GIMMS_RECORDS = {
+    "gimms-lai4g": ("GIMMS_LAI4g_AVHRR_MODIS_consolidated", "GIMMS_LAI4g_V1.2_"),
+    "gimms-lai4g-avhrr": ("GIMMS_LAI4g_AVHRR_solely", "GIMMS_LAI4g(AVHRR)_V1.2_"),
+}
+
+
+def gimms_path(root, record, years, year, month, half):
+    folder, prefix = GIMMS_RECORDS[record]
+    return root / f"{folder}_{years}" / f"{folder}_{years}" / f"{prefix}{year}{month:02d}{half}.tif"
 
 
 @pytest.fixture
-def gimms(tmp_path, monkeypatch):
-    """GIMMS LAI4g layout: both records, two zips of each, half-monthly files."""
-    monkeypatch.setattr(lo, "GIMMS_LAI4G_ROOT", tmp_path)
-    for record, (folder, prefix) in lo.GIMMS_LAI4G_RECORDS.items():
+def gimms(tmp_path):
+    """GIMMS LAI4g layout: both records, two zips of each, half-monthly files. Returns {name: spec}."""
+    for record in GIMMS_RECORDS:
         for years in ("2001_2002", "2003_2003"):
             for year in range(int(years[:4]), int(years[-4:]) + 1):
                 for month, half in ((1, "01"), (1, "02"), (2, "01")):
-                    zdir = f"{folder}_{years}"
-                    write_geotiff(tmp_path / zdir / zdir / f"{prefix}{year}{month:02d}{half}.tif",
+                    write_geotiff(gimms_path(tmp_path, record, years, year, month, half),
                                   [GIMMS_RAW, np.zeros_like(GIMMS_RAW)])
-    return tmp_path
+    return {name: replace(lo.get_dataset(name), root=tmp_path) for name in GIMMS_RECORDS}
 
 
 def test_gimms_lai4g_files(gimms):
-    """Files of each record are found across zips, dated at the start of their half month."""
-    files = lo.gimms_lai4g_files()
-    assert list(files)[:3] == [pd.Timestamp("2001-01-01"), pd.Timestamp("2001-01-16"), pd.Timestamp("2001-02-01")]
-    assert len(files) == 9
-    assert not any("(AVHRR)" in p.name for p in files.values())
-    assert all("(AVHRR)" in p.name for p in lo.gimms_lai4g_files("AVHRR").values())
-    with pytest.raises(ValueError, match="Unknown GIMMS"):
-        lo.gimms_lai4g_files("MODIS")
+    """Files of each record are found across zips; the variable is "lai"."""
+    spec = gimms["gimms-lai4g"]
+    assert lo.list_variables(spec, freq="half-month") == ["lai"]
+    assert lo.list_years(spec, "lai", freq="half-month") == [2001, 2002, 2003]
+    files = lo.find_files(spec, "lai", slice("2002", "2003"), freq="half-month")
+    assert len(files) == 6 and not any("(AVHRR)" in p.name for p in files)
+    avhrr = lo.find_files(gimms["gimms-lai4g-avhrr"], "lai", freq="half-month")
+    assert len(avhrr) == 9 and all("(AVHRR)" in p.name for p in avhrr)
 
 
 def test_load_gimms_lai4g(gimms):
-    """LAI is band 1 times 0.001, fill NaN, lat ascending, lazy, only the files in the time slice."""
-    da = lo.load_gimms_lai4g(slice("2002", "2003-01"))
+    """
+    LAI is band 1 times 0.001, fill NaN, lat ascending, lazy, dated at the start of each half month, only the
+    files in the time slice.
+    """
+    spec = gimms["gimms-lai4g"]
+    da = lo.load_obs(spec, "lai", slice("2002", "2003-01"), freq="half-month")
     assert da.chunks is not None
     assert da.dims == ("time", "lat", "lon")
     assert list(da.time.dt.strftime("%Y-%m-%d").values) == [
@@ -495,46 +508,67 @@ def test_load_gimms_lai4g(gimms):
     assert np.isnan(first[2]).all()                                       # 65535 fill
     assert da.dtype == "float32"
     assert da.attrs["units"] == "m2 m-2" and da.attrs["frequency"] == "half-month"
-    assert lo.load_gimms_lai4g(lat_bnds=slice(-90, 0)).sizes["lat"] == 2
+    assert da.attrs["dataset"] == "gimms-lai4g" and da.attrs["version"] == "V1.2"
+    assert lo.load_obs(spec, "lai", freq="half-month", lat_bnds=slice(-90, 0)).sizes["lat"] == 2
+    with pytest.raises(KeyError, match="'LAI' not in"):
+        lo.load_obs(spec, "LAI", freq="half-month")
 
 
-def test_load_gimms_lai4g_other_grid_raises(gimms):
-    """A file on another grid raises when read, instead of being put on the first file's grid."""
-    folder, prefix = lo.GIMMS_LAI4G_RECORDS["AVHRR-MODIS"]
-    zdir = f"{folder}_2003_2003"
-    write_geotiff(gimms / zdir / zdir / f"{prefix}20030201.tif", [GIMMS_RAW], west=-179.0)
-    da = lo.load_gimms_lai4g(slice("2003", "2003"))
-    with pytest.raises(ValueError, match="not on the grid"):
-        da.load()
+def test_load_gimms_lai4g_bad_files_raise(gimms):
+    """A file on another grid, or a composite in two zips, raises instead of being joined."""
+    spec = gimms["gimms-lai4g"]
+    other_grid = gimms_path(spec.root, "gimms-lai4g", "2003_2003", 2003, 2, "02")
+    write_geotiff(other_grid, [GIMMS_RAW], west=-179.0)
+    with pytest.raises(ValueError):
+        lo.load_obs(spec, "lai", slice("2003", "2003"), freq="half-month")
+    other_grid.unlink()
+
+    write_geotiff(gimms_path(spec.root, "gimms-lai4g", "2003_2003_copy", 2003, 1, "02"), [GIMMS_RAW])
+    with pytest.raises(ValueError, match=r"several files for the time stamps \['2003-01-16'\]"):
+        lo.load_obs(spec, "lai", slice("2003", "2003"), freq="half-month")
     with pytest.raises(FileNotFoundError):
-        lo.load_gimms_lai4g(slice("1990", "1995"))
+        lo.load_obs(spec, "lai", slice("1990", "1995"), freq="half-month")
+
+
+HIQ_PREFIX = "HiQ_LAI_WGS84_5km_8day_"
 
 
 @pytest.fixture
-def hiq(tmp_path, monkeypatch):
+def hiq(tmp_path):
     """HiQ-LAI layout: 8-day files named by day of year, with a __MACOSX folder as in the zips."""
-    monkeypatch.setattr(lo, "HIQ_LAI_ROOT", tmp_path)
     raw = np.array([[255, 249, 101, 0, 0, 0], [0, 100, 55, 1, 2, 3], [10, 20, 30, 40, 50, 60]], dtype="uint8")
     for years, doys in (("2000-2001", ("2000049", "2000361", "2001001")), ("2002-2002", ("2002009",))):
-        zdir = tmp_path / f"{lo.HIQ_LAI_PREFIX}{years}"
+        zdir = tmp_path / f"{HIQ_PREFIX}{years}"
         for doy in doys:
-            write_geotiff(zdir / zdir.name / f"{lo.HIQ_LAI_PREFIX}{doy}.tif", [raw, raw])
+            write_geotiff(zdir / zdir.name / f"{HIQ_PREFIX}{doy}.tif", [raw, raw])
             (zdir / "__MACOSX" / zdir.name).mkdir(parents=True, exist_ok=True)
-            (zdir / "__MACOSX" / zdir.name / f"._{lo.HIQ_LAI_PREFIX}{doy}.tif").write_bytes(b"apple")
-    return tmp_path
+            (zdir / "__MACOSX" / zdir.name / f"._{HIQ_PREFIX}{doy}.tif").write_bytes(b"apple")
+    return replace(lo.get_dataset("hiq-lai"), root=tmp_path)
 
 
 def test_load_hiq_lai(hiq):
     """Dated at the composite's first day; band 1 times 0.1, NaN above 100; macOS metadata files ignored."""
-    assert list(lo.hiq_lai_files()) == [pd.Timestamp(t) for t in
-                                        ("2000-02-18", "2000-12-26", "2001-01-01", "2002-01-09")]
-    da = lo.load_hiq_lai(slice("2000-12", "2001"))
+    every = lo.load_obs(hiq, "lai", freq="8-day")
+    assert list(every.time.values) == [np.datetime64(t, "ns") for t in
+                                       ("2000-02-18", "2000-12-26", "2001-01-01", "2002-01-09")]
+    da = lo.load_obs(hiq, "lai", slice("2000-12", "2001"), freq="8-day")
     assert list(da.time.dt.strftime("%Y-%m-%d").values) == ["2000-12-26", "2001-01-01"]
     v = da.isel(time=0).values
     np.testing.assert_allclose(v[0], [1, 2, 3, 4, 5, 6], rtol=1e-6)
     np.testing.assert_allclose(v[1], [0, 10, 5.5, 0.1, 0.2, 0.3], rtol=1e-6)
     assert np.isnan(v[2, :3]).all() and (v[2, 3:] == 0).all()  # 255, 249 (fill) and 101 (out of range)
-    assert da.attrs["frequency"] == "8-day" and da.attrs["dataset"] == "hiq_lai"
+    assert da.attrs["frequency"] == "8-day" and da.attrs["dataset"] == "hiq-lai"
+
+
+def test_load_obs_regridded_geotiff(gimms):
+    """Several files per year are read once each (no duplicate time steps), each composite regridded."""
+    spec = gimms["gimms-lai4g"]
+    da = lo.load_obs_regridded(spec, "lai", slice("2001", "2002"), 30.0, freq="half-month", na_thresh=1.0)
+    assert list(da.time.dt.strftime("%Y-%m-%d").values) == [
+        "2001-01-01", "2001-01-16", "2001-02-01", "2002-01-01", "2002-01-16", "2002-02-01"]
+    # Each 30 deg cell lies inside one 60 deg cell, so it takes that cell's value
+    np.testing.assert_allclose(da.isel(time=0).sel(lat=-75, lon=-165), 1.0)
+    assert np.isnan(da.isel(time=0).sel(lat=75, lon=-165))
 
 
 # ------------------------------------------------------------------

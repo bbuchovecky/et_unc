@@ -4,11 +4,10 @@ etunc.load.obs
 Load gridded observational products stored as NetCDF files per variable and
 year (GLEAM v4.3, PML-V2.2, NOAA NCEI AVHRR and VIIRS LAI, FLUXCOM-X-BASE,
 GLDAS), per variable and multi-year period (SiTHv2), per variable and month
-(CLARA-A3) or per month with every variable (GPCP v3) into a single DataArray
+(CLARA-A3) or per month with every variable (GPCP v3), or as one GeoTIFF per
+composite (GIMMS LAI4g, half-monthly; HiQ-LAI, 8-day) into a single DataArray
 over a time period. ``load_ncei_lai`` joins the AVHRR and VIIRS LAI records,
-with the sensor of each month as a coord. ``load_gimms_lai4g`` (half-monthly)
-and ``load_hiq_lai`` (8-day) read the LAI products stored as one GeoTIFF per
-composite, which ``load_obs`` does not read.
+with the sensor of each month as a coord.
 
 Each product is described by an ``ObsDataset`` in ``DATASETS``: its root
 directory, a file path template, its versions and temporal frequencies, and
@@ -21,10 +20,14 @@ To add a product, register another ``ObsDataset`` (see ``register_dataset``).
 The path template may use the fields {version}, {freq}, {freq_dir}, {freq_tag},
 {var} and either {year} (one file per year) or {year_start} and {year_end}
 (one file per period, e.g. A1982_2022), plus {month} with {year} (one file per
-month). Any other field (e.g. {standard_name}) matches any text in that part of
-the path. A template without any year field (one file holding every year) also
-works, and so does one without {var} (every variable in each file, as GPCP). Only files overlapping the requested years are opened, and the time
-selection is applied after opening.
+month), or {half} (01 or 02) or {doy} (day of year) for composites shorter
+than a month. Any other field (e.g. {standard_name}) matches any text in that
+part of the path. A template without any year field (one file holding every
+year) also works, and so does one without {var} (every variable in each file,
+as GPCP). Only files overlapping the requested years are opened, and the time
+selection is applied after opening. Files without a time axis (the GeoTIFFs,
+opened with ``engine="rasterio"`` of rioxarray) get their time stamp from
+their name (``ObsDataset.time_from_fields``).
 
 ``load_obs_regridded`` reads the native files and conservatively regrids each time step in memory onto
 ``etunc.grid.target_grid(res)`` (used by make_mask.py).
@@ -43,9 +46,9 @@ Example
 >>> rn = lo.load_obs("clara", "SRB", slice("1995", "2014"))             # W m-2, monthly means
 >>> lai = lo.load_obs("avhrr", "lai", slice("2001", "2013"))            # m2 m-2, monthly means
 >>> lai = lo.load_ncei_lai(slice("2001", "2014"))                        # AVHRR to 2013, VIIRS in 2014
->>> lai = lo.load_gimms_lai4g(slice("2001", "2014"))                     # m2 m-2, half-monthly
->>> lai = lo.load_gimms_lai4g(slice("2001", "2014"), record="AVHRR")     # AVHRR only, to 2015
->>> lai = lo.load_hiq_lai(slice("2001", "2014"))                         # m2 m-2, 8-day
+>>> lai = lo.load_obs("gimms-lai4g", "lai", slice("2001", "2014"), freq="half-month")  # m2 m-2
+>>> lai = lo.load_obs("gimms-lai4g-avhrr", "lai", slice("2001", "2014"), freq="half-month")  # AVHRR only
+>>> lai = lo.load_obs("hiq-lai", "lai", slice("2001", "2014"), freq="8-day")  # m2 m-2
 >>> et = lo.load_obs("fluxcom-x", "ET", slice("2001", "2014"))          # mm hr-1, monthly means
 >>> et = lo.load_obs("gldas", "Evap_tavg", slice("2001", "2014"), version="2.0")  # kg m-2 s-1
 >>> pr = lo.load_obs("gpcp", "sat_gauge_precip", slice("2001", "2014"))  # v3.3, mm/day, monthly means
@@ -102,14 +105,16 @@ Notes
 - GIMMS LAI4g V1.2 (1/12 deg, half-monthly, 1982-2020) and HiQ-LAI v1 (5 km,
   8-day, 2000-02 to 2022) are the Zenodo zips of
   scripts/download/download_gimms_4g.py and download_hiq_lai.py, unpacked, in
-  ``GIMMS_LAI4G_ROOT`` and ``HIQ_LAI_ROOT``: GeoTIFFs of scaled integers (LAI
-  times 1000 and 10) with fill values but no nodata or scale in their metadata,
-  which the loaders apply from the products' documentation. Only the LAI band
-  is read, not the QC bands. GIMMS LAI4g has two records: "AVHRR-MODIS"
-  (consolidated with the reprocessed MODIS LAI from 2004) and "AVHRR" (AVHRR
-  only, to 2015). HiQ-LAI misses a few 8-day composites (MODIS Terra gaps,
-  e.g. 2001 days 169 and 177), and its 5 km cells are nearest-neighbour
-  samples of the 500 m product.
+  OBS_ROOT/gimms-lai4g-v1.2 and OBS_ROOT/hiq-lai-v1: GeoTIFFs of scaled
+  integers (LAI times 1000 and 10) with fill values but no nodata or scale in
+  their metadata, which ``_decode_geotiff_lai`` applies from the products'
+  documentation. Only the LAI band is read, not the QC bands, and the variable
+  is always "lai". GIMMS LAI4g has two records, each its own product:
+  "gimms-lai4g" (AVHRR consolidated with the reprocessed MODIS LAI from 2004)
+  and "gimms-lai4g-avhrr" (AVHRR only, to 2015). HiQ-LAI misses a few 8-day
+  composites (MODIS Terra gaps, e.g. 2001 days 169 and 177), and its 5 km
+  cells are nearest-neighbour samples of the 500 m product. Their lat/lon are
+  the cell centres of the geotransform, not rounded.
 - Time stamps are kept as stored: GLEAM and SiTHv2 mark the end of each period
   (1980-01-31, 1980-12-31), PML, CLARA-A3, FLUXCOM-X, GLDAS, GPCP, GIMMS LAI4g
   and HiQ-LAI the start (1980-01-01; GIMMS also 1980-01-16), NCEI LAI the
@@ -124,14 +129,12 @@ import string
 import time
 import warnings
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Callable, Mapping
 
-import dask
-import dask.array as dsa
 import numpy as np
 import pandas as pd
-import rasterio
 import xarray as xr
 
 from etunc.config import NA_THRESH, OBS_ROOT
@@ -155,7 +158,8 @@ class ObsDataset:
     root : directory that `template` is relative to.
     template : file path relative to `root`, with fields {version}, {freq},
         {freq_dir}, {freq_tag}, {var} and optionally {year} or the pair
-        {year_start}/{year_end}.
+        {year_start}/{year_end}, and with {year}: {month}, {half} (01 or 02,
+        the half of the month) or {doy} (day of year).
     versions : available versions; the first is the default.
     freqs : frequency (as it appears in {freq}) -> tag substituted for
         {freq_tag}. Use "" when the template has no {freq_tag}.
@@ -167,6 +171,11 @@ class ObsDataset:
     preprocess : optional dataset-specific fix applied to each file before
         the variable is selected and the grid is standardized, called as
         ``preprocess(ds, var=..., version=..., freq=...)``.
+    engine : xarray backend that opens the files; None lets xarray choose
+        (NetCDF). "rasterio" (rioxarray) for GeoTIFFs.
+    time_from_fields : for files without a time axis (one GeoTIFF per
+        composite): builds each file's time stamp from the template fields
+        parsed from its path, e.g. {"year": "2001", "month": "01", "half": "02"}.
     """
 
     name: str
@@ -179,6 +188,8 @@ class ObsDataset:
     lon_name: str = "lon"
     coord_decimals: int | None = 4
     preprocess: Callable[..., xr.Dataset] | None = None
+    engine: str | None = None
+    time_from_fields: Callable[[Mapping[str, str]], pd.Timestamp] | None = None
 
 
 DATASETS: dict[str, ObsDataset] = {}
@@ -365,6 +376,85 @@ register_dataset(ObsDataset(
 ))
 
 
+# GeoTIFF LAI products (GIMMS LAI4g, HiQ-LAI): one single-time GeoTIFF per composite, unpacked from the Zenodo
+# zips of scripts/download/download_gimms_4g.py and download_hiq_lai.py, each zip holding a folder of its own
+# name. Opened by rioxarray (engine "rasterio") as band_data (band, y, x); the time stamp comes from the file name
+
+# HiQ-LAI headers declare their extra bands inconsistently; GDAL reads them as extra bands anyway, and rioxarray
+# would warn about it for every file opened
+warnings.filterwarnings("ignore", message="TIFFReadDirectory:Sum of Photometric", category=RuntimeWarning)
+
+def _decode_geotiff_lai(
+    ds: xr.Dataset, var: str, version: str, freq: str, *, scale: float, valid_max: int,
+) -> xr.Dataset:
+    """
+    Band 1 as float32 LAI ("lai", m2 m-2): NaN above `valid_max` (fill), times `scale`. The files have no
+    nodata or scale in their metadata, so both come from the product's documentation. Other bands (QC) are
+    not read.
+    """
+    raw = ds["band_data"].sel(band=1, drop=True)  # the stored integers as float32
+    lai = raw.where(raw <= valid_max) * np.float32(scale)
+    # Named "lai" whatever `var` is, so load_obs raises for any other variable name
+    return xr.Dataset({"lai": lai.assign_attrs(units="m2 m-2", long_name="leaf area index")}).drop_vars(
+        "spatial_ref", errors="ignore")
+
+
+def _half_month_start(fields: Mapping[str, str]) -> pd.Timestamp:
+    """Start of a half month: day 1 for half 01 (days 1-15), day 16 for half 02 (16 to the end)."""
+    return pd.Timestamp(int(fields["year"]), int(fields["month"]), 1 if fields["half"] == "01" else 16)
+
+
+def _day_of_year_start(fields: Mapping[str, str]) -> pd.Timestamp:
+    """First day of a composite named by its year and day of year."""
+    return pd.Timestamp(int(fields["year"]), 1, 1) + pd.Timedelta(days=int(fields["doy"]) - 1)
+
+
+# GIMMS LAI4g V1.2 (Cao et al. 2023, doi:10.5281/zenodo.8281930; 1/12 deg, half-monthly), one product per record:
+# "gimms-lai4g" (1982-2020) is AVHRR consolidated with the reprocessed MODIS LAI from 2004 on (random forest
+# fusion), "gimms-lai4g-avhrr" (1982-2015) is AVHRR alone. Files are e.g.
+# GIMMS_LAI4g_AVHRR_MODIS_consolidated_2001_2010/<same>/GIMMS_LAI4g_V1.2_20010102.tif (<YYYY><MM><half>).
+# Band 1 is LAI x 1000 as uint16 (valid 0-7000, fill 65535)
+for _name, _folder, _prefix in (
+    ("gimms-lai4g", "GIMMS_LAI4g_AVHRR_MODIS_consolidated", "GIMMS_LAI4g_V1.2_"),
+    ("gimms-lai4g-avhrr", "GIMMS_LAI4g_AVHRR_solely", "GIMMS_LAI4g(AVHRR)_V1.2_"),
+):
+    register_dataset(ObsDataset(
+        name=_name,
+        root=OBS_ROOT / "gimms-lai4g-v1.2",
+        # {years} is the zip's year range, matched from the path
+        template=f"{_folder}_{{years}}/{_folder}_{{years}}/{_prefix}{{year}}{{month}}{{half}}.tif",
+        versions=("V1.2",),
+        freqs={"half-month": ""},
+        lat_name="y",
+        lon_name="x",
+        coord_decimals=None,  # cell centres from the geotransform, the same in every file
+        preprocess=partial(_decode_geotiff_lai, scale=0.001, valid_max=7000),
+        engine="rasterio",
+        time_from_fields=_half_month_start,
+    ))
+
+# HiQ-LAI Version 1 (Yan et al. 2023, doi:10.5281/zenodo.8296768; 5 km, 8-day, 2000-02 to 2022), reprocessed
+# MODIS C6.1 LAI. Files are e.g. HiQ_LAI_WGS84_5km_8day_2000-2005/<same>/HiQ_LAI_WGS84_5km_8day_2001009.tif
+# (<YYYY><DDD>, first day of the composite). Band 1 is LAI x 10 as uint8 (valid 0-100; fill 249-255, and a few
+# stray values 101-248, set to NaN). The 5 km grid (0.0449 deg, 79.5S-84.6N) samples the 500 m product by
+# nearest neighbour, so each cell is one 500 m pixel, not an area mean. A few composites are missing (MODIS
+# Terra gaps, e.g. 2001 days 169 and 177)
+register_dataset(ObsDataset(
+    name="hiq-lai",
+    root=OBS_ROOT / "hiq-lai-v1",
+    template=("HiQ_LAI_WGS84_5km_8day_{years}/HiQ_LAI_WGS84_5km_8day_{years}/"
+              "HiQ_LAI_WGS84_5km_8day_{year}{doy}.tif"),
+    versions=("v1",),
+    freqs={"8-day": ""},
+    lat_name="y",
+    lon_name="x",
+    coord_decimals=None,
+    preprocess=partial(_decode_geotiff_lai, scale=0.1, valid_max=100),
+    engine="rasterio",
+    time_from_fields=_day_of_year_start,
+))
+
+
 def get_dataset(dataset: str | ObsDataset) -> ObsDataset:
     """Look up a registered product by name, or pass an `ObsDataset` through."""
     if isinstance(dataset, ObsDataset):
@@ -395,11 +485,21 @@ def _fixed_fields(spec: ObsDataset, version: str, freq: str) -> dict[str, str]:
 # File discovery
 # ------------------------------------------------------------------
 
-def _scan(spec: ObsDataset, **fields: str) -> list[tuple[dict[str, str], Path]]:
+_YEAR_FIELDS = ("year", "year_start", "year_end")
+# Unfilled template fields of a fixed form, so adjacent fields such as {year}{month}{half} can be parsed; any
+# other field matches any text within one path component
+_FIELD_PATTERNS = {
+    **{f: r"\d{4}" for f in _YEAR_FIELDS},
+    "month": r"\d{2}",
+    "half": r"0[12]",  # half of a month: 01 days 1-15, 02 the rest
+    "doy": r"\d{3}",   # day of year
+}
+
+
+def _template_patterns(spec: ObsDataset, **fields: str) -> tuple[str, re.Pattern]:
     """
-    Files matching `spec.template` with `fields` filled in, and the values of the
-    remaining template fields parsed from each path. Unfilled fields match any
-    path component text (year fields match four digits, {month} two).
+    Glob pattern and regex (of the path relative to `spec.root`) of `spec.template` with `fields` filled in.
+    The regex captures the remaining template fields.
     """
     glob_parts, regex_parts, seen = [], [], set()
     for literal, field, _, _ in string.Formatter().parse(spec.template):
@@ -416,26 +516,24 @@ def _scan(spec: ObsDataset, **fields: str) -> list[tuple[dict[str, str], Path]]:
                 # A field used twice (e.g. {var}, {version}) must match the same text both times
                 regex_parts.append(f"(?P={field})")
             else:
-                if field in _YEAR_FIELDS:
-                    regex_parts.append(rf"(?P<{field}>\d{{4}})")
-                elif field == "month":
-                    regex_parts.append(rf"(?P<{field}>\d{{2}})")
-                else:
-                    regex_parts.append(rf"(?P<{field}>[^/]+)")
+                regex_parts.append(rf"(?P<{field}>{_FIELD_PATTERNS.get(field, '[^/]+')})")
                 seen.add(field)
-    regex = re.compile("".join(regex_parts))
-
     # Adjacent unfilled fields (e.g. {year}{month}) give "**", which pathlib reads as a recursive glob
-    pattern = re.sub(r"\*+", "*", "".join(glob_parts))
+    return re.sub(r"\*+", "*", "".join(glob_parts)), re.compile("".join(regex_parts))
+
+
+def _scan(spec: ObsDataset, **fields: str) -> list[tuple[dict[str, str], Path]]:
+    """
+    Files matching `spec.template` with `fields` filled in, and the values of the
+    remaining template fields parsed from each path (`_template_patterns`).
+    """
+    pattern, regex = _template_patterns(spec, **fields)
     out = []
     for path in sorted(spec.root.glob(pattern)):
         m = regex.fullmatch(path.relative_to(spec.root).as_posix())
         if m:
             out.append((m.groupdict(), path))
     return out
-
-
-_YEAR_FIELDS = ("year", "year_start", "year_end")
 
 
 def _has_year(spec: ObsDataset) -> bool:
@@ -458,7 +556,10 @@ def list_variables(dataset: str | ObsDataset, version: str | None = None, freq: 
         # (not time bounds)
         if not found:
             return []
-        with xr.open_dataset(found[0][1]) as ds:
+        with xr.open_dataset(found[0][1], engine=spec.engine) as ds:
+            if spec.time_from_fields is not None:
+                # No time axis (one GeoTIFF per composite): the variables that the preprocess hook makes
+                return sorted(spec.preprocess(ds, var=None, version=version, freq=freq).data_vars)
             return sorted(v for v in ds.data_vars if "time" in ds[v].dims and ds[v].dtype.kind in "fiu")
     return sorted({groups["var"] for groups, _ in found})
 
@@ -560,8 +661,9 @@ def load_obs(
     Parameters
     ----------
     dataset : registered name ("gleam", "pml", "sith", "clara", "avhrr", "viirs", "fluxcom-x", "gldas",
-        "gpcp", ...) or an `ObsDataset`.
-    var : variable name as used in the directory and file names (e.g. "E", "ET").
+        "gpcp", "gimms-lai4g", "gimms-lai4g-avhrr", "hiq-lai", ...) or an `ObsDataset`.
+    var : variable name as used in the directory and file names (e.g. "E", "ET"); "lai" for the GeoTIFF
+        LAI products.
     time_slice : passed to ``.sel(time=...)``; only files for the years it
         touches are opened.
     version : product version; defaults to the first in `ObsDataset.versions`.
@@ -585,12 +687,21 @@ def load_obs(
             f"{spec.root}. Available variables: {list_variables(dataset, version, freq)}"
         )
 
+    if spec.time_from_fields is not None:
+        regex = _template_patterns(spec, **_fixed_fields(spec, version, freq), var=var)[1]
+
     def preprocess(ds: xr.Dataset) -> xr.Dataset:
+        source = ds.encoding.get("source")  # before the hook, which may return a new Dataset
         if spec.preprocess is not None:
             ds = spec.preprocess(ds, var=var, version=version, freq=freq)
         if var not in ds:
-            raise KeyError(f"{var!r} not in {ds.encoding.get('source')}; data vars: {list(ds.data_vars)}")
-        return standardize_grid(ds[[var]], spec)
+            raise KeyError(f"{var!r} not in {source}; data vars: {list(ds.data_vars)}")
+        ds = ds[[var]]
+        if spec.time_from_fields is not None:
+            # A file without a time axis: its time stamp from the fields of its name
+            fields = regex.fullmatch(Path(source).relative_to(spec.root).as_posix()).groupdict()
+            ds = ds.expand_dims(time=[spec.time_from_fields(fields)])
+        return standardize_grid(ds, spec)
 
     # Chunks apply when each file is opened, before `preprocess` renames the coords
     if isinstance(chunks, Mapping):
@@ -609,9 +720,14 @@ def load_obs(
         # Files whose grids differ after rounding raise, instead of being outer-joined into a NaN-padded grid
         join="exact",
         parallel=parallel,
+        engine=spec.engine,
     )
-    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML, CLARA-A3, FLUXCOM-X, GLDAS, GPCP) of each period, so
-    # slice with year or year-month strings rather than exact dates
+    if spec.time_from_fields is not None and not ds.indexes["time"].is_unique:
+        # e.g. one composite in two zips: open_mfdataset would stack both
+        dup = ds.indexes["time"][ds.indexes["time"].duplicated()]
+        raise ValueError(f"{spec.name}: several files for the time stamps {[str(t.date()) for t in dup]}")
+    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML, CLARA-A3, FLUXCOM-X, GLDAS, GPCP, GIMMS LAI4g, HiQ-LAI)
+    # of each period, so slice with year or year-month strings rather than exact dates
     da = ds[var].sel(time=time_slice)
     if lat_bnds is not None:
         da = da.sel(lat=lat_bnds)
@@ -669,168 +785,6 @@ def load_ncei_lai(
     return da
 
 
-# ------------------------------------------------------------------
-# GeoTIFF LAI products (GIMMS LAI4g, HiQ-LAI)
-# ------------------------------------------------------------------
-# One GeoTIFF per composite period, unpacked from the Zenodo zips by scripts/download/download_gimms_4g.py and
-# download_hiq_lai.py: <root>/<zip name>/<zip name>/<file>.tif (each zip holds a folder of its own name).
-# They are not read by `load_obs` (per-year NetCDF files), but by their own functions, which return the same
-# lazy (time, lat, lon) DataArray: LAI in m2 m-2, NaN where filled, lat ascending, one dask chunk per file.
-
-GIMMS_LAI4G_ROOT = OBS_ROOT / "gimms-lai4g-v1.2"
-# GIMMS LAI4g V1.2 (Cao et al. 2023, 1/12 deg, half-monthly): record -> (folder prefix of its zips, file name
-# prefix). "AVHRR-MODIS" (1982-2020) is consolidated with the reprocessed MODIS LAI from 2004 on (random forest
-# fusion); "AVHRR" (1982-2015) is from AVHRR alone
-GIMMS_LAI4G_RECORDS = {
-    "AVHRR-MODIS": ("GIMMS_LAI4g_AVHRR_MODIS_consolidated", "GIMMS_LAI4g_V1.2_"),
-    "AVHRR": ("GIMMS_LAI4g_AVHRR_solely", "GIMMS_LAI4g(AVHRR)_V1.2_"),
-}
-
-HIQ_LAI_ROOT = OBS_ROOT / "hiq-lai-v1"
-HIQ_LAI_PREFIX = "HiQ_LAI_WGS84_5km_8day_"  # zip folders and files: <prefix><years>, <prefix><YYYYDDD>.tif
-
-
-def _read_geotiff_lai(path: Path, band: int, scale: float, valid_max: int, transform, shape) -> np.ndarray:
-    """One band of one GeoTIFF as float32 LAI: NaN above `valid_max` (fill), times `scale`, rows south to north."""
-    with rasterio.open(path) as src:
-        if src.transform != transform or src.shape != shape:
-            raise ValueError(f"{path} is not on the grid of the other files ({src.transform}, {src.shape})")
-        raw = src.read(band)
-    lai = np.where(raw <= valid_max, raw.astype("float32") * np.float32(scale), np.float32(np.nan))
-    return lai[::-1]  # rows are stored north to south
-
-
-def _load_geotiff_lai(
-    files: Mapping[pd.Timestamp, Path], time_slice: slice, *, band: int, scale: float, valid_max: int,
-    lat_bnds: slice | None, attrs: Mapping[str, str],
-) -> xr.DataArray:
-    """Lazy (time, lat, lon) LAI from {time: GeoTIFF}, over `time_slice`, on the grid of the first file."""
-    paths = pd.Series(files).sort_index().loc[time_slice.start:time_slice.stop]
-    if paths.empty:
-        raise FileNotFoundError(f"No {attrs['dataset']} files in {time_slice}")
-
-    # Grid from the first file's geotransform (cell centers); each read checks that its file has the same one
-    with rasterio.open(paths.iloc[0]) as src:
-        transform, shape, crs = src.transform, src.shape, src.crs
-    if crs is None or crs.to_epsg() != 4326 or transform.b != 0 or transform.d != 0 or transform.e >= 0:
-        raise ValueError(f"{paths.iloc[0]} is not a north-up regular lat/lon (EPSG:4326) grid")
-    lon = transform.c + (np.arange(shape[1]) + 0.5) * transform.a
-    lat = (transform.f + (np.arange(shape[0]) + 0.5) * transform.e)[::-1]
-
-    # One delayed read per file, so nothing is read until computed
-    reads = [
-        dsa.from_delayed(
-            dask.delayed(_read_geotiff_lai)(path, band, scale, valid_max, transform, shape),
-            shape=shape, dtype="float32",
-        )
-        for path in paths
-    ]
-    da = xr.DataArray(
-        dsa.stack(reads), dims=("time", "lat", "lon"), name="lai",
-        coords={"time": paths.index.values, "lat": lat, "lon": lon},
-        attrs={"units": "m2 m-2", "long_name": "leaf area index", "res": "native", **attrs},
-    )
-    if lat_bnds is not None:
-        da = da.sel(lat=lat_bnds)
-    return da
-
-
-def gimms_lai4g_files(record: str = "AVHRR-MODIS") -> dict[pd.Timestamp, Path]:
-    """
-    Every GIMMS LAI4g file of `record` (a key of `GIMMS_LAI4G_RECORDS`) -> the start of its half month (day 1
-    or 16), sorted by time. File names end in <YYYY><MM><half>.tif, half 01 (days 1-15) or 02 (16-end).
-    """
-    if record not in GIMMS_LAI4G_RECORDS:
-        raise ValueError(f"Unknown GIMMS LAI4g record {record!r}; options: {tuple(GIMMS_LAI4G_RECORDS)}")
-    folder, prefix = GIMMS_LAI4G_RECORDS[record]
-    files = {}
-    for path in sorted(GIMMS_LAI4G_ROOT.glob(f"{folder}_*/{folder}_*/{prefix}*.tif")):
-        m = re.fullmatch(re.escape(prefix) + r"(\d{4})(\d{2})(0[12])\.tif", path.name)
-        if m is None:
-            raise ValueError(f"Unexpected GIMMS LAI4g file name {path}")
-        time_ = pd.Timestamp(int(m[1]), int(m[2]), 1 if m[3] == "01" else 16)
-        if time_ in files:
-            raise ValueError(f"Two GIMMS LAI4g files for {time_:%Y-%m-%d}: {files[time_]}, {path}")
-        files[time_] = path
-    return files
-
-
-def load_gimms_lai4g(
-    time_slice: slice = slice(None, None), *, record: str = "AVHRR-MODIS", lat_bnds: slice | None = None,
-) -> xr.DataArray:
-    """
-    GIMMS LAI4g V1.2 half-monthly LAI (1/12 deg, 1982-2020; Cao et al. 2023, doi:10.5281/zenodo.8281930).
-
-    Band 1 of each file is LAI as uint16 times 1000 (valid 0-7000, fill 65535 set to NaN); band 2, the QC
-    layer, is not read. Each time stamp is the start of its half month (YYYY-MM-01 and YYYY-MM-16).
-
-    Parameters
-    ----------
-    time_slice : passed to ``.loc`` on the file times; only the files inside it are read.
-    record : "AVHRR-MODIS" (consolidated with MODIS LAI from 2004, 1982-2020) or "AVHRR" (AVHRR only, 1982-2015).
-    lat_bnds : optional latitude slice (lat ascending).
-
-    Returns
-    -------
-    Lazy DataArray "lai" (time, lat, lon), one dask chunk per file, with attrs ``dataset``, ``version``,
-    ``frequency`` ("half-month") and ``res`` ("native").
-    """
-    files = gimms_lai4g_files(record)
-    if not files:
-        raise FileNotFoundError(f"No GIMMS LAI4g {record} files under {GIMMS_LAI4G_ROOT}")
-    return _load_geotiff_lai(
-        files, time_slice, band=1, scale=0.001, valid_max=7000, lat_bnds=lat_bnds,
-        attrs={"dataset": "gimms_lai4g", "version": f"V1.2 {record}", "frequency": "half-month"},
-    )
-
-
-def hiq_lai_files() -> dict[pd.Timestamp, Path]:
-    """
-    Every HiQ-LAI file -> the first day of its 8-day composite (the YYYYDDD day of year in its name), sorted
-    by time. Some composites are missing from the record (e.g. 2001 days 169 and 177, gaps of MODIS Terra).
-    """
-    files = {}
-    for path in sorted(HIQ_LAI_ROOT.glob(f"{HIQ_LAI_PREFIX}*/{HIQ_LAI_PREFIX}*/{HIQ_LAI_PREFIX}*.tif")):
-        m = re.fullmatch(re.escape(HIQ_LAI_PREFIX) + r"(\d{4})(\d{3})\.tif", path.name)
-        if m is None:
-            raise ValueError(f"Unexpected HiQ-LAI file name {path}")
-        time_ = pd.Timestamp(int(m[1]), 1, 1) + pd.Timedelta(days=int(m[2]) - 1)
-        if time_ in files:
-            raise ValueError(f"Two HiQ-LAI files for {time_:%Y-%m-%d}: {files[time_]}, {path}")
-        files[time_] = path
-    return files
-
-
-def load_hiq_lai(time_slice: slice = slice(None, None), *, lat_bnds: slice | None = None) -> xr.DataArray:
-    """
-    HiQ-LAI Version 1 8-day LAI (5 km, 2000-02 to 2022; Yan et al. 2023, doi:10.5281/zenodo.8296768),
-    reprocessed MODIS C6.1 LAI.
-
-    Band 1 of each file is LAI as uint8 times 10 (valid 0-100; 249-255 fill, and the few stray values between
-    101 and 248, set to NaN); the other bands (QC, stability, MODIS difference, land cover) are not read. The
-    5 km grid (0.0449 deg = 5 km at the equator, 79.5S-84.6N, 177.6W-179.6E) is the 500 m product subsampled by
-    nearest neighbour, so each cell is one 500 m pixel, not an area mean. Each time stamp is the first day of
-    its composite.
-
-    Parameters
-    ----------
-    time_slice : passed to ``.loc`` on the file times; only the files inside it are read.
-    lat_bnds : optional latitude slice (lat ascending).
-
-    Returns
-    -------
-    Lazy DataArray "lai" (time, lat, lon), one dask chunk per file, with attrs ``dataset``, ``version``,
-    ``frequency`` ("8-day") and ``res`` ("native").
-    """
-    files = hiq_lai_files()
-    if not files:
-        raise FileNotFoundError(f"No HiQ-LAI files under {HIQ_LAI_ROOT}")
-    return _load_geotiff_lai(
-        files, time_slice, band=1, scale=0.1, valid_max=100, lat_bnds=lat_bnds,
-        attrs={"dataset": "hiq_lai", "version": "v1", "frequency": "8-day"},
-    )
-
-
 def _regrid_blocks(
     da_all: xr.DataArray, resolutions: Mapping[str, float | str], na_thresh: float, progress: bool = False,
 ) -> tuple[dict[str, xr.DataArray], dict[str, float]]:
@@ -877,9 +831,9 @@ def load_obs_regridded(
 
     Each time step is regridded with `regrid_with_na_thresh` (NaN where more
     than `na_thresh` of a target cell's area is missing). Files are
-    read one at a time (per-year files whole, multi-year files in blocks of
-    their on-disk time chunks), so only one block is in memory at native
-    resolution.
+    read one year at a time (per-year files whole, multi-year files in blocks of
+    their on-disk time chunks, GeoTIFFs one file at a time), so only one block
+    is in memory at native resolution.
 
     Parameters
     ----------
@@ -902,16 +856,17 @@ def load_obs_regridded(
             f"Available variables: {list_variables(spec, version, freq)}"
         )
 
-    # (time slice, chunks) per file, clipped to the requested years. Per-year file: read
-    # whole. Multi-year file: dask chunks = on-disk chunks, so each chunk is read once.
+    # (time slice, chunks) per year span of the files, clipped to the requested years. Each span once: the
+    # files of one year (one per month for GPCP, per composite for GIMMS LAI4g, ...) are opened together.
+    # Per-year files: read whole. Multi-year file: dask chunks = on-disk chunks, so each chunk is read once.
+    # One GeoTIFF per composite: one block per file ("auto" chunks), not the whole year in memory.
     if _has_year(spec):
         y0, y1 = _year_bounds(time_slice)
         spans = list_files(spec, var, version, freq)
         reads = []
-        for path in files:
-            first, last = spans[path]
-            first, last = max(first, y0 or first), min(last, y1 or last)
-            reads.append((slice(str(first), str(last)), None if spans[path][0] == spans[path][1] else {}))
+        for first, last in dict.fromkeys(spans[path] for path in files):
+            chunks = {} if first != last else "auto" if spec.time_from_fields is not None else None
+            reads.append((slice(str(max(first, y0 or first)), str(min(last, y1 or last))), chunks))
     else:
         reads = [(time_slice, {})]
 
@@ -930,6 +885,6 @@ def load_obs_regridded(
     da = xr.concat(pieces, dim="time").sel(time=time_slice)
     da.attrs.update(res=f"{spacing:g}", regrid_method="xesmf conservative, skipna=True, unmapped_to_nan=True",
                     na_thresh=na_thresh)
-    print(f"{spec.name} {version} {freq} {var}: regridded {len(reads)} files to {spacing:g} deg "
+    print(f"{spec.name} {version} {freq} {var}: regridded {len(files)} files to {spacing:g} deg "
           f"(load {t['load']:.1f}s, regrid {t['regrid']:.1f}s)")
     return da
