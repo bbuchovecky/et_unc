@@ -152,6 +152,7 @@ def load_shared(v: str, label: str, spec: dict) -> xr.DataArray:
 def main():
     cfg.summarize()
     cfg.register_run()
+    cfg.save_settings("prep")  # PROC_ROOT/FIG_ROOT/<prep_id>/settings.<prep_id>.json
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
 

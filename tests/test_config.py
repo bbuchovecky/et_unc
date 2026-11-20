@@ -202,6 +202,21 @@ def test_register_run(tmp_path):
         cfg.register_run(csv_path)
 
 
+def test_save_settings(tmp_path):
+    """The settings saved in each ID folder hash back to that ID; another kind raises."""
+    roots = (tmp_path / "proc", tmp_path / "fig")
+    prep_paths = cfg.save_settings("prep", roots)
+    run_paths = cfg.save_settings("run", roots)
+    assert prep_paths == [r / cfg.PREP_ID / f"settings.{cfg.PREP_ID}.json" for r in roots]
+    assert run_paths == [r / cfg.RUN_ID / f"settings.{cfg.RUN_ID}.json" for r in roots]
+    prep, run = json.loads(prep_paths[0].read_text()), json.loads(run_paths[1].read_text())
+    assert prep["prep_id"] == cfg.PREP_ID and cfg.settings_id(prep, ("prep",), "p") == cfg.PREP_ID
+    assert (run["run_id"], run["prep_id"]) == (cfg.RUN_ID, cfg.PREP_ID)
+    assert cfg.settings_id(run, ("prep", "binning"), "r") == cfg.RUN_ID
+    with pytest.raises(ValueError, match="kind"):
+        cfg.save_settings("plotting", roots)
+
+
 def test_prep_settings(tmp_path):
     """The prep settings of a registered prep ID; an unknown ID or tampered settings raise."""
     csv_path = tmp_path / "runs.csv"

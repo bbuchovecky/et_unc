@@ -87,6 +87,7 @@ SIGNIF_N_MIN = cfg.SIGNIF_N_MIN
 def main():
     cfg.summarize()
     cfg.register_run()
+    cfg.save_settings("run")  # PROC_ROOT/FIG_ROOT/<run_id>/settings.<run_id>.json
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
     run = cfg.RUN_ID  # folder and file tag of every output (the run's settings set the period and bins)

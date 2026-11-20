@@ -76,6 +76,7 @@ SIGNIF_N_MIN = 3                           # as in bin_plumber.py
 def main():
     cfg.summarize()
     cfg.register_run()
+    cfg.save_settings("run")  # PROC_ROOT/FIG_ROOT/<run_id>/settings.<run_id>.json
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
     run = cfg.RUN_ID  # folder and file tag of the binned outputs (the run's settings set the bins)

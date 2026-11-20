@@ -91,6 +91,7 @@ def plot_area_frac(frac: xr.DataArray, title: str = "", fout=None, col_wrap: int
 def main():
     cfg.summarize()
     cfg.register_run()
+    cfg.save_settings("run")  # PROC_ROOT/FIG_ROOT/<run_id>/settings.<run_id>.json
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
     run = cfg.RUN_ID  # folder and file tag of every output (the run's settings set the period and bins)

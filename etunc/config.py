@@ -530,6 +530,30 @@ def register_run(csv_path: str | Path = RUNS_CSV) -> bool:
     return True
 
 
+def save_settings(kind: str, roots: tuple[str | Path, ...] | None = None) -> list[Path]:
+    """
+    Save the settings of this run's PREP_ID (kind "prep": the `prep` section) or RUN_ID (kind "run": `prep`
+    and `binning`) as <root>/<id>/settings.<id>.json under each of `roots` (default PROC_ROOT and FIG_ROOT),
+    so each ID folder records the settings that hash to its ID, as its row in config/runs.csv does. The
+    same ID always has the same settings, so a file is simply overwritten. Returns the paths written.
+    """
+    if kind == "prep":
+        id_, content = PREP_ID, {"prep_id": PREP_ID, "prep": SETTINGS["prep"]}
+    elif kind == "run":
+        id_, content = RUN_ID, {"run_id": RUN_ID, "prep_id": PREP_ID,
+                                "prep": SETTINGS["prep"], "binning": SETTINGS["binning"]}
+    else:
+        raise ValueError(f"kind must be 'prep' or 'run', not {kind!r}")
+    paths = []
+    for root in roots if roots is not None else (PROC_ROOT, FIG_ROOT):
+        path = Path(root) / id_ / f"settings.{id_}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(content, indent=2, sort_keys=True) + "\n")
+        print(f"settings of {id_}: {path}")
+        paths.append(path)
+    return paths
+
+
 # ------------------------------------------------------------------
 # Logs
 # ------------------------------------------------------------------

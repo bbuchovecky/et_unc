@@ -102,6 +102,7 @@ def plot_bin_fraction(values: dict[str, tuple[np.ndarray, np.ndarray]], bin_edge
 def main():
     cfg.summarize()
     cfg.register_run()
+    cfg.save_settings("run")  # PROC_ROOT/FIG_ROOT/<run_id>/settings.<run_id>.json
     cfg.summarize_settings(globals())
     period = temporal.format_time_period(TIME_SLICE)
     grid = rg.grid_tag(TARGET_RES)

@@ -81,6 +81,7 @@ MEMBER_IDS = cfg.CMIP_MEMBER_IDS
 def main():
     cfg.summarize()
     cfg.register_run()
+    cfg.save_settings("prep")  # PROC_ROOT/FIG_ROOT/<prep_id>/settings.<prep_id>.json
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
     loader = CMIPESGFLoader(CATALOG)

@@ -288,6 +288,8 @@ def product_set_sources(obs: xr.Dataset, exclude: dict[str, list[str]]) -> dict[
 def main():
     cfg.summarize()
     cfg.register_run()
+    cfg.save_settings("prep")  # its tower inputs are under the PREP_ID
+    cfg.save_settings("run")
     cfg.summarize_settings(globals())
     grid = rg.grid_tag(TARGET_RES)
     prep = cfg.PREP_ID  # folder and file tag of the inputs and tower climatology (prep settings only)
