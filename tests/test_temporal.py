@@ -123,3 +123,21 @@ def test_on_month_axis():
     with pytest.raises(ValueError, match="more than one time step in a month"):
         temporal.on_month_axis(monthly(pd.to_datetime(["2000-02-01", "2000-02-15"])), months)
 
+
+
+def test_half_monthly_to_monthly():
+    """
+    Each month is the equal-weight mean of its valid halves, stamped on the 1st; a month with one valid half takes
+    it, one with none is NaN, and a month without any time step stays absent (so step 4 drops that year).
+    """
+    times = pd.to_datetime(["2000-01-01", "2000-01-16", "2000-02-01", "2000-02-16", "2000-03-01", "2000-03-16",
+                            "2000-05-16"])
+    da = monthly(times, [1.0, 3.0, np.nan, 4.0, np.nan, np.nan, 6.0]).assign_attrs(frequency="half-month")
+    out = temporal.half_monthly_to_monthly(da)
+    np.testing.assert_array_equal(out.time.values, pd.to_datetime(["2000-01-01", "2000-02-01", "2000-03-01",
+                                                                   "2000-05-01"]).values)
+    np.testing.assert_array_equal(out.isel(lat=0, lon=0).values, [2.0, 4.0, np.nan, 6.0])
+    assert out.dims == ("time", "lat", "lon")
+    assert out.attrs["units"] == "W/m2" and out.attrs["frequency"] == "monthly"
+    with pytest.raises(ValueError, match="days 1 and 16"):
+        temporal.half_monthly_to_monthly(monthly(pd.to_datetime(["2000-01-01", "2000-01-09"])))

@@ -2,7 +2,8 @@
 etunc.temporal
 ==============
 Time handling: annual means and climatologies of the binning pipeline
-(`aggregate`, steps 4 and 10 of docs/binning-workflow.md), complete and shared
+(`aggregate`, steps 4 and 10 of docs/binning-workflow.md), monthly means of
+half-monthly fields (`half_monthly_to_monthly`, step 1), complete and shared
 years, and the time-period strings used in file names.
 """
 
@@ -124,6 +125,27 @@ def yearly_to_annual(da: xr.DataArray) -> xr.DataArray:
     if len(set(years)) != len(years):
         raise ValueError(f"{da.name}: more than one time step in a year")
     return da.assign_coords(year=("time", years)).swap_dims(time="year").drop_vars("time")
+
+
+def half_monthly_to_monthly(da: xr.DataArray) -> xr.DataArray:
+    """
+    Monthly means of a half-monthly field (time stamps on days 1 and 16, e.g. GIMMS LAI4g), stamped on the
+    first of the month: the equal-weight mean of the month's valid halves, so a month with one valid half
+    (the winter edge of the LAI record) takes that half. A month without any time step stays absent, as a
+    missing file of a monthly product.
+    """
+    days = set(np.unique(da.time.dt.day.values).tolist())
+    if not days <= {1, 16}:
+        raise ValueError(f"{da.name}: half-monthly time stamps must be on days 1 and 16; got days {sorted(days)}")
+    # Equal weights: the halves differ by at most 3 days (15 vs 13-16), which changes 2001 GIMMS LAI4g
+    # monthly means by ~0.004 m2/m2 on average
+    month = xr.DataArray(da.time.values.astype("datetime64[M]").astype("datetime64[ns]"), dims="time", name="month")
+    with xr.set_options(keep_attrs=True):
+        out = da.groupby(month).mean()  # NaN-skipping
+    out = out.rename(month="time")
+    if "frequency" in out.attrs:
+        out.attrs["frequency"] = "monthly"
+    return out
 
 
 def on_month_axis(da: xr.DataArray, months: pd.DatetimeIndex) -> xr.DataArray:

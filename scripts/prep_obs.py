@@ -9,7 +9,9 @@ inputs.
 
 Products
 --------
-PRODUCTS, one mapping per variable (prep.obs.<v>_products of config/pipeline.yml)
+PRODUCTS, one mapping per variable (prep.obs.<v>_products of config/pipeline.yml).
+Native files are monthly or yearly, or half-monthly (GIMMS LAI4g), averaged to
+monthly in step 1 (the mean of each month's valid halves).
 
 Native land mask: Natural Earth land (the products have no land fraction), without
 Greenland and Iceland. A product without data in TIME_SLICE is skipped.
@@ -75,6 +77,8 @@ PRODUCTS = {
     "pr": cfg.OBS_PR_PRODUCTS,
     "rn": cfg.OBS_RN_PRODUCTS,
 }
+# Frequencies of native files that steps 1-4 handle: half-month (GIMMS LAI4g) is averaged to monthly first
+NATIVE_FREQS = ("monthly", "yearly", "half-month")
 
 
 # ------------------------------------------------------------------
@@ -93,6 +97,9 @@ def main():
         if spec["source"] == "ilamb" and p not in il.PRODUCTS[v]:
             raise ValueError(f"prep.obs.{v}_products: {p!r} has source ilamb but is not an ILAMB {v} product "
                              f"({list(il.PRODUCTS[v])})")
+        if spec["source"] is None and spec["freq"] not in NATIVE_FREQS:
+            raise ValueError(f"prep.obs.{v}_products: {p!r} has freq {spec['freq']!r}; native files must be "
+                             f"one of {NATIVE_FREQS}")
 
     # ------------------------------------------------------------------
     # Steps 1-8, once per product: annual means on the target grid
@@ -114,6 +121,9 @@ def main():
         except FileNotFoundError as err:
             print(f"{err}; skipping {label}")
             continue
+        # Half-monthly composites (GIMMS LAI4g): monthly means, the equal-weight mean of each month's valid halves
+        if not from_ilamb and spec["freq"] == "half-month":
+            da = temporal.half_monthly_to_monthly(da)
 
         # 3. ET, P and Rn in W/m2, keyed on the file's units attr (kg m-2 s-1, W m-2, MJ m-2 day-1, or a
         # water depth per hour, day, month or year such as the monthly totals of PML and the mm/day of GPCP)

@@ -227,6 +227,8 @@ def obs_annual(v: str, product: str, time_slice: slice) -> xr.DataArray:
             da = il.load_native(v, product, time_slice)
         else:
             da = lo.load_obs(spec["dataset"], spec["variable"], time_slice, version=spec["version"], freq=spec["freq"])
+            if spec["freq"] == "half-month":  # GIMMS LAI4g: mean of each month's valid halves, as in prep_obs.py
+                da = temporal.half_monthly_to_monthly(da)
         da = da.assign_attrs(units="m2/m2") if v == "lai" else units.flux_to_wm2(da)
 
     # 4. Annual means over complete years: P and Rn need all 12 months, a missing LAI month counts as 0

@@ -140,6 +140,8 @@ def load_shared(v: str, label: str, spec: dict) -> xr.DataArray:
         da = il.load_native(v, label, TIME_SLICE)
     else:
         da = lo.load_obs(spec["dataset"], spec["variable"], TIME_SLICE, version=spec["version"], freq=spec["freq"])
+        if spec["freq"] == "half-month":  # GIMMS LAI4g: mean of each month's valid halves
+            da = temporal.half_monthly_to_monthly(da)
     return da.assign_attrs(units="m2/m2") if v == "lai" else units.flux_to_wm2(da)
 
 
