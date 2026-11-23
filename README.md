@@ -77,7 +77,7 @@ makes `run_all.pbs` start at `make-edges`. Each task's log, with the git commit 
   `ETUNC_RUN=config/runs/<name>.yml`.
 - Every run is identified by hashes of its settings. `PREP_ID` (`p…`) hashes `prep`, and `RUN_ID` (`r…`)
   hashes `prep` + `binning`. Each script records its run in `config/runs.csv`. The defaults are
-  `p9110cfb` / `r152d203`.
+  `pfb67471` / `rf144598`.
 - Outputs go to `<work_root>/{proc,fig}/<id>/<family>/<kind>/`, with file names ending in `.<id>.nc`.
   Prep inputs are stored under the `PREP_ID`; everything from `make-edges` on is under the `RUN_ID`.
 

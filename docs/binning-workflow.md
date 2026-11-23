@@ -43,6 +43,7 @@ Run them in that order. `scripts/run_all.sh` (`pixi run run-all`, or `qsub scrip
 `prep_<family>.py`, once per product (obs, lsmobs) or model (CMIP6) or ensemble (LENS2, FHIST PPE, IHIST PPE):
 1. Load monthly native-resolution variables (`load/*.load_native`, `lo.load_obs`) [native grid]
 	- Half-monthly products (GIMMS LAI4g, `freq: half-month`): monthly means first (`temporal.half_monthly_to_monthly`), the equal-weight mean of each month's valid halves, so a month with one valid half takes that half
+	- 8-day products (HiQ-LAI, `freq: 8-day`): monthly means first (`temporal.eight_day_to_monthly`), the equal-weight mean of the valid composites that start in the month (a composite that runs into the next month counts in the month it starts in)
 2. The time period is selected by the loader (`TIME_SLICE`) [native grid]
 3. Convert units of ET, P, Rn to W/m2 (`units.*`, written out in the script) [native grid]
 	- $L_v = 2.45 \times 10^6$ J/kg for every water flux

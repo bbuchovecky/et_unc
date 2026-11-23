@@ -28,23 +28,12 @@ prep:
   # Every combination of one product per variable (et, lai, pr, rn) is one source.
   obs:
     et_products:
-      # native products
       PMLv2.2a_MODIS: {dataset: pml, version: V2.2a-MODIS, variable: ET, freq: monthly, source: native}
-      PMLv2.2b:       {dataset: pml, version: V2.2b, variable: ET, freq: monthly, source: native}
-      PMLv2.2c:       {dataset: pml, version: V2.2c, variable: ET, freq: monthly, source: native}
       GLEAMv4.3a:     {dataset: gleam, version: v4.3a, variable: E, freq: monthly, source: native}
-      GLEAMv4.3b:     {dataset: gleam, version: v4.3b, variable: E, freq: monthly, source: native}
       SiTHv2:         {dataset: sith, version: v2, variable: ET, freq: monthly, source: native}
       FLUXCOM-X-BASE: {dataset: fluxcom-x, version: X-BASE, variable: ET, freq: monthly, source: native}
-      # ILAMB products
-      FLUXCOM:        {dataset: fluxcom, version: null, variable: et, freq: monthly, source: ilamb}
-      CLASS:          {dataset: class, version: null, variable: et, freq: monthly, source: ilamb}
-      DOLCE:          {dataset: dolce, version: null, variable: et, freq: monthly, source: ilamb}
-      MOD16A2:        {dataset: mod16a2, version: null, variable: et, freq: monthly, source: ilamb}
-      MODIS:          {dataset: modis, version: null, variable: et, freq: monthly, source: ilamb}
-      WECANN:         {dataset: wecann, version: null, variable: et, freq: monthly, source: ilamb}
     lai_products:
-      GIMMS_LAI4g: {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: monthly, source: ilamb}
+      GIMMS_LAI4g_V1.2: {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: half-month, source: native}
     pr_products:
       GPCPv3.3: {dataset: gpcp, version: "3.3", variable: sat_gauge_precip, freq: monthly, source: native}
     rn_products:
@@ -53,16 +42,35 @@ prep:
   # own field (prep_lsmobs.OWN_FIELDS), or products as in obs, combined with every ET product
   lsmobs:
     et_products:
-      ERA5:              {dataset: era5, version: null, variable: mer, freq: monthly, source: native}
       ERA5-Land:         {dataset: era5-land, version: null, variable: e, freq: monthly, source: native}
-      GLDAS2.0-Noah:     {dataset: gldas, version: "2.0", variable: Evap_tavg, freq: monthly, source: native}
       GLDAS2.1-Noah:     {dataset: gldas, version: "2.1", variable: Evap_tavg, freq: monthly, source: native}
     lai_products:
-      GIMMS_LAI4g: {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: monthly, source: ilamb}
+      GIMMS_LAI4g_V1.2: {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: half-month, source: native}
     pr_products: null
     rn_products: null
   cmip:
-    source_ids: null          # null = every model with all variables and an sftlf file, or a list
+    source_ids: [       # null = every model with all variables and an sftlf file, or a list
+      ACCESS-ESM1-5,
+      AWI-ESM-1-1-LR,
+      BCC-ESM1,
+      CESM2,
+      CMCC-ESM2,
+      CanESM5-1,
+      E3SM-2-1,
+      EC-Earth3-Veg,
+      FGOALS-g3,
+      GFDL-ESM4,
+      GISS-E3-G,
+      HadGEM3-GC31-MM,
+      UKESM1-0-LL,
+      INM-CM5-0,
+      IPSL-CM6A-LR,
+      MIROC-ES2L,
+      MPI-ESM1-2-HR,
+      NorESM2-MM,
+      SAM0-UNICON,
+      TaiESM1,
+    ]
     omit_source_ids:
       - CAMS-CSM1-0           # most evspsbl over land is NaN
     # Members per model: a list of member_ids, or

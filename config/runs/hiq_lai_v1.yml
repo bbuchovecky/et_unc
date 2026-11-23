@@ -1,0 +1,4 @@
+prep:
+  obs:
+    lai_products:
+      HiQ-LAIv1: {dataset: hiq-lai, version: v1, variable: lai, freq: 8-day, source: native}

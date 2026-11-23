@@ -1,0 +1,9 @@
+prep:
+  obs:
+    lai_products:
+      HiQ-LAIv1: {dataset: hiq-lai, version: v1, variable: lai, freq: 8-day, source: native}
+# Land-area weighted bin statistics, 15 x 15 bins (the inputs of decompose_state_function.py)
+binning:
+  area_weighted: true
+  n_xbins: 15
+  n_ybins: 15

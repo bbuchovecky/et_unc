@@ -10,8 +10,9 @@ inputs.
 Products
 --------
 PRODUCTS, one mapping per variable (prep.obs.<v>_products of config/pipeline.yml).
-Native files are monthly or yearly, or half-monthly (GIMMS LAI4g), averaged to
-monthly in step 1 (the mean of each month's valid halves).
+Native files are monthly or yearly, or composites averaged to monthly in step 1:
+half-monthly (GIMMS LAI4g; the mean of each month's valid halves) or 8-day
+(HiQ-LAI; the mean of the valid composites that start in each month).
 
 Native land mask: Natural Earth land (the products have no land fraction), without
 Greenland and Iceland. A product without data in TIME_SLICE is skipped.
@@ -77,8 +78,9 @@ PRODUCTS = {
     "pr": cfg.OBS_PR_PRODUCTS,
     "rn": cfg.OBS_RN_PRODUCTS,
 }
-# Frequencies of native files that steps 1-4 handle: half-month (GIMMS LAI4g) is averaged to monthly first
-NATIVE_FREQS = ("monthly", "yearly", "half-month")
+# Frequencies of native files that steps 1-4 handle: half-month (GIMMS LAI4g) and 8-day (HiQ-LAI) are
+# averaged to monthly first
+NATIVE_FREQS = ("monthly", "yearly", "half-month", "8-day")
 
 
 # ------------------------------------------------------------------
@@ -122,9 +124,12 @@ def main():
         except FileNotFoundError as err:
             print(f"{err}; skipping {label}")
             continue
-        # Half-monthly composites (native GIMMS LAI4g): monthly means, the equal-weight mean of each month's valid halves
+        # Composites -> monthly means. Half-monthly (native GIMMS LAI4g): the equal-weight mean of each month's
+        # valid halves. 8-day (HiQ-LAI): the equal-weight mean of the valid composites that start in the month
         if not from_ilamb and spec["freq"] == "half-month":
             da = temporal.half_monthly_to_monthly(da)
+        elif not from_ilamb and spec["freq"] == "8-day":
+            da = temporal.eight_day_to_monthly(da)
 
         # 3. ET, P and Rn in W/m2, keyed on the file's units attr (kg m-2 s-1, W m-2, MJ m-2 day-1, or a
         # water depth per hour, day, month or year such as the monthly totals of PML and the mm/day of GPCP)

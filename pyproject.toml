@@ -128,7 +128,7 @@ gridded-state-function-decomp = "scripts/run_logged.sh scripts/gridded_state_fun
 run-decomp = "scripts/run_decomp.sh"  # decompose-state-function for each run of RUNS (default aw_bins10/15/20), see run_decomp.sh
 # The whole pipeline: every prep-*, make-edges and bin-*, see run_all.sh
 run-all = "scripts/run_all.sh"
-run-all-sweep = { cmd = "scripts/run_all.sh", env = { RUNS = "default config/runs/bins10.yml config/runs/bins20.yml config/runs/aw_bins10.yml config/runs/aw_bins15.yml config/runs/aw_bins20.yml" } }  # every run file of config/runs, see run_all.sh
+run-all-sweep = { cmd = "scripts/run_all.sh", env = { RUNS = "default config/runs/bins10.yml config/runs/bins20.yml config/runs/aw_bins10.yml config/runs/aw_bins15.yml config/runs/aw_bins20.yml config/runs/hiq_lai_v1.yml config/runs/hiq_lai_v1_aw_bins15.yml" } }  # every run file of config/runs, see run_all.sh
 # Diagnostics, not part of the pipeline (not in run-all)
 make-mask = "scripts/run_logged.sh scripts/make_mask.py"
 diagnose-obs = "scripts/run_logged.sh scripts/diagnose_obs.py"

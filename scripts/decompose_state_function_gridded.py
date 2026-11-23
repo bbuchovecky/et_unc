@@ -104,7 +104,7 @@ import etunc.variants as variants
 
 # Required: the run ID whose settings fix the inputs (must be registered in config/runs.csv);
 # ETUNC_RUN_ID, if set, replaces it. Default: the run of config/runs/aw_bins15.yml
-RUN_ID = os.environ.get("ETUNC_RUN_ID") or "r59533f4"
+RUN_ID = os.environ.get("ETUNC_RUN_ID") or "r38cf3df"
 _run = cfg.run_settings(RUN_ID)  # raises if RUN_ID is not registered
 PREP_ID = next(r["prep_id"] for r in cfg.read_runs() if r["run_id"] == RUN_ID)  # its binning inputs
 

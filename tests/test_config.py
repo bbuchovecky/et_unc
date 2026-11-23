@@ -174,12 +174,25 @@ def test_ids_follow_the_hashed_settings(tmp_path):
 
 
 def test_shipped_run_files():
-    """Every file of config/runs loads, has its own RUN_ID, and shares the default PREP_ID (binning only)."""
+    """
+    Every file of config/runs loads and has its own RUN_ID. A file without a `prep` section (binning only)
+    shares the default PREP_ID; a file with one (e.g. other obs products) has its own PREP_ID.
+    """
     run_files = sorted((cfg.CONFIG_ROOT / "runs").glob("*.yml"))
     assert run_files
     run_ids = {ids(cfg.load_settings(f))[1] for f in run_files} | {cfg.RUN_ID}
     assert len(run_ids) == len(run_files) + 1
-    assert {ids(cfg.load_settings(f))[0] for f in run_files} == {cfg.PREP_ID}
+
+    # Split by whether the run file itself sets prep keys
+    changes_prep = {f: "prep" in (yaml.safe_load(f.read_text()) or {}) for f in run_files}
+    prep_ids = {f: ids(cfg.load_settings(f))[0] for f in run_files}
+    for f in run_files:
+        if not changes_prep[f]:
+            assert prep_ids[f] == cfg.PREP_ID, f"{f.name} sets no prep keys but changes the PREP_ID"
+    # Prep runs: none reuses the default PREP_ID or another prep run's
+    prep_run_ids = [prep_ids[f] for f in run_files if changes_prep[f]]
+    assert cfg.PREP_ID not in prep_run_ids
+    assert len(set(prep_run_ids)) == len(prep_run_ids)
 
 
 def test_register_run(tmp_path):
