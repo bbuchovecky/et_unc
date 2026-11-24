@@ -1,0 +1,619 @@
+{
+  "access": {
+    "embargo": {
+      "active": false,
+      "reason": null
+    },
+    "files": "public",
+    "record": "public",
+    "status": "open"
+  },
+  "created": "2024-07-09T11:09:06.428155+00:00",
+  "custom_fields": {},
+  "deletion_status": {
+    "is_deleted": false,
+    "status": "P"
+  },
+  "files": {
+    "count": 14,
+    "enabled": true,
+    "entries": {
+      "1981-1990_HDF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:a1cda3bb52c1b2970bb8ae3ed2ef10da",
+        "ext": "rar",
+        "id": "fc533abd-58d7-4e8c-97cb-8b041019949b",
+        "key": "1981-1990_HDF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/1981-1990_HDF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/1981-1990_HDF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 533909608,
+        "storage_class": "L"
+      },
+      "1981-1990_TIFF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:5efc9fb553dc8e04018f42d3908feb8a",
+        "ext": "rar",
+        "id": "1a5dd7b0-3fe8-4793-9e1d-64cabd229970",
+        "key": "1981-1990_TIFF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/1981-1990_TIFF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/1981-1990_TIFF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 534072952,
+        "storage_class": "L"
+      },
+      "1991-2000_HDF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:067e3f83e870cfc6d0ab10793577a2a5",
+        "ext": "rar",
+        "id": "093bc370-3b5a-4295-a8b8-83d57cfa69c4",
+        "key": "1991-2000_HDF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/1991-2000_HDF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/1991-2000_HDF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 563114001,
+        "storage_class": "L"
+      },
+      "1991-2000_TIFF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:71f654e95ac5102dd68ee70b49029ed5",
+        "ext": "rar",
+        "id": "eedf204f-486f-4504-8b0a-db4debd410c8",
+        "key": "1991-2000_TIFF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/1991-2000_TIFF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/1991-2000_TIFF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 563168562,
+        "storage_class": "L"
+      },
+      "2001-2005_HDF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:66ebcaaf8938b04e857e7bc3491cebdb",
+        "ext": "rar",
+        "id": "a261a150-45aa-484d-81c2-34af2e6927db",
+        "key": "2001-2005_HDF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2001-2005_HDF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2001-2005_HDF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 529396753,
+        "storage_class": "L"
+      },
+      "2001-2005_TIFF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:c02164e48312a573fb01cd958e506e8a",
+        "ext": "rar",
+        "id": "fd2c6bcd-f8ee-4c78-b5db-18e6c45ab884",
+        "key": "2001-2005_TIFF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2001-2005_TIFF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2001-2005_TIFF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 529375626,
+        "storage_class": "L"
+      },
+      "2006-2010_HDF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:b3295458dd7a2bdc808a6d4753e2a816",
+        "ext": "rar",
+        "id": "daca2d9d-4935-456e-81f4-e90c4206dc9e",
+        "key": "2006-2010_HDF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2006-2010_HDF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2006-2010_HDF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 532295932,
+        "storage_class": "L"
+      },
+      "2006-2010_TIFF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:e72313eea18d413942c8351786bae663",
+        "ext": "rar",
+        "id": "3b70b1dc-460b-4dc7-9864-52d2bd4f502e",
+        "key": "2006-2010_TIFF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2006-2010_TIFF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2006-2010_TIFF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 532291182,
+        "storage_class": "L"
+      },
+      "2011-2015_HDF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:21f70862311cebfd8d6ef6e2005e16d7",
+        "ext": "rar",
+        "id": "6dd4f237-6eb6-4739-8d91-9a4a387df77b",
+        "key": "2011-2015_HDF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2011-2015_HDF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2011-2015_HDF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 539625442,
+        "storage_class": "L"
+      },
+      "2011-2015_TIFF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:14db6031f342189787e58173cbb67bec",
+        "ext": "rar",
+        "id": "33a6ca55-f166-44d6-b53b-694be08e30fb",
+        "key": "2011-2015_TIFF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2011-2015_TIFF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2011-2015_TIFF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 539452077,
+        "storage_class": "L"
+      },
+      "2016-2020_HDF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:1f937309e45ca6aa79f9f08792095e10",
+        "ext": "rar",
+        "id": "ed2e3919-96b3-4023-ac52-389eaf726014",
+        "key": "2016-2020_HDF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2016-2020_HDF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2016-2020_HDF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 545441692,
+        "storage_class": "L"
+      },
+      "2016-2020_TIFF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:948559bd267289a2c3a4a92345b588ae",
+        "ext": "rar",
+        "id": "c6393578-bb61-41d5-a303-4f0042ccbb5f",
+        "key": "2016-2020_TIFF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2016-2020_TIFF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2016-2020_TIFF.rar"
+        },
+        "metadata": null,
+        "mimetype": "application/vnd.rar",
+        "size": 545361422,
+        "storage_class": "L"
+      },
+      "2021-2023_HDF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:132a85b61344901bf0f794365a5c7df1",
+        "ext": "rar",
+        "id": "5900ee58-8ff3-46e7-9e0a-8950bcdf50ee",
+        "key": "2021-2023_HDF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2021-2023_HDF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2021-2023_HDF.rar"
+        },
+        "metadata": {},
+        "mimetype": "application/vnd.rar",
+        "size": 376129883,
+        "storage_class": "L"
+      },
+      "2021-2023_TIFF.rar": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:fe45f5e3eb427f6e9e0bbfe1172aa9b3",
+        "ext": "rar",
+        "id": "5e96ea8d-5b96-4eb8-b910-19aa5ff2ec22",
+        "key": "2021-2023_TIFF.rar",
+        "links": {
+          "content": "https://zenodo.org/api/records/12698637/files/2021-2023_TIFF.rar/content",
+          "self": "https://zenodo.org/api/records/12698637/files/2021-2023_TIFF.rar"
+        },
+        "metadata": {},
+        "mimetype": "application/vnd.rar",
+        "size": 329496133,
+        "storage_class": "L"
+      }
+    },
+    "order": [],
+    "total_bytes": 7193131265
+  },
+  "id": "12698637",
+  "is_draft": false,
+  "is_published": true,
+  "links": {
+    "access": "https://zenodo.org/api/records/12698637/access",
+    "access_grants": "https://zenodo.org/api/records/12698637/access/grants",
+    "access_links": "https://zenodo.org/api/records/12698637/access/links",
+    "access_request": "https://zenodo.org/api/records/12698637/access/request",
+    "access_users": "https://zenodo.org/api/records/12698637/access/users",
+    "communities": "https://zenodo.org/api/records/12698637/communities",
+    "communities-suggestions": "https://zenodo.org/api/records/12698637/communities-suggestions",
+    "doi": "https://doi.org/10.5281/zenodo.12698637",
+    "draft": "https://zenodo.org/api/records/12698637/draft",
+    "file_modification": "https://zenodo.org/api/records/12698637/file-modification",
+    "files": "https://zenodo.org/api/records/12698637/files",
+    "latest": "https://zenodo.org/api/records/12698637/versions/latest",
+    "latest_html": "https://zenodo.org/records/12698637/latest",
+    "media_files": "https://zenodo.org/api/records/12698637/media-files",
+    "parent": "https://zenodo.org/api/records/4700263",
+    "parent_doi": "https://doi.org/10.5281/zenodo.4700263",
+    "parent_doi_html": "https://zenodo.org/doi/10.5281/zenodo.4700263",
+    "parent_html": "https://zenodo.org/records/4700263",
+    "preview_html": "https://zenodo.org/records/12698637?preview=1",
+    "quota_increase": "https://zenodo.org/api/records/12698637/quota-increase",
+    "request_deletion": "https://zenodo.org/api/records/12698637/request-deletion",
+    "requests": "https://zenodo.org/api/records/12698637/requests",
+    "reserve_doi": "https://zenodo.org/api/records/12698637/draft/pids/doi",
+    "self": "https://zenodo.org/api/records/12698637",
+    "self_doi": "https://doi.org/10.5281/zenodo.12698637",
+    "self_doi_html": "https://zenodo.org/doi/10.5281/zenodo.12698637",
+    "self_html": "https://zenodo.org/records/12698637",
+    "self_iiif_manifest": "https://zenodo.org/api/iiif/record:12698637/manifest",
+    "self_iiif_sequence": "https://zenodo.org/api/iiif/record:12698637/sequence/default",
+    "versions": "https://zenodo.org/api/records/12698637/versions"
+  },
+  "media_files": {
+    "count": 0,
+    "enabled": false,
+    "entries": {},
+    "order": [],
+    "total_bytes": 0
+  },
+  "metadata": {
+    "creators": [
+      {
+        "affiliations": [
+          {
+            "name": "Institute of Geographic Sciences and Natural Resources Research, Chinese Academy of Sciences"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Liu",
+          "given_name": "Ronggao",
+          "identifiers": [
+            {
+              "identifier": "0000-0003-2819-7178",
+              "scheme": "orcid"
+            }
+          ],
+          "name": "Liu, Ronggao",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Institute of Geographic Sciences and Natural Resources Research, Chinese Academy of Sciences"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Liu",
+          "given_name": "Yang",
+          "identifiers": [
+            {
+              "identifier": "0000-0001-7495-282X",
+              "scheme": "orcid"
+            }
+          ],
+          "name": "Liu, Yang",
+          "type": "personal"
+        }
+      },
+      {
+        "affiliations": [
+          {
+            "name": "Department of Geography and Program in Planning, University of Toronto"
+          }
+        ],
+        "person_or_org": {
+          "family_name": "Chen",
+          "given_name": "Jingming",
+          "name": "Chen, Jingming",
+          "type": "personal"
+        }
+      }
+    ],
+    "description": "<p>GLOBMAP LAI (Version 3) provides a consistent long-term global leaf area index (LAI) product (1981-2020, continuously updated) at 8km resolution on Geographic grid by quantitative fusion of Moderate Resolution Imaging Spectroradiometer (MODIS) and historical Advanced Very High Resolution Radiometer (AVHRR) data. The long-term LAI series was made up by combination of AVHRR LAI (1981&ndash;2000) and MODIS LAI (2001&ndash;). MODIS LAI series was generated from MODIS land surface reflectance data (MOD09A1 C6) based on the GLOBCARBON LAI algorithm (Deng et al., 2006). The relationships between AVHRR observations (GIMMS NDVI (Tucker et al., 2005)) and MODIS LAI were established pixel by pixel using two data series during overlapped period (2000&ndash;2006). Then the AVHRR LAI back to 1981 was estimated from historical AVHRR observations based on these pixel-level relationships. Detailed descriptions of algorithm and evaluation of the algorithm see Liu et al. (2012, JGR-B).</p>\n<p><strong>Several changes have been made compared with the JGR paper:</strong></p>\n<ol>\n<li>The MODIS C6 land surface reflectance products MOD09A1 was used to generate MODIS LAI in this GLOBMAP V3 products instead of C5 products.</li>\n<li>The clumping effects was considered at the pixel level by employing global clumping index map at 500m resolution (He et al., 2012) instead of land cover-specific clumping index in generation of MODIS LAI. And the new pixel-based AVHRR SR-MODIS LAI relationships were established based on these MODIS LAI series and used for AVHRR LAI retrieval.</li>\n<li>The cloud mask for MOD09A1 data were generated by a new cloud detection algorithm based on time series surface reflectance observations (Liu and Liu, 2013). And the contaminated pixels were filled by locally adjusted cubic spline capping approach (Chen et al., 2006).</li>\n</ol>\n<p><strong>Dataset Characteristics:</strong></p>\n<p><strong>&nbsp;</strong>Spatial Coverage:&nbsp;180&ordm;W~180&ordm;E, 63&ordm;S~90&ordm;N;</p>\n<p>&nbsp;Temporal Coverage:&nbsp;July, 1981-Dec. 2020 (continuously updated);</p>\n<p>&nbsp;Spatial Resolution:&nbsp;0.0727273&ordm;;</p>\n<p>&nbsp;Temporal Resolution:&nbsp;Half month (1981-2000), 8-day (2001-);</p>\n<p>&nbsp;Projection:&nbsp;Geographic;</p>\n<p>&nbsp;Data Format: HDF/Geotiff;</p>\n<p>&nbsp;Scale: 0.01;</p>\n<p>&nbsp;Valid Range:&nbsp;0-1000.</p>\n<p><strong>Citation (</strong>Please cite this paper whenever these data are used)<strong>:</strong></p>\n<p>Liu, Y., R. Liu, and J. M. Chen (2012), Retrospective retrieval of long-term consistent global leaf area index (1981&ndash;2011) from combined AVHRR and MODIS data, J. Geophys. Res., 117, G04003, doi:10.1029/2012JG002084.</p>\n<p>If you have any questions, please contact <strong>Prof. Ronggao Liu (liurg@igsnrr.ac.cn)</strong> or <strong>Dr. Yang&nbsp;Liu (liuyang@igsnrr.ac.cn)</strong>.</p>\n<p><strong>Related publications with this&nbsp;dataset:</strong><strong>&nbsp;</strong></p>\n<ol>\n<li>Chen, J. M., F. Deng, and M. Chen (2006), Locally adjusted cubic-spline capping for reconstructing seasonal trajectories of a satellite-derived surface parameter, <em>IEEE Trans. Geosci. Remote Sens.</em>, 44, 2230-2238</li>\n<li>Deng, F., J. M. Chen, S. Plummer, M. Z. Chen, and J. Pisek (2006), Algorithm for global leaf area index retrieval using satellite imagery, <em>IEEE Trans. Geosci. Remote Sens.</em>, 44(8), 2219&ndash;2229.</li>\n<li>He, L. M., J. M. Chen, J. Pisek, C. B. Schaaf, and A. H. Strahler (2012), Global clumping index map derived from the MODIS BRDF product, <em>Remote Sens. Environ.</em>, 119, 118-130.</li>\n<li>Liu, R. G., and Y. Liu (2013), Generation of new cloud masks from MODIS land surface reflectance products, <em>Remote Sens. Environ.</em>, 133, 21-37.</li>\n<li>Tucker, C. J., J. E. Pinzon, M. E. Brown, D. A. Slayback, E. W. Pak,R. Mahoney, E. F. Vermote, and N. El Saleous (2005), An extended AVHRR 8-km NDVI dataset compatible with MODIS and SPOT vegetation NDVI data, <em>Int. J. Remote Sens.</em>, 26(20), 4485&ndash;4498.</li>\n</ol>",
+    "languages": [
+      {
+        "id": "eng",
+        "title": {
+          "en": "English"
+        }
+      }
+    ],
+    "publication_date": "2024-07-09",
+    "publisher": "Zenodo",
+    "references": [
+      {
+        "reference": "Liu, Y., R. Liu, and J. M. Chen (2012), Retrospective retrieval of long-term consistent global leaf area index (1981\u20132011) from combined AVHRR and MODIS data, J. Geophys. Res., 117, G04003, doi:10.1029/2012JG002084."
+      }
+    ],
+    "related_identifiers": [
+      {
+        "identifier": "10.1029/2012JG002084",
+        "relation_type": {
+          "id": "isdocumentedby",
+          "title": {
+            "de": "Wird dokumentiert von",
+            "en": "Is documented by"
+          }
+        },
+        "resource_type": {
+          "id": "publication-article",
+          "title": {
+            "de": "Zeitschriftenartikel",
+            "en": "Journal article"
+          }
+        },
+        "scheme": "doi"
+      }
+    ],
+    "resource_type": {
+      "id": "dataset",
+      "title": {
+        "de": "Datensatz",
+        "en": "Dataset"
+      }
+    },
+    "rights": [
+      {
+        "description": {
+          "en": "The Creative Commons Attribution license allows re-distribution and re-use of a licensed work on the condition that the creator is appropriately credited."
+        },
+        "icon": "cc-by-icon",
+        "id": "cc-by-4.0",
+        "props": {
+          "scheme": "spdx",
+          "url": "https://creativecommons.org/licenses/by/4.0/legalcode"
+        },
+        "title": {
+          "en": "Creative Commons Attribution 4.0 International"
+        }
+      }
+    ],
+    "subjects": [
+      {
+        "subject": "Leaf Area Index"
+      },
+      {
+        "subject": "Vegetation"
+      },
+      {
+        "subject": "Long-term dataset"
+      },
+      {
+        "subject": "Consistency"
+      },
+      {
+        "subject": "Remote sensing"
+      }
+    ],
+    "title": "GLOBMAP global Leaf Area Index since 1981",
+    "version": "Version 3.0"
+  },
+  "parent": {
+    "access": {
+      "owned_by": {
+        "user": "213949"
+      },
+      "settings": {
+        "accept_conditions_text": null,
+        "allow_guest_requests": false,
+        "allow_user_requests": false,
+        "secret_link_expiration": 0
+      }
+    },
+    "communities": {},
+    "id": "4700263",
+    "pids": {
+      "doi": {
+        "client": "datacite",
+        "identifier": "10.5281/zenodo.4700263",
+        "provider": "datacite"
+      }
+    }
+  },
+  "pids": {
+    "doi": {
+      "client": "datacite",
+      "identifier": "10.5281/zenodo.12698637",
+      "provider": "datacite"
+    },
+    "oai": {
+      "identifier": "oai:zenodo.org:12698637",
+      "provider": "oai"
+    }
+  },
+  "revision_id": 6,
+  "stats": {
+    "all_versions": {
+      "data_volume": 24220796708288.0,
+      "downloads": 45450,
+      "unique_downloads": 17362,
+      "unique_views": 32031,
+      "views": 34702
+    },
+    "this_version": {
+      "data_volume": 6052183405940.0,
+      "downloads": 11813,
+      "unique_downloads": 6342,
+      "unique_views": 3045,
+      "views": 3344
+    }
+  },
+  "status": "published",
+  "swh": {},
+  "ui": {
+    "access_status": {
+      "description_l10n": "The record and files are publicly accessible.",
+      "embargo_date_l10n": null,
+      "icon": "unlock",
+      "id": "open",
+      "message_class": "",
+      "title_l10n": "Open"
+    },
+    "created_date_l10n_long": "July 9, 2024",
+    "creators": {
+      "affiliations": [
+        [
+          1,
+          "Institute of Geographic Sciences and Natural Resources Research, Chinese Academy of Sciences",
+          null
+        ],
+        [
+          2,
+          "Department of Geography and Program in Planning, University of Toronto",
+          null
+        ]
+      ],
+      "creators": [
+        {
+          "affiliations": [
+            [
+              1,
+              "Institute of Geographic Sciences and Natural Resources Research, Chinese Academy of Sciences"
+            ]
+          ],
+          "person_or_org": {
+            "family_name": "Liu",
+            "given_name": "Ronggao",
+            "identifiers": [
+              {
+                "identifier": "0000-0003-2819-7178",
+                "scheme": "orcid"
+              }
+            ],
+            "name": "Liu, Ronggao",
+            "type": "personal"
+          }
+        },
+        {
+          "affiliations": [
+            [
+              1,
+              "Institute of Geographic Sciences and Natural Resources Research, Chinese Academy of Sciences"
+            ]
+          ],
+          "person_or_org": {
+            "family_name": "Liu",
+            "given_name": "Yang",
+            "identifiers": [
+              {
+                "identifier": "0000-0001-7495-282X",
+                "scheme": "orcid"
+              }
+            ],
+            "name": "Liu, Yang",
+            "type": "personal"
+          }
+        },
+        {
+          "affiliations": [
+            [
+              2,
+              "Department of Geography and Program in Planning, University of Toronto"
+            ]
+          ],
+          "person_or_org": {
+            "family_name": "Chen",
+            "given_name": "Jingming",
+            "name": "Chen, Jingming",
+            "type": "personal"
+          }
+        }
+      ]
+    },
+    "custom_fields": {},
+    "description_stripped": "GLOBMAP LAI (Version 3) provides a consistent long-term global leaf area index (LAI) product (1981-2020, continuously updated) at 8km resolution on Geographic grid by quantitative fusion of Moderate Resolution Imaging Spectroradiometer (MODIS) and historical Advanced Very High Resolution Radiometer (AVHRR) data. The long-term LAI series was made up by combination of AVHRR LAI (1981\u20132000) and MODIS LAI (2001\u2013). MODIS LAI series was generated from MODIS land surface reflectance data (MOD09A1 C6) based on the GLOBCARBON LAI algorithm (Deng et al., 2006). The relationships between AVHRR observations (GIMMS NDVI (Tucker et al., 2005)) and MODIS LAI were established pixel by pixel using two data series during overlapped period (2000\u20132006). Then the AVHRR LAI back to 1981 was estimated from historical AVHRR observations based on these pixel-level relationships. Detailed descriptions of algorithm and evaluation of the algorithm see Liu et al. (2012, JGR-B).\n\nSeveral changes have been made compared with the JGR paper:\n\n\n\nThe MODIS C6 land surface reflectance products MOD09A1 was used to generate MODIS LAI in this GLOBMAP V3 products instead of C5 products.\n\nThe clumping effects was considered at the pixel level by employing global clumping index map at 500m resolution (He et al., 2012) instead of land cover-specific clumping index in generation of MODIS LAI. And the new pixel-based AVHRR SR-MODIS LAI relationships were established based on these MODIS LAI series and used for AVHRR LAI retrieval.\n\nThe cloud mask for MOD09A1 data were generated by a new cloud detection algorithm based on time series surface reflectance observations (Liu and Liu, 2013). And the contaminated pixels were filled by locally adjusted cubic spline capping approach (Chen et al., 2006).\n\n\nDataset Characteristics:\n\n\u00a0Spatial Coverage:\u00a0180\u00baW~180\u00baE, 63\u00baS~90\u00baN;\n\n\u00a0Temporal Coverage:\u00a0July, 1981-Dec. 2020 (continuously updated);\n\n\u00a0Spatial Resolution:\u00a00.0727273\u00ba;\n\n\u00a0Temporal Resolution:\u00a0Half month (1981-2000), 8-day (2001-);\n\n\u00a0Projection:\u00a0Geographic;\n\n\u00a0Data Format: HDF/Geotiff;\n\n\u00a0Scale: 0.01;\n\n\u00a0Valid Range:\u00a00-1000.\n\nCitation (Please cite this paper whenever these data are used):\n\nLiu, Y., R. Liu, and J. M. Chen (2012), Retrospective retrieval of long-term consistent global leaf area index (1981\u20132011) from combined AVHRR and MODIS data, J. Geophys. Res., 117, G04003, doi:10.1029/2012JG002084.\n\nIf you have any questions, please contact Prof. Ronggao Liu (liurg@igsnrr.ac.cn) or Dr. Yang\u00a0Liu (liuyang@igsnrr.ac.cn).\n\nRelated publications with this\u00a0dataset:\u00a0\n\n\n\nChen, J. M., F. Deng, and M. Chen (2006), Locally adjusted cubic-spline capping for reconstructing seasonal trajectories of a satellite-derived surface parameter, IEEE Trans. Geosci. Remote Sens., 44, 2230-2238\n\nDeng, F., J. M. Chen, S. Plummer, M. Z. Chen, and J. Pisek (2006), Algorithm for global leaf area index retrieval using satellite imagery, IEEE Trans. Geosci. Remote Sens., 44(8), 2219\u20132229.\n\nHe, L. M., J. M. Chen, J. Pisek, C. B. Schaaf, and A. H. Strahler (2012), Global clumping index map derived from the MODIS BRDF product, Remote Sens. Environ., 119, 118-130.\n\nLiu, R. G., and Y. Liu (2013), Generation of new cloud masks from MODIS land surface reflectance products, Remote Sens. Environ., 133, 21-37.\n\nTucker, C. J., J. E. Pinzon, M. E. Brown, D. A. Slayback, E. W. Pak,R. Mahoney, E. F. Vermote, and N. El Saleous (2005), An extended AVHRR 8-km NDVI dataset compatible with MODIS and SPOT vegetation NDVI data, Int. J. Remote Sens., 26(20), 4485\u20134498.",
+    "is_draft": false,
+    "languages": [
+      {
+        "id": "eng",
+        "title_l10n": "English"
+      }
+    ],
+    "publication_date_l10n_long": "July 9, 2024",
+    "publication_date_l10n_medium": "Jul 9, 2024",
+    "related_identifiers": [
+      {
+        "identifier": "10.1029/2012JG002084",
+        "relation_type": {
+          "id": "isdocumentedby",
+          "title_l10n": "Is documented by"
+        },
+        "resource_type": {
+          "id": "publication-article",
+          "title_l10n": "Journal article"
+        },
+        "scheme": "doi"
+      }
+    ],
+    "resource_type": {
+      "id": "dataset",
+      "title_l10n": "Dataset"
+    },
+    "rights": [
+      {
+        "description_l10n": "The Creative Commons Attribution license allows re-distribution and re-use of a licensed work on the condition that the creator is appropriately credited.",
+        "icon": "cc-by-icon",
+        "id": "cc-by-4.0",
+        "props": {
+          "scheme": "spdx",
+          "url": "https://creativecommons.org/licenses/by/4.0/legalcode"
+        },
+        "title_l10n": "Creative Commons Attribution 4.0 International"
+      }
+    ],
+    "updated_date_l10n_long": "July 9, 2024",
+    "version": "Version 3.0"
+  },
+  "updated": "2024-07-09T11:12:17.599482+00:00",
+  "versions": {
+    "index": 2,
+    "is_latest": true
+  }
+}
