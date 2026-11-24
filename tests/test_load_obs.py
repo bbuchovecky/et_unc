@@ -106,11 +106,11 @@ def test_bad_names(spec):
 
 def test_registered_datasets():
     """
-    GLEAM, PML, SiTHv2, CLARA-A3, NCEI AVHRR/VIIRS LAI, FLUXCOM-X, GLDAS, GPCP, GIMMS LAI4g (both records) and
-    HiQ-LAI are registered (GPCP v3.3 by default); names are case-insensitive.
+    GLEAM, PML, SiTHv2, CLARA-A3, NCEI AVHRR/VIIRS LAI, FLUXCOM-X, GLDAS, GPCP, GIMMS LAI4g (both records),
+    HiQ-LAI, GLOBMAP LAI and GLASS LAI are registered (GPCP v3.3 by default); names are case-insensitive.
     """
     assert {"gleam", "pml", "sith", "clara", "avhrr", "viirs", "fluxcom-x", "gldas", "gpcp",
-            "gimms-lai4g", "gimms-lai4g-avhrr", "hiq-lai"} <= set(lo.DATASETS)
+            "gimms-lai4g", "gimms-lai4g-avhrr", "hiq-lai", "globmap-lai", "glass-lai"} <= set(lo.DATASETS)
     assert lo.get_dataset("gpcp").versions[0] == "3.3" and lo.get_dataset("gldas").versions[0] == "2.1"
     assert [d for _, d, _ in lo.NCEI_LAI_SENSORS] == ["avhrr", "viirs"]
     assert lo.get_dataset("PML") is lo.DATASETS["pml"]
@@ -558,6 +558,77 @@ def test_load_hiq_lai(hiq):
     np.testing.assert_allclose(v[1], [0, 10, 5.5, 0.1, 0.2, 0.3], rtol=1e-6)
     assert np.isnan(v[2, :3]).all() and (v[2, 3:] == 0).all()  # 255, 249 (fill) and 101 (out of range)
     assert da.attrs["frequency"] == "8-day" and da.attrs["dataset"] == "hiq-lai"
+
+
+@pytest.fixture
+def globmap(tmp_path):
+    """GLOBMAP layout: half-monthly AVHRR folders to 2000, 8-day MODIS folders from 2001, with the .rar archives."""
+    raw = np.array([[-100, -20, 1001, 0, 0, 0], [0, 1000, 55, 1, 2, 3], [10, 20, 30, 40, 50, 60]], dtype="int16")
+    for folder, doys in (("1991-2000_TIFF", ("1999350", "2000001", "2000016", "2000351")),
+                         ("2001-2005_TIFF", ("2001001", "2001009"))):
+        for doy in doys:
+            write_geotiff(tmp_path / folder / f"GlobMapLAIV3.A{doy}.Global.LAI.tif", [raw])
+        (tmp_path / f"{folder}.rar").write_bytes(b"rar")
+    return replace(lo.get_dataset("globmap-lai"), root=tmp_path)
+
+
+def test_load_globmap_lai(globmap):
+    """
+    `freq` picks the AVHRR (half-month) or MODIS (8-day) folders; dated at the composite's first day (days 1
+    and 16 in the half-monthly years, leap years included); band 1 times 0.01, NaN below 0 or above 1000.
+    """
+    half = lo.load_obs(globmap, "lai", freq="half-month")
+    assert list(half.time.dt.strftime("%Y-%m-%d").values) == [
+        "1999-12-16", "2000-01-01", "2000-01-16", "2000-12-16"]
+    eight = lo.load_obs(globmap, "lai", freq="8-day")
+    assert list(eight.time.dt.strftime("%Y-%m-%d").values) == ["2001-01-01", "2001-01-09"]
+    assert lo.list_years(globmap, "lai", freq="8-day") == [2001]
+    with pytest.raises(FileNotFoundError):
+        lo.load_obs(globmap, "lai", slice("2001", "2002"), freq="half-month")
+    v = eight.isel(time=0).values
+    np.testing.assert_allclose(v[0], [0.1, 0.2, 0.3, 0.4, 0.5, 0.6], rtol=1e-6)
+    np.testing.assert_allclose(v[1], [0, 10, 0.55, 0.01, 0.02, 0.03], rtol=1e-6)
+    assert np.isnan(v[2, :3]).all() and (v[2, 3:] == 0).all()  # -100, -20 (fill) and 1001 (out of range)
+    assert eight.attrs["frequency"] == "8-day" and eight.attrs["dataset"] == "globmap-lai"
+
+
+@pytest.fixture
+def glass(tmp_path):
+    """
+    GLASS layout: <year>/GLASS01B01.V61.A<year><doy>.<production date>.hdf, with the XML sidecars. The real files
+    are HDF4, which netCDF4 cannot write: these are NetCDF-4 with the same dims, encoding and names, which the
+    netcdf4 engine opens the same way.
+    """
+    raw = np.array([[255, 101, 0], [100, 55, 1]])  # 2 x 3 global grid, row 0 north
+    # Scaled values, which xarray encodes back to these raw uint8 (NaN as the 255 fill)
+    lai = xr.DataArray(np.where(raw == 255, np.nan, raw * 0.1), dims=("YDim:GLASS01B01", "XDim:GLASS01B01"),
+                       name="LAI")
+    for name in ("2000/GLASS01B01.V61.A2000361.2025248", "2001/GLASS01B01.V61.A2001001.2025248",
+                 "2001/GLASS01B01.V61.A2001009.2025249"):
+        path = tmp_path / f"{name}.hdf"
+        path.parent.mkdir(exist_ok=True)
+        lai.to_dataset().to_netcdf(path, engine="netcdf4", encoding={"LAI": {
+            "_FillValue": np.uint8(255), "scale_factor": 0.1, "dtype": "uint8"}})
+        (tmp_path / f"{name}.hdf.xml").write_text("<GranuleMetaDataFile/>")
+    return replace(lo.get_dataset("glass-lai"), root=tmp_path)
+
+
+def test_load_glass_lai(glass):
+    """
+    Dated at the composite's first day (any production date); cell centres of the global grid, lat ascending;
+    LAI times 0.1, NaN for the fill (255) and above the valid range; XML sidecars ignored.
+    """
+    assert lo.list_variables(glass, freq="8-day") == ["lai"]
+    da = lo.load_obs(glass, "lai", freq="8-day")
+    assert list(da.time.dt.strftime("%Y-%m-%d").values) == ["2000-12-26", "2001-01-01", "2001-01-09"]
+    np.testing.assert_allclose(da.lat, [-45, 45])
+    np.testing.assert_allclose(da.lon, [-120, 0, 120])
+    v = da.isel(time=0).values
+    np.testing.assert_allclose(v[0], [10, 5.5, 0.1], rtol=1e-6)  # south row first
+    assert np.isnan(v[1, :2]).all() and v[1, 2] == 0                # 255 (fill), 101 (out of range)
+    assert da.dtype == "float32" and da.attrs["units"] == "m2 m-2" and da.attrs["dataset"] == "glass-lai"
+    assert da.chunks == ((1, 1, 1), (2,), (3,))  # one chunk per file (file_chunks={}), not split by "auto"
+    assert lo.load_obs(glass, "lai", slice("2001", "2001"), freq="8-day").sizes["time"] == 2
 
 
 def test_load_obs_regridded_geotiff(gimms):

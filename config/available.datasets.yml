@@ -32,6 +32,9 @@ prep:
       AVHRRv5_obs4MIPs:       {dataset: avhrr, version: v20260110, variable: lai, freq: monthly, source: native}  # ends 2013-12
       VIIRSv1_obs4MIPs:       {dataset: viirs, version: v20260110, variable: lai, freq: monthly, source: native}  # starts 2014-01
       HiQ-LAIv1:              {dataset: hiq-lai, version: v1, variable: lai, freq: 8-day, source: native}
+      GLOBMAPv3_MODIS:        {dataset: globmap-lai, version: v3, variable: lai, freq: 8-day, source: native}  # 2001-2023; ocean stored as 0
+      GLOBMAPv3_AVHRR:        {dataset: globmap-lai, version: v3, variable: lai, freq: half-month, source: native}  # 1981-07 to 2000; ocean stored as 0
+      GLASSv6.1:              {dataset: glass-lai, version: V61, variable: lai, freq: 8-day, source: native}  # MODIS 0.05 deg, 2000-02 to 2025
       # ILAMB products
       GIMMS_LAI4g: {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: monthly, source: ilamb}
       AVH15C1:     {dataset: avh15c1, version: null, variable: lai, freq: monthly, source: ilamb}

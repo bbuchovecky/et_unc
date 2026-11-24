@@ -5,7 +5,9 @@ Load gridded observational products stored as NetCDF files per variable and
 year (GLEAM v4.3, PML-V2.2, NOAA NCEI AVHRR and VIIRS LAI, FLUXCOM-X-BASE,
 GLDAS), per variable and multi-year period (SiTHv2), per variable and month
 (CLARA-A3) or per month with every variable (GPCP v3), or as one GeoTIFF per
-composite (GIMMS LAI4g, half-monthly; HiQ-LAI, 8-day) into a single DataArray
+composite (GIMMS LAI4g, half-monthly; HiQ-LAI, 8-day; GLOBMAP LAI, half-monthly
+to 2000 and 8-day from 2001) or one HDF4 file per composite (GLASS LAI, 8-day)
+into a single DataArray
 over a time period. ``load_ncei_lai`` joins the AVHRR and VIIRS LAI records,
 with the sensor of each month as a coord.
 
@@ -49,6 +51,9 @@ Example
 >>> lai = lo.load_obs("gimms-lai4g", "lai", slice("2001", "2014"), freq="half-month")  # m2 m-2
 >>> lai = lo.load_obs("gimms-lai4g-avhrr", "lai", slice("2001", "2014"), freq="half-month")  # AVHRR only
 >>> lai = lo.load_obs("hiq-lai", "lai", slice("2001", "2014"), freq="8-day")  # m2 m-2
+>>> lai = lo.load_obs("globmap-lai", "lai", slice("2001", "2014"), freq="8-day")  # MODIS years
+>>> lai = lo.load_obs("globmap-lai", "lai", slice("1982", "2000"), freq="half-month")  # AVHRR years
+>>> lai = lo.load_obs("glass-lai", "lai", slice("2001", "2014"), freq="8-day")  # m2 m-2
 >>> et = lo.load_obs("fluxcom-x", "ET", slice("2001", "2014"))          # mm hr-1, monthly means
 >>> et = lo.load_obs("gldas", "Evap_tavg", slice("2001", "2014"), version="2.0")  # kg m-2 s-1
 >>> pr = lo.load_obs("gpcp", "sat_gauge_precip", slice("2001", "2014"))  # v3.3, mm/day, monthly means
@@ -115,9 +120,24 @@ Notes
   composites (MODIS Terra gaps, e.g. 2001 days 169 and 177), and its 5 km
   cells are nearest-neighbour samples of the 500 m product. Their lat/lon are
   the cell centres of the geotransform, not rounded.
+- GLOBMAP LAI v3 (0.0727 deg, 62.8S-89.2N, 1981-07 to 2023) is the RAR
+  archives of scripts/download/download_globmap.py, unpacked, in
+  OBS_ROOT/globmap-lai-v3: one int16 GeoTIFF per composite, LAI times 100,
+  decoded by ``_decode_geotiff_lai`` (NaN outside 0-1000: the -100 and -20
+  fill of the AVHRR years). The AVHRR years (to 2000) are half-monthly, the
+  MODIS years (from 2001) 8-day, each its own ``freq``. Water is stored as 0
+  like bare ground (no fill), so the ocean reads as LAI 0 until masked to land.
+- GLASS LAI V6.1 (MODIS, 0.05 deg, 8-day, 2000-02 to 2025) is the archive
+  layout of scripts/download/download_glass.py in
+  OBS_ROOT/glass/LAI/MODIS/0.05D: one HDF4 (HDF-EOS2) grid per composite,
+  read by netCDF-C (``engine="netcdf4"``), uint8 LAI times 10 with fill 255
+  (ocean, Antarctica, land without retrieval) as NaN. The files have no
+  coordinate variables; ``_decode_glass_lai`` sets the cell centres of the
+  global grid given in their StructMetadata.
 - Time stamps are kept as stored: GLEAM and SiTHv2 mark the end of each period
-  (1980-01-31, 1980-12-31), PML, CLARA-A3, FLUXCOM-X, GLDAS, GPCP, GIMMS LAI4g
-  and HiQ-LAI the start (1980-01-01; GIMMS also 1980-01-16), NCEI LAI the
+  (1980-01-31, 1980-12-31), PML, CLARA-A3, FLUXCOM-X, GLDAS, GPCP, GIMMS LAI4g,
+  HiQ-LAI, GLOBMAP and GLASS the start (1980-01-01; GIMMS and GLOBMAP's half months
+  also 1980-01-16), NCEI LAI the
   middle (1981-06-15).
 """
 
@@ -176,6 +196,10 @@ class ObsDataset:
     time_from_fields : for files without a time axis (one GeoTIFF per
         composite): builds each file's time stamp from the template fields
         parsed from its path, e.g. {"year": "2001", "month": "01", "half": "02"}.
+    file_chunks : dask chunks of each file used in place of `load_obs`'s
+        default "auto"; None keeps "auto". {} reads each file in its stored
+        chunks (GLASS: one chunk per file, which "auto" would split and read
+        several times).
     """
 
     name: str
@@ -190,6 +214,7 @@ class ObsDataset:
     preprocess: Callable[..., xr.Dataset] | None = None
     engine: str | None = None
     time_from_fields: Callable[[Mapping[str, str]], pd.Timestamp] | None = None
+    file_chunks: Mapping | None = None
 
 
 DATASETS: dict[str, ObsDataset] = {}
@@ -376,9 +401,8 @@ register_dataset(ObsDataset(
 ))
 
 
-# GeoTIFF LAI products (GIMMS LAI4g, HiQ-LAI): one single-time GeoTIFF per composite, unpacked from the Zenodo
-# zips of scripts/download/download_gimms_4g.py and download_hiq_lai.py, each zip holding a folder of its own
-# name. Opened by rioxarray (engine "rasterio") as band_data (band, y, x); the time stamp comes from the file name
+# GeoTIFF LAI products (GIMMS LAI4g, HiQ-LAI, GLOBMAP LAI): one single-time GeoTIFF per composite, unpacked from
+# the Zenodo archives of scripts/download/download_gimms_4g.py, download_hiq_lai.py and download_globmap.py. Opened by rioxarray (engine "rasterio") as band_data (band, y, x); the time stamp comes from the file name
 
 # HiQ-LAI headers declare their extra bands inconsistently; GDAL reads them as extra bands anyway, and rioxarray
 # would warn about it for every file opened
@@ -388,12 +412,13 @@ def _decode_geotiff_lai(
     ds: xr.Dataset, var: str, version: str, freq: str, *, scale: float, valid_max: int,
 ) -> xr.Dataset:
     """
-    Band 1 as float32 LAI ("lai", m2 m-2): NaN above `valid_max` (fill), times `scale`. The files have no
-    nodata or scale in their metadata, so both come from the product's documentation. Other bands (QC) are
-    not read.
+    Band 1 as float32 LAI ("lai", m2 m-2): NaN below 0 or above `valid_max` (fill), times `scale`. The files
+    have no nodata or scale in their metadata, so both come from the product's documentation. Other bands
+    (QC) are not read.
     """
     raw = ds["band_data"].sel(band=1, drop=True)  # the stored integers as float32
-    lai = raw.where(raw <= valid_max) * np.float32(scale)
+    # Negative values are fill in the signed GLOBMAP files (-100, -20); the unsigned GIMMS and HiQ files have none
+    lai = raw.where((raw >= 0) & (raw <= valid_max)) * np.float32(scale)
     # Named "lai" whatever `var` is, so load_obs raises for any other variable name
     return xr.Dataset({"lai": lai.assign_attrs(units="m2 m-2", long_name="leaf area index")}).drop_vars(
         "spatial_ref", errors="ignore")
@@ -452,6 +477,68 @@ register_dataset(ObsDataset(
     preprocess=partial(_decode_geotiff_lai, scale=0.1, valid_max=100),
     engine="rasterio",
     time_from_fields=_day_of_year_start,
+))
+
+# GLOBMAP LAI Version 3 (Liu et al. 2012, doi:10.5281/zenodo.12698637; 0.0727 deg, 62.8S-89.2N), MODIS LAI
+# (GLOBCARBON algorithm, MOD09A1 C6) from 2001, and AVHRR LAI back to 1981-07 from pixel-wise fits of GIMMS
+# NDVI to it. Files are e.g. 2001-2005_TIFF/GlobMapLAIV3.A2001009.Global.LAI.tif (<YYYY><DDD>, first day of the
+# composite), unpacked from the RAR archives of scripts/download/download_globmap.py. The AVHRR years
+# (1981-1990_TIFF, 1991-2000_TIFF) are half-monthly, the MODIS years (2001-2005_TIFF, ...) 8-day, so `freq`
+# picks the folders by the century of their first year ({freq_dir}). Band 1 is LAI x 100 as int16 (valid
+# 0-1000); the AVHRR years also hold -100 (no retrieval, mostly water and bare ground) and -20 (a few dense
+# forest pixels), set to NaN. Water is otherwise stored as 0, like bare ground, so the ocean reads as LAI 0
+# until masked to land
+register_dataset(ObsDataset(
+    name="globmap-lai",
+    root=OBS_ROOT / "globmap-lai-v3",
+    template="{freq_dir}{years}_TIFF/GlobMapLAIV3.A{year}{doy}.Global.LAI.tif",
+    versions=("v3",),
+    freqs={"half-month": "", "8-day": ""},
+    freq_dirs={"half-month": "19", "8-day": "20"},
+    lat_name="y",
+    lon_name="x",
+    coord_decimals=None,  # cell centres from the geotransform, the same in every file
+    preprocess=partial(_decode_geotiff_lai, scale=0.01, valid_max=1000),
+    engine="rasterio",
+    time_from_fields=_day_of_year_start,
+))
+
+
+def _decode_glass_lai(ds: xr.Dataset, var: str, version: str, freq: str) -> xr.Dataset:
+    """
+    LAI of a GLASS HDF-EOS grid file as float32 "lai" (m2 m-2) on cell-centre lat/lon. xarray has already
+    applied the file's scale_factor (0.1) and _FillValue (255, ocean and no retrieval) as NaN.
+    """
+    lai = ds["LAI"]
+    ny, nx = lai.shape
+    # The grid has no coordinate variables: its StructMetadata gives a global GEO grid from (-180, 90) to
+    # (180, -90) with values at cell centres (PixelRegistration=HDFE_CENTER)
+    lat = 90 - 180 / ny * (np.arange(ny) + 0.5)
+    lon = -180 + 360 / nx * (np.arange(nx) + 0.5)
+    lai = lai.where(lai <= 10).astype("float32")  # valid range 0-100 before scaling
+    lai = lai.assign_coords({lai.dims[0]: lat, lai.dims[1]: lon})
+    # Named "lai" whatever `var` is, as the GeoTIFF LAI products
+    return xr.Dataset({"lai": lai.assign_attrs(units="m2 m-2", long_name="leaf area index")})
+
+
+# GLASS LAI (Global LAnd Surface Satellite, Beijing Normal University / HKU), MODIS 0.05 deg, 8-day,
+# 2000-02 to 2025, Version 6.1, from https://glass.hku.hk/archive/LAI/MODIS/0.05D/ (scripts/download/
+# download_glass.py, which keeps the archive's layout). Files are e.g.
+# 2001/GLASS01B01.V61.A2001009.2025248.hdf (<YYYY><DDD> the first day of the composite, then the production
+# date), HDF4 (HDF-EOS2) read by netCDF-C, with an XML sidecar each (not read). LAI is uint8 x 10 (valid 0-100,
+# fill 255 over the ocean, Antarctica and other land without a retrieval)
+register_dataset(ObsDataset(
+    name="glass-lai",
+    root=OBS_ROOT / "glass" / "LAI" / "MODIS" / "0.05D",
+    template="{year}/GLASS01B01.{version}.A{year}{doy}.{production_date}.hdf",
+    versions=("V61",),
+    freqs={"8-day": ""},
+    lat_name="YDim:GLASS01B01",
+    lon_name="XDim:GLASS01B01",
+    preprocess=_decode_glass_lai,
+    engine="netcdf4",  # not guessed from the .hdf extension
+    time_from_fields=_day_of_year_start,
+    file_chunks={},  # each file is stored as one 3600 x 7200 chunk: read it whole
 ))
 
 
@@ -661,7 +748,8 @@ def load_obs(
     Parameters
     ----------
     dataset : registered name ("gleam", "pml", "sith", "clara", "avhrr", "viirs", "fluxcom-x", "gldas",
-        "gpcp", "gimms-lai4g", "gimms-lai4g-avhrr", "hiq-lai", ...) or an `ObsDataset`.
+        "gpcp", "gimms-lai4g", "gimms-lai4g-avhrr", "hiq-lai", "globmap-lai", "glass-lai", ...) or an
+        `ObsDataset`.
     var : variable name as used in the directory and file names (e.g. "E", "ET"); "lai" for the GeoTIFF
         LAI products.
     time_slice : passed to ``.sel(time=...)``; only files for the years it
@@ -703,6 +791,8 @@ def load_obs(
             ds = ds.expand_dims(time=[spec.time_from_fields(fields)])
         return standardize_grid(ds, spec)
 
+    if chunks == "auto" and spec.file_chunks is not None:
+        chunks = spec.file_chunks
     # Chunks apply when each file is opened, before `preprocess` renames the coords
     if isinstance(chunks, Mapping):
         native = {"lat": spec.lat_name, "lon": spec.lon_name}
@@ -726,7 +816,7 @@ def load_obs(
         # e.g. one composite in two zips: open_mfdataset would stack both
         dup = ds.indexes["time"][ds.indexes["time"].duplicated()]
         raise ValueError(f"{spec.name}: several files for the time stamps {[str(t.date()) for t in dup]}")
-    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML, CLARA-A3, FLUXCOM-X, GLDAS, GPCP, GIMMS LAI4g, HiQ-LAI)
+    # Time stamps mark the end (GLEAM, SiTHv2) or start (PML, CLARA-A3, FLUXCOM-X, GLDAS, GPCP, GeoTIFF and GLASS LAI)
     # of each period, so slice with year or year-month strings rather than exact dates
     da = ds[var].sel(time=time_slice)
     if lat_bnds is not None:

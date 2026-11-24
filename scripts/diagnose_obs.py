@@ -14,8 +14,9 @@ Products
   and 2.1 Noah, 2.2 Catchment with GRACE data assimilation), P of GPCP v3.3,
   Rn of CLARA-A3, and LAI of the NOAA NCEI record (obs4MIPs, 0.05 deg),
   AVHRR v5 (to 2013; the CDR behind ILAMB's AVH15C1) and VIIRS v1 (from
-  2014) as separate products, GIMMS LAI4g V1.2 (half-monthly, 1/12 deg) and
-  HiQ-LAI v1 (8-day, 5 km), both averaged to monthly means.
+  2014) as separate products, GIMMS LAI4g V1.2 (half-monthly, 1/12 deg),
+  HiQ-LAI v1 (8-day, 5 km), GLOBMAP LAI v3 (8-day MODIS years, 0.0727
+  deg) and GLASS LAI V6.1 (8-day, 0.05 deg), each averaged to monthly means.
 A product without files is skipped.
 
 Prep ID and diagnostic ID
@@ -176,6 +177,12 @@ GRIDDED_PRODUCTS = {
         "GIMMS_LAI4g_V1.2": ("gimms-lai4g", "V1.2", "lai", "half-month"),
         # HiQ-LAI v1, reprocessed MODIS C6.1 at 5 km (each cell one 500 m pixel), 2000-02 to 2022
         "HiQ-LAIv1":        ("hiq-lai", "v1", "lai", "8-day"),
+        # GLOBMAP LAI v3 at its native 0.0727 deg, MODIS years (8-day, 2001-2023); its AVHRR years (half-monthly,
+        # 1981-07 to 2000, freq "half-month") are outside TIME_SLICE. Water is 0, not NaN, so only the land mask
+        # tells it from bare ground
+        "GLOBMAPv3_MODIS":  ("globmap-lai", "v3", "lai", "8-day"),
+        # GLASS LAI V6.1, MODIS at 0.05 deg (8-day, 2000-02 to 2025)
+        "GLASSv6.1":        ("glass-lai", "V61", "lai", "8-day"),
     },
 }
 # ERA5 is read from GDEX, whose loader needs a bounded period: its whole record of mer there
@@ -247,7 +254,7 @@ def load(v: str, p: str) -> xr.DataArray:
         dataset, version, var, freq = GRIDDED_PRODUCTS[v][p]
         if dataset == "era5-land":
             # Mean daily evaporation [m of water/day, positive downward] -> W/m2 (positive upward)
-            da = units.convert_units(var, le.load_era5_land(var, RECORD_SLICE))
+            da = units.convert_units(var, le.load_era5_land(var, ERA5_RECORD))
         elif dataset == "era5":
             # Mean rate [kg m-2 s-1, positive downward]; convert_units also flips the sign of mer (as prep_lsmobs.py)
             da = units.convert_units(var, le.load_native([var], ERA5_RECORD)[var])
