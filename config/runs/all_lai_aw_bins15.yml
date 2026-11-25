@@ -1,0 +1,18 @@
+prep:
+  obs:
+    lai_products:
+      GIMMS_LAI4g_V1.2:       {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: half-month, source: native}
+      HiQ-LAIv1:              {dataset: hiq-lai, version: v1, variable: lai, freq: 8-day, source: native}
+      GLOBMAPv3_MODIS:        {dataset: globmap-lai, version: v3, variable: lai, freq: 8-day, source: native}
+      GLASSv6.1:              {dataset: glass-lai, version: V61, variable: lai, freq: 8-day, source: native}
+  lsmobs:
+    lai_products:
+      GIMMS_LAI4g_V1.2:       {dataset: gimms-lai4g, version: V1.2, variable: lai, freq: half-month, source: native}
+      HiQ-LAIv1:              {dataset: hiq-lai, version: v1, variable: lai, freq: 8-day, source: native}
+      GLOBMAPv3_MODIS:        {dataset: globmap-lai, version: v3, variable: lai, freq: 8-day, source: native}
+      GLASSv6.1:              {dataset: glass-lai, version: V61, variable: lai, freq: 8-day, source: native}
+# Land-area weighted bin statistics, 15 x 15 bins (the inputs of decompose_state_function.py)
+binning:
+  area_weighted: true
+  n_xbins: 15
+  n_ybins: 15
